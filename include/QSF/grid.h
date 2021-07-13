@@ -2,7 +2,7 @@ template <class BaseGrid, size_t Components, class MPIStrategy = typename BaseGr
 struct Grid;
 
 template <class BaseGrid, size_t Components>
-struct Grid<BaseGrid, Components, MPI::Slices> : BaseGrid
+struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 {
 	// 	static_assert(std::is_base_of_v< CoordinateSystem, CS>,
 // 				  "First GridType template argument must be type derived from CoordinateSystem");
@@ -260,6 +260,10 @@ transforms are coupled together if involve consecutive directions (case for 1-3D
 		Timings::measure::stop("FFTW");
 
 	}
+	void post_evolve()
+	{
+
+	}
 	//BUNCH OF HELPFUL FUNCTIONS
 	inline void copyFullArray(cxd* to, cxd* from)
 	{
@@ -322,9 +326,9 @@ transforms are coupled together if involve consecutive directions (case for 1-3D
 
 
 template <class BaseGrid, size_t Components>
-struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Components, MPI::Slices>
+struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Components, MPI::Slices, MPI::Single>
 {
-	using base = Grid<BaseGrid, Components, MPI::Slices>;
+	using base = Grid<BaseGrid, Components, MPI::Slices, MPI::Single>;
 	using base::DIM;
 	using base::sol;
 	using base::psi;
@@ -586,11 +590,11 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 		}
 	}
 
-	inline double CAP1(ind i) { return absorber.CAP(xmin + i * dx); }
-	inline double invCAP1(ind i) { return 1.0 - absorber.CAP(xmin + i * dx); }
+	inline double CAP1(ind i) { return absorber(xmin + i * dx); }
+	inline double invCAP1(ind i) { return 1.0 - absorber(xmin + i * dx); }
 	inline double CAP2(ind i, ind j) { return absorber.CAP(xmin + i * dx, xmin + j * dx); }
-	inline double invCAP2(ind i, ind j) { return 1 - absorber.CAP(xmin + i * dx, xmin + j * dx); }
-	inline void maskRegion(cxd* psi)
+	inline double invCAP2(ind i, ind j) { return 1 - absorber(xmin + i * dx, xmin + j * dx); }
+	inline void maskRegion()
 	{
 		// constexpr auto op = PosOperator();
 		// double x;
@@ -616,7 +620,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 					{
 						if ((sol.freeCoord & FREE_COORD::Z) == FREE_COORD::Z) z = 0;
 						else z = xmin + dx * k;
-						psi[i * nn + j * n + k] *= absorber.CAP(x, y, z);
+						psi[i * nn + j * n + k] *= absorber(x, y, z);
 					}
 			}
 		}
@@ -693,7 +697,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 	}
 	//Max at 0,0,0, Min at (c,c,c), c=CAP_nodes
 
-	inline void coherentAddition(cxd* psi, FREE_COORD fc, int boxIndex)
+	inline void coherentAddition(FREE_COORD fc, int boxIndex)
 	{
 		if (fc == FREE_COORD::X)
 		{
@@ -754,7 +758,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 		}
 	}
 
-	inline void transfer()
+	void transfer()
 	{
 		Timings::measure::start("TRANSFER");
 		for (int gI = 1; gI < MPI::groupCount; gI++)
@@ -783,5 +787,11 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 		}
 		if (MPI::group != MPI::groupCount - 1) maskRegion();
 		Timings::measure::stop("TRANSFER");
+	}
+
+	void post_evolve()
+	{
+		base::post_evolve();
+		transfer();
 	}
 };

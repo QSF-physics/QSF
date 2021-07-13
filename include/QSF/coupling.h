@@ -92,6 +92,7 @@ struct Coupling;
 template <class ... Fields>
 struct Coupling<VelocityGauge, DipoleApprox, Fields...> : CouplingBase<DipoleApprox, Fields...>
 {
+	static constexpr REP couplesInRep = REP::P;
 	using base = CouplingBase<DipoleApprox, Fields...>;
 	double lastTime;
 	// A(t) = -int_0^t E(t) dt

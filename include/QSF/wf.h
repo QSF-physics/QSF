@@ -6,12 +6,13 @@ struct WF : Grid <GridBase, Components>
 	// GridBase::MPIGrids, //MPIGrids need to init before Grid
 
 {
+
 	using H = Hamiltonian; //Derived type!
 	using MPIStrategy = typename GridBase::MPIStrategy;
 	using MPIGrids = typename GridBase::MPIGrids;
 
 	using grid = Grid <GridBase, Components>;
-
+	using grid::post_evolve;
 	WF() {}
 
 	void initHelpers()

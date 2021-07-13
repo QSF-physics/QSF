@@ -18,10 +18,16 @@ if (NOT MPI_FOUND)
 else()
     message(STATUS "MPI: ${MPI_INCLUDE_PATH}") 
 endif()
+if(MPI_FOUND)
+  include(CMakePrintHelpers)
+  cmake_print_properties(TARGETS MPI::MPI_CXX PROPERTIES INTERFACE_LINK_LIBRARIES)
+endif()
 find_package(FFTW REQUIRED)
 
 
 add_library(${PROJECT_NAME} INTERFACE)
+# add_library(QSF::QSF ALIAS ${PROJECT_NAME})
+
 # consider: http://videocortex.io/cmake_snippets/
 # target_sources(${PROJECT_NAME} INTERFACE qsf.h) # Adds header files to target, will appear in IDEs
 target_include_directories(${PROJECT_NAME} INTERFACE
@@ -32,11 +38,6 @@ target_include_directories(${PROJECT_NAME} INTERFACE
 # set(CMAKE_CXX_STANDARD 17) # C++17 (for all targets)
 # set_property(TARGET my_app PROPERTY CXX_STANDARD 17) # C++17
 target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_14)
-
-if(MPI_FOUND)
-  include(CMakePrintHelpers)
-  cmake_print_properties(TARGETS MPI::MPI_CXX PROPERTIES INTERFACE_LINK_LIBRARIES)
-endif()
 target_link_libraries(${PROJECT_NAME} INTERFACE MPI::MPI_C)
 target_link_libraries(${PROJECT_NAME} INTERFACE MPI::MPI_CXX)
 

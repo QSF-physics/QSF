@@ -39,7 +39,7 @@ namespace MPI
 	char verstring[MPI_MAX_LIBRARY_VERSION_STRING];
 	char nodename[MPI_MAX_PROCESSOR_NAME];
 	int version, subversion, verstringlen, nodestringlen;
-	void setup(int argc, char* argv[])
+	void init(int argc, char* argv[])
 	{
 		MPI_Init(&argc, &argv);		 			 // initialize MPI
 		MPI_Comm_rank(MPI_COMM_WORLD, &pID); 	// get id of this process

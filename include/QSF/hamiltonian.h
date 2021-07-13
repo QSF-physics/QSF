@@ -2,8 +2,12 @@
 namespace Schrodinger
 {
 	/* Define named operators that can be used in computations */
-	struct KinEnergy { };
-	struct PotEnergy { };
+	struct KinEnergy {
+		static constexpr REP rep = REP::P;
+	};
+	struct PotEnergy {
+		static constexpr REP rep = REP::X;
+	};
 	struct Couplings { };
 
 	template <class V_Op, class C_Op, class GType>
@@ -11,11 +15,13 @@ namespace Schrodinger
 	{
 		using wf = WF < Spin0<V_Op, C_Op, GType>, GType, 1>;
 		using wf::psi;
+		using wf::post_evolve;
 		using grid = typename wf::grid;
+		// using wf::transfer;
 		using V = V_Op;
 		using C = C_Op;
 		Spin0() {}
-		static constexpr REP couplesInRep = C::couplesInRep;
+		static constexpr REP couplesInRep = C_Op::couplesInRep;
 		// V pot;
 		// static constexpr REP rep = REP::BOTH;
 		// static constexpr string_view name = "Schrodinger";
@@ -87,5 +93,8 @@ namespace Schrodinger
 			// 	}
 			// }
 		}
+
+
+
 	};
 }

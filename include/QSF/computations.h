@@ -17,44 +17,44 @@ struct TypeBox
 	using type = getType<N, T...>;
 };
 
-template <typename...T>
-struct Run :TypeBox<T...>
-{
+// template <typename...T>
+// struct Run :TypeBox<T...>
+// {
 
-	using base = TypeBox<T...>;
-	using indices = typename base::indices;
-	// static constexpr indices {};
-	static constexpr MODE modes[] = { T::mode... };
-	// static constexpr auto runnableIndices = filter_seq<runnableQ, n_seq<sizeof...(T)>>{};
+// 	using base = TypeBox<T...>;
+// 	using indices = typename base::indices;
+// 	// static constexpr indices {};
+// 	static constexpr MODE modes[] = { T::mode... };
+// 	// static constexpr auto runnableIndices = filter_seq<runnableQ, n_seq<sizeof...(T)>>{};
 
-	// template <MODE M>
-	// constexpr static bool canRunMode = ((size_t(M) & MODES) || MODES == 0);
+// 	// template <MODE M>
+// 	// constexpr static bool canRunMode = ((size_t(M) & MODES) || MODES == 0);
 
-private:
-	static inline void cancel(size_t I)
-	{
-		logWarning("Routine %td will not be executed, because mode %s is disabled via compilation option -MODES", I, modeName(modes[I]));
-	}
+// private:
+// 	static inline void cancel(size_t I)
+// 	{
+// 		logWarning("Routine %td will not be executed, because mode %s is disabled via compilation option -MODES", I, modeName(modes[I]));
+// 	}
 
-	template <size_t...I>
-	static inline void run(int argc, char* argv[], seq<I...>)
-	{
-		([&]
-		 {
-			//  if constexpr (canRunMode<T::mode>)
-			//  {
-			 T routine{ };
-			 routine.template run<I>(argc, argv);
-		//  }
-		//  else cancel(I);
-		 }(), ...);
-	}
-public:
-	static inline void run(int argc, char* argv[])
-	{
-		run(argc, argv, indices{});
-	}
-};
+// 	template <size_t...I>
+// 	static inline void run(int argc, char* argv[], seq<I...>)
+// 	{
+// 		([&]
+// 		 {
+// 			//  if constexpr (canRunMode<T::mode>)
+// 			//  {
+// 			 T routine{ };
+// 			 routine.template run<I>(argc, argv);
+// 		//  }
+// 		//  else cancel(I);
+// 		 }(), ...);
+// 	}
+// public:
+// 	static inline void run(int argc, char* argv[])
+// 	{
+// 		run(argc, argv, indices{});
+// 	}
+// };
 
 template <typename...Ts>
 struct Dumps

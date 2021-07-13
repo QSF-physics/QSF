@@ -1,40 +1,100 @@
 #include "sources.h"
 #include "autoconfig.h"
 
-
 template <class PASSES, class PROP, template <class, ind> class OUTS,
-	template <ind> class DUMPS, OPTIMS opt, std::string_view const& name = PROP::name>
+	template <ind> class DUMPS, OPTIMS opt>
 struct Routine
 {
-	using Section = inipp::Ini<char>::Section;
 	template <ind PASS>
 	using OutputsPerPass_t = OUTS<PASSES, PASS>;
 	template <ind PASS>
 	using DumpsPerPass_t = DUMPS<PASS>;
 
-	PROP propagator;
-	double timer;
-	double dt;
-	ind step;
-	static constexpr auto optims = opt;
 	static constexpr auto mode = PROP::mode;
+	static constexpr auto optims = opt;
 	Section settings;
+	PROP propagator;
+	std::string_view name;
 
-	Routine() //: settings(NO_INPUT_FILE ? Section{} : ini.sections[name.data()])
+	explicit Routine(std::string_view name) : name(name),
+		settings(ini.sections[name.data()]) {}
+
+	explicit Routine(PROP propagator) : propagator(propagator)
 	{
-		// file_log = openLog(name);
+		name = PROP::name;
+		file_log = openLog(PROP::name);
 	};
 
-	void greet(ind RI)
+	Routine()
 	{
-		logImportant("EXECUTING ROUTINE [%zu](%s) IN MODE [%s] REGIONS: [%d] USING OPERATOR SPLIT: [%s]",
-					 RI,
+		name = PROP::name;
+		file_log = openLog(PROP::name);
+	}
+
+	void greet()
+	{
+		logImportant("EXECUTING ROUTINE [%s] IN MODE [%s] REGIONS: [%d] USING OPERATOR SPLIT: [%s]",
 					 name.data(),
 					 modeName(mode),
 					 MPI::regionCount,
 					 PROP::name.data());
 	}
+	template <uind... PASS>
+	void dispatchLoops(seq<PASS...>)
+	{
+		((PassEnv<PASS>(settings, propagator)).run(), ...);
+	}
 
+	void setupOptimizations()
+	{
+	// 	constexpr auto rout = get<RI>(ROUTINES);
+	// 	if (andQ<RI>(PRECOMP_COORDS)) precomputeCoords();
+	// 	initPulseOptimizations<RI>();
+	// 	if (andQ<RI>(C_DIPACC_X)) buildAndScatter(makeVStatDer<AXIS::X>, opt_dvstat_dx);
+	// 	if (andQ<RI>(C_DIPACC_Y) && DIM > 1) buildAndScatter(makeVStatDer<AXIS::Y>, opt_dvstat_dy);
+	// 	if (andQ<RI>(C_DIPACC_Z) && DIM > 2) buildAndScatter(makeVStatDer<AXIS::Z>, opt_dvstat_dz);
+	}
+	void run()
+	{
+		greet();
+
+		// get_value(settings, "n", n);
+		// get_value(settings, "L", L);
+		// get_value(settings, "max_imaginary_steps", max_imaginary_steps);
+		// get_value(settings, "state_accuracy", state_accuracy);
+
+			 // 		configChecks<RI>();
+
+		// config();
+		// MPI::test();
+// config<RI>(settings, argc, argv);		//User defined
+
+// propagator.setup();
+// wf.setup();
+// Eigen::setup(eigenUsedByComp<typename RT::template Output_t<0>>, imaginaryTimeQ);
+// constexpr auto seq = (typename RT::Passes_t){};
+		dispatchLoops(PASSES{});
+	}
+
+	~Routine()
+	{
+		// logInfo("RoutineEnv destructs");
+		// Eigen::destroy();
+		// // WAVE::destroySlice();
+		// if (psi_total != nullptr)
+		// {
+		// 	delete[] psi_total;
+		// 	psi_total = nullptr;
+		// }
+		// // // closeFile(file_log);
+		// // Eigen::destroy();
+
+		// // fftw_free(WF::psi);
+		// // fftw_destroy_plan(WF::transf_p2x);
+		// // fftw_destroy_plan(transf_p2x);
+		// // http://www.fftw.org/fftw3_doc/MPI-Initialization.html
+		// fftw_mpi_cleanup();
+	}
 
 	template <ind PASS>
 	struct PassEnv
@@ -55,7 +115,7 @@ struct Routine
 				Dumps_t::template run< REP::BOTH^ startREP, WHEN>();
 				outputs.template run < mode, LATE, REP::BOTH^ startREP, optims>();
 				propagator.template fourier<startREP>();
-				outputs.template logOrPass<WHEN>();
+				outputs.template logOrPass<WHEN>(1);
 			}
 		}
 
@@ -84,7 +144,7 @@ struct Routine
 			// step += (outputs.comp_interval - 1);
 			// Evolution::incrementBy(outputs.comp_interval);
 			// reapData<AFTER<>>();			//ψ(p,t) -> ψ(p,t)
-			propagator.transfer();
+			// propagator.transfer();
 			// if (imaginaryTimeQ)
 			// {
 			// 	Eigen::store<startREP>(state, PASS, energy);
@@ -100,8 +160,6 @@ struct Routine
 			// saveHHG();
 
 		}
-
-
 		// inline bool stepExitCondition()
 		// {
 		// 	if constexpr (imaginaryTimeQ) return stillConverging();
@@ -115,12 +173,11 @@ struct Routine
 			// state = PASS;
 			// Timings::start(name, RI, PASS);
 			before();
-			for (step = 1; propagator.exitCondition(); step++)
+			while (propagator.exitCondition())
 			{
-				if (PROP::evoEnabled())
-					propagator.makeStep((typename PROP::ChainExpander) {});
-
-				propagator.transfer();
+				// if (PROP::evoEnabled())
+				propagator.makeStep((typename PROP::ChainExpander) {});
+				// propagator.transfer();
 				reapData<DURING<>>();
 			}
 			after();
@@ -128,78 +185,11 @@ struct Routine
 		}
 
 		PassEnv(Section& settings, PROP& propagator) :
-			outputs(settings, PASS, mode, name), propagator(propagator)
+			outputs(settings, PASS, mode, PROP::name), propagator(propagator)
 		{
-			step = 0; timer = 0;
 			propagator.reset();
 		}
-		~PassEnv() {
-			logInfo("EvolutionEnv destructs");
-		}
 	};
-
-
-
-	template <ind... PASS>
-	void dispatchLoops(seq<PASS...>)
-	{
-		((PassEnv<PASS>(settings, propagator)).run(), ...);
-	}
-
-	void setupOptimizations()
-	{
-	// 	constexpr auto rout = get<RI>(ROUTINES);
-	// 	if (andQ<RI>(PRECOMP_COORDS)) precomputeCoords();
-	// 	initPulseOptimizations<RI>();
-	// 	if (andQ<RI>(C_DIPACC_X)) buildAndScatter(makeVStatDer<AXIS::X>, opt_dvstat_dx);
-	// 	if (andQ<RI>(C_DIPACC_Y) && DIM > 1) buildAndScatter(makeVStatDer<AXIS::Y>, opt_dvstat_dy);
-	// 	if (andQ<RI>(C_DIPACC_Z) && DIM > 2) buildAndScatter(makeVStatDer<AXIS::Z>, opt_dvstat_dz);
-	}
-	template <ind RI>
-	void run(int argc, char* argv[])
-	{
-		greet(RI);
-		using namespace inipp;
-
-		// get_value(settings, "n", n);
-		// get_value(settings, "L", L);
-		// get_value(settings, "max_imaginary_steps", max_imaginary_steps);
-		// get_value(settings, "state_accuracy", state_accuracy);
-
-			 // 		configChecks<RI>();
-
-					 // config();
-					 // MPI::test();
-		// config<RI>(settings, argc, argv);		//User defined
-
-		// propagator.setup();
-		// wf.setup();
-		// Eigen::setup(eigenUsedByComp<typename RT::template Output_t<0>>, imaginaryTimeQ);
-
-		// constexpr auto seq = (typename RT::Passes_t){};
-
-		// dispatchLoops(PASSES{}, regions);
-	}
-
-	~Routine()
-	{
-		// logInfo("RoutineEnv destructs");
-		// Eigen::destroy();
-		// // WAVE::destroySlice();
-		// if (psi_total != nullptr)
-		// {
-		// 	delete[] psi_total;
-		// 	psi_total = nullptr;
-		// }
-		// // // closeFile(file_log);
-		// // Eigen::destroy();
-
-		// // fftw_free(WF::psi);
-		// // fftw_destroy_plan(WF::transf_p2x);
-		// // fftw_destroy_plan(transf_p2x);
-		// // http://www.fftw.org/fftw3_doc/MPI-Initialization.html
-		// fftw_mpi_cleanup();
-	}
 };
 
 

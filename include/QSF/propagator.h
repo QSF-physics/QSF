@@ -1,30 +1,56 @@
-
 #include "splitting.h"
 
 struct PropagatorBase
 {
-	double timer_copy;
-	double timer;
-	double dt;
 	ind step;
-	inline void time_backup()
+	double dt;
+	double timer;
+
+	void reset()
 	{
-		timer_copy = timer;
+		step = 0; timer = 0;
 	}
-	void time_restore()
-	{
-		timer = timer_copy;
-	}
-	void time_reset()
-	{
-		timer = 0;
-	}
-	void incrementBy(double fraction) { timer += dt * fraction; }
+	void incrementBy(double fraction = 1.0) { timer += dt * fraction; }
 };
 
-template <MODE M, class HamWF, class SpBase, template <class, size_t> class SpType, size_t Order>
-struct SplitPropagator : PropagatorBase//TODO: rename to SplitPropagator
+template <MODE M>
+struct SplitPropagatorBase;
+
+template <>
+struct SplitPropagatorBase<MODE::IM> : PropagatorBase
 {
+	double dE;
+	double state_accuracy;
+	double energy;
+	ind max_imaginary_steps;
+	bool exitCondition()
+	{
+		return !((fabs(dE) < state_accuracy || dE / energy == 0.) || step == max_imaginary_steps);
+	}
+};
+
+template <>
+struct SplitPropagatorBase<MODE::RE> : PropagatorBase
+{
+	ind ntsteps;
+	bool exitCondition()
+	{
+		return (step < ntsteps);
+	}
+};
+
+
+struct Step {};
+struct Time {};
+
+template <MODE M, class HamWF, class SpBase, template <class, size_t> class SpType, size_t Order>
+struct SplitPropagator : SplitPropagatorBase<M>
+{
+	using SplitPropagatorBase<M>::step;
+	using SplitPropagatorBase<M>::timer;
+	using SplitPropagatorBase<M>::dt;
+	using SplitPropagatorBase<M>::incrementBy;
+	using SplitPropagatorBase<M>::reset;
 	using SplitBase = SpBase;
 	using SplitType = SpType<SplitBase, Order>;
 	using ChainExpander = typename SplitType::ChainExpander;
@@ -41,11 +67,31 @@ struct SplitPropagator : PropagatorBase//TODO: rename to SplitPropagator
 	static constexpr REP startsIn = SplitBase::firstREP;
 	// static constexpr REP couplesInRep = C::couplesInRep;
 	static constexpr MODE mode = M;
-	static constexpr std::string_view name = M == MODE::IM ? "IM" : "RE";
+	static constexpr std::string_view name = (M == MODE::IM) ? "IM" : "RE";
 	// static constexpr std::string_view name = SplitType::name;
 	HamWF wf;
 	SplitPropagator() {}
 
+
+	double timer_copy;
+	inline void time_backup()
+	{
+		timer_copy = timer;
+	}
+	void time_restore()
+	{
+		timer = timer_copy;
+	}
+	void time_reset()
+	{
+		timer = 0;
+	}
+
+	template <REP R>
+	void fourier()
+	{
+		wf.template fourier<R>();
+	}
 	template <size_t splitGroup, size_t ... repI, size_t ... SI>
 	inline void evolve(seq<repI...>, seq<SI...>)
 	{
@@ -58,8 +104,8 @@ struct SplitPropagator : PropagatorBase//TODO: rename to SplitPropagator
 			 wf.template evolve<M, rep>(dt * Chain<splitGroup>::mults[SI]);
 			//  Timings::measure::stop(op.name);
 
-			 if constexpr (REP::BOTH == HamWF::couplesInRep) time_incrementBy(Chain<splitGroup>::mults[SI] * 0.5);
-			 else if constexpr (rep == HamWF::couplesInRep) time_incrementBy(Chain<splitGroup>::mults[SI] * 1.0);
+			 if constexpr (REP::BOTH == HamWF::couplesInRep) incrementBy(Chain<splitGroup>::mults[SI] * 0.5);
+			 else if constexpr (rep == HamWF::couplesInRep) incrementBy(Chain<splitGroup>::mults[SI] * 1.0);
 		 }(), ...);
 	}
 
@@ -70,7 +116,7 @@ struct SplitPropagator : PropagatorBase//TODO: rename to SplitPropagator
 			// if (step == 2)logInfo("group %td restore", splitGroup();
 			time_restore();
 			wf.restore();
-			HamWF::Coupling::restore();
+			// HamWF::Coupling::restore();
 		}
 	}
 	template <ind splitGroup> void groupComplete()
@@ -93,7 +139,7 @@ struct SplitPropagator : PropagatorBase//TODO: rename to SplitPropagator
 			if (step == 2) logInfo("group %td(size) backup", ChainCount);
 			wf.backup();
 			time_backup();
-			HamWF::Coupling::backup();
+			// HamWF::Coupling::backup();
 		}
 	}
 
@@ -101,13 +147,19 @@ struct SplitPropagator : PropagatorBase//TODO: rename to SplitPropagator
 	template <size_t... splitGroup>
 	void makeStep(seq<splitGroup...> t)
 	{
-		groupBackup(wf);
-		((groupRestore<splitGroup>(wf)
+		groupBackup();
+		((groupRestore<splitGroup>()
 		//   , Timings::measure::start("EVOLUTION")
-		  , evolve<splitGroup>(reps<splitGroup>{}, splits<splitGroup>{}, wf)
+		  , evolve<splitGroup>(reps<splitGroup>{}, splits<splitGroup>{})
 		//   , Timings::measure::stop("EVOLUTION")
-		  , groupComplete<splitGroup>(wf)
+		  , groupComplete<splitGroup>()
 		  ), ...);
+		wf.post_evolve();
+	}
+
+	static bool calcsEnabled()
+	{
+		return true;
 	}
 };
 

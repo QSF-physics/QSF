@@ -1,7 +1,9 @@
+
 #define STRINGIFY_(x) #x
 #define STRINGIFY(x) STRINGIFY_(x)
 // #include <sys/stat.h> //TODO: https://en.cppreference.com/w/cpp/filesystem/create_directory
 #include <filesystem>
+#include <cstring>
 
 enum class IO_ATTR :char { READ = 'r', WRITE = 'w', APPEND = 'a' };
 constexpr static char const* io_d[] = { "", "_x","_xy","_xyz" };
@@ -55,7 +57,7 @@ FILE* fopen_with_check(char const* ffname)
 }
 
 template <DIMS D, typename WHEN>
-void set_file_path(string_view name, char const* ext, bool binary)
+void set_file_path(std::string_view name, char const* ext, bool binary)
 {
 	sprintf(file_path, "%s%s%s%s%s%s.%s%s%d",
 			target_path,
@@ -70,7 +72,7 @@ void set_file_path(string_view name, char const* ext, bool binary)
 }
 
 template <typename WHEN, DIMS D, IO_ATTR ATTR>
-FILE* openFile(string_view name, char const* ext, bool binary = false)
+FILE* openFile(std::string_view name, char const* ext, bool binary = false)
 {
 	if (!MPI::rID)
 	{
@@ -81,28 +83,28 @@ FILE* openFile(string_view name, char const* ext, bool binary = false)
 }
 //Simplified
 template <IO_ATTR ATTR>
-FILE* openFile(string_view name, char const* ext, bool binary)
+FILE* openFile(std::string_view name, char const* ext, bool binary)
 {
 	return openFile <_TEMPORAL, DIMS(0), ATTR >(name, ext, binary);
 }
 
 template <IO_ATTR ATTR>
-FILE* openOut(string_view name, const int index, bool binary)
+FILE* openOut(std::string_view name, const int index, bool binary)
 {
 	sprintf(char_label, "%s_%d", name.data(), index);
 	return openFile<_TEMPORAL, DIMS(0), ATTR>(char_label, dat_ext, binary);
 }
 
-inline FILE* openLog(string_view name)
+inline FILE* openLog(std::string_view name)
 {
 	return openFile<IO_ATTR::APPEND>(name, log_ext, false);
 }
 
 template <typename WHEN, REP R, DIMS D, IO_ATTR ATTR>
-inline FILE* openPsi(string_view name, int state, ind step, bool binary)
+inline FILE* openPsi(std::string_view name, int state, ind step, bool binary)
 {
 	sprintf(char_label, "%s%d", name.data(), state);
-	if (is_base_of_v<DURING, WHEN>) sprintf(char_label, "%s_%td", char_label, step);
+	if (std::is_base_of_v<DURING, WHEN>) sprintf(char_label, "%s_%td", char_label, step);
 	return openFile<WHEN, D, ATTR>(char_label,
 								   R == REP::X ? psi_ext : mom_ext,
 								   binary);
@@ -113,13 +115,13 @@ void closeFile(FILE* f) { if (!MPI::rID && f != nullptr) { fclose(f); } }
 struct _Operator { OPTIMS maskOpt; };
 
 // template <typename A, typename B>
-// inline constexpr string_view buildName(A a, B b)
+// inline constexpr std::string_view buildName(A a, B b)
 // {
 
-// 	if constexpr (is_base_of_v<_Operator, B>) return join_v<a.name, b.name>;
-// 	if constexpr (!is_base_of_v<_Operator, B>)
+// 	if constexpr (std::is_base_of_v<_Operator, B>) return join_v<a.name, b.name>;
+// 	if constexpr (!std::is_base_of_v<_Operator, B>)
 // 	{
-// 		auto c = string_view{ b() };
+// 		auto c = std::string_view{ b() };
 // 		return join_v < a.name, to_string(c)>;
 // 	}
 // }
@@ -129,41 +131,41 @@ void dispatchComp(FILE* file, T t)
 {
 	char name[15];
 	using types = decltype(t.types);
-	if constexpr (0 < tuple_size_v<types>)
+	if constexpr (0 < std::tuple_size_v<types>)
 	{
 		auto tup = t.types;
 		ForEach(tup, [&](auto index)
 				{
 					char buf[15];
-					auto sub = get<index>(tup);
+					auto sub = std::get<index>(tup);
 
 
 					// sprintf(buf, t.name.data(), index.value);//, sub.name.data());
 					// sprintf(name, "%14s", buf);
 					// logInfo("Formatting %s", name);
-					if constexpr (is_same_v<double, typename decltype(t)::type>)
+					if constexpr (std::is_same_v<double, typename decltype(t)::type>)
 					{
-						if constexpr (is_base_of_v<_Operator, decltype(sub)>)
+						if constexpr (std::is_base_of_v<_Operator, decltype(sub)>)
 							sprintf(buf, "%s%s", t.name.data(), sub.name.data());
-						if constexpr (!is_base_of_v<_Operator, decltype(sub)>)
+						if constexpr (!std::is_base_of_v<_Operator, decltype(sub)>)
 							sprintf(buf, "%s%lu", t.name.data(), sub());
 						sprintf(name, "%14s", buf);
 						// logInfo("Formatting %s", name);
 						fwrite(&name, sizeof(char), 15, file);
 					}
-					else if constexpr (is_same_v<cxd, typename decltype(t)::type>)
+					else if constexpr (std::is_same_v<cxd, typename decltype(t)::type>)
 					{
-						if constexpr (is_base_of_v<_Operator, decltype(sub)>)
+						if constexpr (std::is_base_of_v<_Operator, decltype(sub)>)
 							sprintf(buf, "%s%s%s", "RE_", t.name.data(), sub.name.data());
-						if constexpr (!is_base_of_v<_Operator, decltype(sub)>)
+						if constexpr (!std::is_base_of_v<_Operator, decltype(sub)>)
 							sprintf(buf, "%s%s%lu", "RE_", t.name.data(), sub());
 						sprintf(name, "%14s", buf);
 						// logInfo("Formatting %s", name);
 						fwrite(&name, sizeof(char), 15, file);
 
-						if constexpr (is_base_of_v<_Operator, decltype(sub)>)
+						if constexpr (std::is_base_of_v<_Operator, decltype(sub)>)
 							sprintf(buf, "%s%s%s", "IM_", t.name.data(), sub.name.data());
-						if constexpr (!is_base_of_v<_Operator, decltype(sub)>)
+						if constexpr (!std::is_base_of_v<_Operator, decltype(sub)>)
 							sprintf(buf, "%s%s%lu", "IM_", t.name.data(), sub());
 						sprintf(name, "%14s", buf);
 						// logInfo("Formatting %s", name);
@@ -175,9 +177,9 @@ void dispatchComp(FILE* file, T t)
 						constexpr size_t count = sizeof(typename decltype(t)::type) / sizeof(double);
 						for (size_t i = 0; i < count; i++)
 						{
-							if constexpr (is_base_of_v<_Operator, decltype(sub)>)
+							if constexpr (std::is_base_of_v<_Operator, decltype(sub)>)
 								sprintf(buf, "#%zu%s%s", i, t.name.data(), sub.name.data());
-							if constexpr (!is_base_of_v<_Operator, decltype(sub)>)
+							if constexpr (!std::is_base_of_v<_Operator, decltype(sub)>)
 								sprintf(buf, "#%zu%s%lu", i, t.name.data(), sub());
 							sprintf(name, "%14s", buf);
 							// logInfo("Formatting %s", name);
