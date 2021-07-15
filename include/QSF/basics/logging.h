@@ -50,6 +50,19 @@ int qdd;
 #endif
 #define __LOG_NL "\n"
 
+//temp hack
+constexpr const char* file_name(const char* path)
+{
+	const char* file = path + 43;
+	// while (*path) {
+	// 	if (*path++ == '/') {
+	// 		file = path;
+	// 	}
+	// }
+	return file;
+}
+
+
 // WORD ABOUT THE NOTION: __ performs no checks, _ performs file check, but no MPI::pID check
 #ifdef _NSL
 #define __LOG2S(format, ...) {}
@@ -63,7 +76,7 @@ int qdd;
 #endif
 
 #if (DEBUG & DEBUG_CALLS)
-#define __LOG_SRC_LOC(color) {__LOG2S("%31s:%-4i| %s" , GOBACK __FILE__, __LINE__, color); }
+#define __LOG_SRC_LOC(color) {__LOG2S("%31s:%-4i| %s" , file_name(__FILE__), __LINE__, color); }
 #else
 #define __LOG_SRC_LOC(color) {__LOG2S("%s", color); }
 // #define __LOG_SRC_LOC(color) {}

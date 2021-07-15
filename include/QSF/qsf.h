@@ -21,12 +21,12 @@ using Section = inipp::Ini<char>::Section;
 #include "coords.h"
 #include "grid.h"
 #include "wf.h"
-#include "hamiltonian.h"
-#include "potential.h"
-#include "field.h"
 #include "computations.h"
 #include "dumps.h"
 #include "average.h"
+#include "hamiltonian.h"
+#include "potential.h"
+#include "field.h"
 #include "coupling.h"
 #include "propagator.h"
 #include "routines.h"
@@ -38,7 +38,6 @@ namespace QSF
 	{
 		MPI::init(argc, argv);
 		logImportant("PROJECT: [%s] MPI PROCESSES: [%d]", STRINGIFY(PROJNAME), MPI::pSize);
-		useProjectIni("project.ini");
 		createDir(project_dir, results_dir);
 		// createDir(home_dir, results_project_dir);
 	}

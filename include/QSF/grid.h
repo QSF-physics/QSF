@@ -53,8 +53,9 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 		return psi[index];
 	}
 
-	Grid() : BaseGrid()
+	Grid(Section& settings) : BaseGrid(settings)
 	{
+		logInfo("Grid Base init");
 		fftw_mpi_init();
 		local_n = n / MPI::rSize; //Expected split
 		strides[DIM - 1] = 1;
@@ -364,8 +365,9 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 		if (sol.moreFree) MPI_Win_create(psi, m * sizeof(cxd), sizeof(cxd), MPI_INFO_NULL, sol.moreFree, &moreFreeWin);
 		if (sol.lessFree) MPI_Win_create(NULL, 0, sizeof(cxd), MPI_INFO_NULL, sol.lessFree, &lessFreeWin);
 	}
-	Grid() :base()
+	Grid(Section& settings) :base(settings)
 	{
+		logInfo("Grid ext init");
 		// absorber.correct(n, L);
 		// nCAP = absorber.nCAP;
 		// boxesCount = DIM < 3 ? 1 : n / nCAP;

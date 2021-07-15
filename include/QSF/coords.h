@@ -39,7 +39,29 @@ struct CartesianGrid :CoordinateSystem
 	static constexpr int DIM = intDIMS(Dflag);
 	static constexpr DIMS D = Dflag;
 
-	CartesianGrid() {}
+	CartesianGrid(Section& settings)
+	{
+		logInfo("Cart init");
+		inipp::get_value(settings, "n", n);
+		inipp::get_value(settings, "dx", dx);
+		n2 = n / 2;
+		nn = (n * n);
+		m = (Power(n, DIM));
+		inv_m = (1.0 / m);
+		dV = (Power(dx, DIM));
+		dVm = (dV * inv_m);
+		L = (dx * (n - 1));
+		xmin = (-0.5 * L);
+		inv_dx = (1.0 / dx);
+		inv_2dx = (inv_dx / 2.0);
+
+		dp = (2.0 * pi / double(n) / dx);
+		pmin = (-pi / dx);
+		pmax = (-pmin - dp);
+		dVP = (Power(dp, DIM));
+		kin_scale = (Power(dp, 2) * 0.5);
+	}
+
 	explicit CartesianGrid(ind n, double dx) :
 		n(n), n2(n / 2), nn(n* n), m(Power(n, DIM)),
 		inv_m(1.0 / m), dx(dx), dV(Power(dx, DIM)), dVm(dV* inv_m),

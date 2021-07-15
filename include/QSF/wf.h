@@ -13,7 +13,9 @@ struct WF : Grid <GridBase, Components>
 
 	using grid = Grid <GridBase, Components>;
 	using grid::post_evolve;
-	WF() {}
+	WF(Section& settings) :grid(settings) {
+		logInfo("WF init");
+	}
 
 	void initHelpers()
 	{
@@ -24,11 +26,14 @@ struct WF : Grid <GridBase, Components>
 		// 	psi_acc = (cxd*)fftw_malloc(sizeof(cxd) * local_m);
 		// }
 	}
-	template <typename Quantity>
-	auto compute()
+	template <typename Quantity, typename ... Args>
+	auto compute(Args...args)
 	{
+		// if constexpr (is_same_v<Quantity,KinEnergy>)
 
 	}
+
+
 
 	void addToInitialStateFromEigenstate(size_t index, size_t state, double weight);
 

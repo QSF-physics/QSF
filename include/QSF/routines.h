@@ -1,18 +1,50 @@
+#include <fstream>
 #include "sources.h"
 #include "autoconfig.h"
 
+
+struct RoutineBase
+{
+	inipp::Ini<char> ini;
+
+	RoutineBase() = default;
+	char config[100];
+
+	explicit RoutineBase(std::string_view name, int DIMS, int ELEC)
+	{
+		logInfo("Parsing %s", name.data());
+// if (MPI::pID)
+		std::ifstream is(name.data());
+		ini.clear();
+		ini.parse(is);
+		// logINI("Raw INI file:");
+		// if (DEBUG & DEBUG_INI) ini.generate(std::cout);
+		ini.strip_trailing_comments();
+		sprintf(config, "%de%dd", DIMS, ELEC);
+		// constexpr auto dimelec = STRINGIFY(ELEC) "e" STRINGIFY(DIM) "d";
+		ini.default_section(ini.sections[config]);
+		ini.default_section(ini.sections["DEFAULT"]);
+		ini.interpolate();
+		// logINI("Parsed & interpolated project.ini file:");
+		// ini.generate(std::cout);
+		// if (DEBUG & DEBUG_INI) ini.generate(std::cout);
+		// if (DEBUG & DEBUG_INI) MPI_Barrier(MPI_COMM_WORLD);
+	}
+};
+
 template <class PASSES, class PROP, template <class, ind> class OUTS,
-	template <ind> class DUMPS, OPTIMS opt>
-struct Routine
+	OPTIMS opt, class Worker>
+	struct Routine : RoutineBase
 {
 	template <ind PASS>
 	using OutputsPerPass_t = OUTS<PASSES, PASS>;
-	template <ind PASS>
-	using DumpsPerPass_t = DUMPS<PASS>;
+	// template <ind PASS>
+	// using DumpsPerPass_t = DUMPS<PASS>;
 
 	static constexpr auto mode = PROP::mode;
 	static constexpr auto optims = opt;
 	Section settings;
+	Worker worker;
 	PROP propagator;
 	std::string_view name;
 
@@ -25,12 +57,16 @@ struct Routine
 		file_log = openLog(PROP::name);
 	};
 
-	Routine()
+	Routine(Worker&& worker) : RoutineBase("project.ini", 1, 1),
+		settings(ini.sections[PROP::name.data()]), worker(std::move(worker)), propagator(settings)
 	{
 		name = PROP::name;
 		file_log = openLog(PROP::name);
 	}
-
+	// LambdaClass(const F &lambdaFunc_): lambdaFunc(lambdaFunc_) {}
+	// LambdaClass(F &&lambdaFunc_) : lambdaFunc(std::move(lambdaFunc_)) {}
+	// LambdaClass(F& _lambdaFunc) : lambdaFunc(_lambdaFunc) {}
+	// LambdaClass(F&& _lambdaFunc) : lambdaFunc(std::forward<F>(_lambdaFunc)) {}
 	void greet()
 	{
 		logImportant("EXECUTING ROUTINE [%s] IN MODE [%s] REGIONS: [%d] USING OPERATOR SPLIT: [%s]",
@@ -42,6 +78,7 @@ struct Routine
 	template <uind... PASS>
 	void dispatchLoops(seq<PASS...>)
 	{
+		worker();
 		((PassEnv<PASS>(settings, propagator)).run(), ...);
 	}
 
@@ -54,6 +91,7 @@ struct Routine
 	// 	if (andQ<RI>(C_DIPACC_Y) && DIM > 1) buildAndScatter(makeVStatDer<AXIS::Y>, opt_dvstat_dy);
 	// 	if (andQ<RI>(C_DIPACC_Z) && DIM > 2) buildAndScatter(makeVStatDer<AXIS::Z>, opt_dvstat_dz);
 	}
+
 	void run()
 	{
 		greet();
@@ -62,9 +100,7 @@ struct Routine
 		// get_value(settings, "L", L);
 		// get_value(settings, "max_imaginary_steps", max_imaginary_steps);
 		// get_value(settings, "state_accuracy", state_accuracy);
-
-			 // 		configChecks<RI>();
-
+		// 		configChecks<RI>();
 		// config();
 		// MPI::test();
 // config<RI>(settings, argc, argv);		//User defined
@@ -101,22 +137,30 @@ struct Routine
 	{
 		PROP& propagator;
 		OutputsPerPass_t<PASS> outputs;
-		using Dumps_t = DumpsPerPass_t<PASS>;
+		// using Dumps_t = DumpsPerPass_t<PASS>;
 		static constexpr REP startREP = PROP::startsIn;
+
+
+		PassEnv(Section& settings, PROP& propagator) :
+			outputs(settings, PASS, mode, PROP::name), propagator(propagator)
+		{
+			propagator.reset();
+		}
 
 		template <typename WHEN> inline void reapData()
 		{
+			// logInfo("PROP STARTS IN %d", startREP);
 			// runDumps<RI, R, WHEN>();
-			Dumps_t::template run<startREP, WHEN>();
-			if (PROP::calcsEnabled())
-			{
-				outputs.template run< mode, EARLY, startREP, optims>();
-				propagator.template fourier<REP::BOTH^ startREP>();
-				Dumps_t::template run< REP::BOTH^ startREP, WHEN>();
-				outputs.template run < mode, LATE, REP::BOTH^ startREP, optims>();
-				propagator.template fourier<startREP>();
-				outputs.template logOrPass<WHEN>(1);
-			}
+			// Dumps_t::template run<startREP, WHEN>();
+			// if (PROP::calcsEnabled())
+			// {
+			outputs.template run< mode, EARLY, startREP>(propagator);
+		// 	propagator.template fourier<REP::BOTH^ startREP>();
+		// 	Dumps_t::template run< REP::BOTH^ startREP, WHEN>();
+		// 	outputs.template run < mode, LATE, REP::BOTH^ startREP, optims>(propagator);
+		// 	propagator.template fourier<startREP>();
+		// 	outputs.template logOrPass<WHEN>(1);
+		// }
 		}
 
 		inline void before()
@@ -173,10 +217,12 @@ struct Routine
 			// state = PASS;
 			// Timings::start(name, RI, PASS);
 			before();
-			while (propagator.exitCondition())
+
+			while (propagator.stillEvolving())
 			{
 				// if (PROP::evoEnabled())
 				propagator.makeStep((typename PROP::ChainExpander) {});
+
 				// propagator.transfer();
 				reapData<DURING<>>();
 			}
@@ -184,15 +230,12 @@ struct Routine
 			// Timings::stop();
 		}
 
-		PassEnv(Section& settings, PROP& propagator) :
-			outputs(settings, PASS, mode, PROP::name), propagator(propagator)
-		{
-			propagator.reset();
-		}
+
 	};
 };
 
-
+template <class PASSES, class PROP, template <class, ind> class OUTS,
+	OPTIMS opt, class Worker> Routine(Worker&&)->Routine<PASSES, PROP, OUTS, opt, Worker>;
 
 // im load
 /*

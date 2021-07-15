@@ -1,13 +1,13 @@
-
+struct KinEnergy {
+	static constexpr REP rep = REP::P;
+};
+struct PotEnergy {
+	static constexpr REP rep = REP::X;
+};
 namespace Schrodinger
 {
 	/* Define named operators that can be used in computations */
-	struct KinEnergy {
-		static constexpr REP rep = REP::P;
-	};
-	struct PotEnergy {
-		static constexpr REP rep = REP::X;
-	};
+
 	struct Couplings { };
 
 	template <class V_Op, class C_Op, class GType>
@@ -20,7 +20,11 @@ namespace Schrodinger
 		// using wf::transfer;
 		using V = V_Op;
 		using C = C_Op;
-		Spin0() {}
+
+		Spin0(Section& settings) : wf(settings)
+		{
+			logInfo("Spin0 init");
+		}
 		static constexpr REP couplesInRep = C_Op::couplesInRep;
 		// V pot;
 		// static constexpr REP rep = REP::BOTH;
@@ -44,6 +48,33 @@ namespace Schrodinger
 				else return V::template operator() < R, opt > (grid::pos<R>(args)...);
 			}
 		}
+
+
+		template <AXIS AX, class Op>
+		inline double avg()
+		{
+			return 1.0;
+		}
+		// template <class T>
+		// auto compute();
+
+		// template <class Op>
+		// auto compute(CO_AVG<Op>)
+		// {
+		// 	static_assert(1, "operation not implemented");
+		// }
+
+		// template <AXIS AX>
+		// auto compute(AVG<AX, KinEnergy>)
+		// {
+		// 	return operator() < REP::P, OPTIMS::NONE > (0, 0, 0);
+		// }
+		// template <AXIS AX>
+		// auto compute(AVG<AX, PotEnergy>)
+		// {
+		// 	return operator() < REP::P, OPTIMS::NONE > (0, 0, 0);
+		// }
+
 		template <MODE M>
 		auto expOp(double val)
 		{
@@ -94,7 +125,19 @@ namespace Schrodinger
 			// }
 		}
 
-
-
 	};
+
+	// template <class V_Op, class C_Op, class GType>
+	// template <>
+	// auto Spin0::compute(CO_AVG<KinEnergy>)
+	// {
+	// 	return operator() < REP::P, OPTIMS::NONE > (0, 0, 0);
+	// }
+
+	// template <class V_Op, class C_Op, class GType>
+	// template <>
+	// auto Spin0::compute(CO_AVG<PotEnergy>)
+	// {
+	// 	return operator() < REP::P, OPTIMS::NONE > (0, 0, 0);
+	// }
 }

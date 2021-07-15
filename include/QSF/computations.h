@@ -17,44 +17,6 @@ struct TypeBox
 	using type = getType<N, T...>;
 };
 
-// template <typename...T>
-// struct Run :TypeBox<T...>
-// {
-
-// 	using base = TypeBox<T...>;
-// 	using indices = typename base::indices;
-// 	// static constexpr indices {};
-// 	static constexpr MODE modes[] = { T::mode... };
-// 	// static constexpr auto runnableIndices = filter_seq<runnableQ, n_seq<sizeof...(T)>>{};
-
-// 	// template <MODE M>
-// 	// constexpr static bool canRunMode = ((size_t(M) & MODES) || MODES == 0);
-
-// private:
-// 	static inline void cancel(size_t I)
-// 	{
-// 		logWarning("Routine %td will not be executed, because mode %s is disabled via compilation option -MODES", I, modeName(modes[I]));
-// 	}
-
-// 	template <size_t...I>
-// 	static inline void run(int argc, char* argv[], seq<I...>)
-// 	{
-// 		([&]
-// 		 {
-// 			//  if constexpr (canRunMode<T::mode>)
-// 			//  {
-// 			 T routine{ };
-// 			 routine.template run<I>(argc, argv);
-// 		//  }
-// 		//  else cancel(I);
-// 		 }(), ...);
-// 	}
-// public:
-// 	static inline void run(int argc, char* argv[])
-// 	{
-// 		run(argc, argv, indices{});
-// 	}
-// };
 
 template <typename...Ts>
 struct Dumps
@@ -79,7 +41,7 @@ struct Dumps
 template <typename RET, typename ... Ops>
 struct COMPUTATION : _COMPUTATION
 {
-	//TODO: make a static asset that excludes X and P
+	//14.07 this is not necessary any longer
 	static_assert(((Ops::rep == REP::BOTH ? REP::NONE : Ops::rep) | ... | REP::NONE) != REP::BOTH,
 				  "Single computation cannot contain operators requiring different spaces (X and P).");
 
@@ -112,8 +74,24 @@ struct COMPUTATION : _COMPUTATION
 	// template <typename WHEN> static constexpr bool canRun = true;
 
 
-	template <MODE M, REP R, OPTIMS opts> inline static void prepare() {}
-	template <MODE M, REP R, OPTIMS opts> inline static void forerunner() {}
+	// template <MODE M, REP R, OPTIMS opts> inline static void prepare() {}
+	// template <MODE M, REP R, OPTIMS opts> inline static void forerunner() {}
+};
+
+template <AXIS AX, typename Op > struct AVG : COMPUTATION <double, Op>, _RBUFFER
+{
+	template <REP R, typename WHEN>
+	static constexpr bool canRun = COMPUTATION<double, Op>::template goodRep<R>;
+
+	static constexpr std::string_view name = "AVG_";
+};
+
+template <AXIS AX, typename Op> struct IMMEDIATE_AVG : COMPUTATION <double, Op>, _XBUFFER
+{
+	static constexpr std::string_view name = "AVG_";
+
+	template <REP R, typename WHEN>
+	static constexpr bool canRun = COMPUTATION<double, Op>::template goodRep<R>;
 };
 
 //Not stored in buffers, but shown during logging. Useful for ETAOperator
@@ -123,16 +101,12 @@ template <typename ... Args> struct AUXILLARY_VALUES :_AUXILLARY_VALUES
 	std::tuple<Args...> types;
 };
 
-template <typename ... Args> struct DIRECT_VALUES : COMPUTATION<double, Args...>, _XBUFFER
+template <typename ... Args> struct VALUE : COMPUTATION<double, Args...>, _XBUFFER
 {
 	static constexpr std::string_view name = "";
-	template<REP R, OPTIMS opt, typename Operator>
-	inline double calc() const noexcept
-	{
-		return Operator::value();
-	}
+
 	template <REP R, typename WHEN>
-	static constexpr bool canRun = COMPUTATION<double, Args...>::template goodRep<R> && std::is_same_v<WHEN, LATE>;
+	static constexpr bool canRun = COMPUTATION<double, Args...>::template goodRep<R> && std::is_same_v<WHEN, EARLY>;
 
 };
 
@@ -140,14 +114,13 @@ template <typename ... Args> struct DIRECT_VALUES : COMPUTATION<double, Args...>
 template <bool binary, typename...Ts>
 struct BufferedOutputs : TypeBox<Ts...>
 {
-	using Section = inipp::Ini<char>::Section;
 	using TypeBox<Ts...>::size;
 
 	template <typename T>
 	static constexpr bool usesReduceBuffer = (std::is_base_of_v<_RBUFFER, T>);
 
 	template <bool usingReduceBuffer>
-	static constexpr auto sizeInBuffer = ((usesReduceBuffer<Ts> ? Ts::sizeInBuffer : 0) + ... + 0);
+	static constexpr auto sizeInBuffer = (((usesReduceBuffer<Ts> == usingReduceBuffer) ? Ts::sizeInBuffer : 0) + ... + 0);
 
 	template <typename T>
 	static constexpr size_t offset()
@@ -195,10 +168,12 @@ struct BufferedOutputs : TypeBox<Ts...>
 	{
 		inipp::get_value(settings, "log_interval", log_interval);
 		inipp::get_value(settings, "comp_interval", comp_interval);
-
+		logInfo("log_interval %d", log_interval);
+		logInfo("comp_interval %d", comp_interval);
 		if (comp_interval > 0)
 			file_dat = openOut<IO_ATTR::WRITE >(name, PASS, binary);
 
+		(printf("size in buffers: %d %td %s", Ts::sizeInBuffer, TypeBox<Ts...>::size, typeid(Ts).name()), ...);
 		bufferHeight = log_interval / comp_interval;
 		rbufferSize = sizeInBuffer<true> *bufferHeight;
 		xbufferSize = sizeInBuffer<false> *bufferHeight;
@@ -214,6 +189,7 @@ struct BufferedOutputs : TypeBox<Ts...>
 		{
 			if (xbufferSize > 0) xbuffer = new double[xbufferSize];
 		}
+		logInfo("got here");
 	}
 
 	~BufferedOutputs()
@@ -225,11 +201,12 @@ struct BufferedOutputs : TypeBox<Ts...>
 
 	inline void ditch() {}
 
-	template <MODE M, typename WHEN, REP R, OPTIMS opt>
-	inline void run()
+	template <MODE M, typename WHEN, REP R, class PROP>
+	inline void run(PROP& propagator)
 	{
-		((Ts::template canRun<R, WHEN> ? compute<M, WHEN, R, opt, Ts, typename Ts::returnT>
-		  (Ts{}, (typename Ts::types) {}, pos<Ts>{}) : ditch()), ...);
+		((Ts::template canRun<R, WHEN> ?
+		  compute<PROP, M, WHEN, R, Ts, typename Ts::returnT>
+		  (propagator, Ts{}, (typename Ts::types) {}, pos<Ts>{}) : ditch()), ...);
 	}
 
 
@@ -237,13 +214,17 @@ struct BufferedOutputs : TypeBox<Ts...>
 	template <size_t pos, bool usingReduceBuffer, typename RetT>
 	inline void storeInBuffer(RetT val)
 	{
+		// logInfo("About to stack... %td %d", pos, usingReduceBuffer);
+
 		if constexpr (std::is_same_v<std::remove_const_t<RetT>, double> || std::is_convertible_v<RetT, double>)
 		{
+			// logInfo("here %d", xbufferCurrentLine);
 			if constexpr (usingReduceBuffer) rbuffer[rbufferCurrentLine + pos] = val;
 			else if (!MPI::pID)
 			{
 				xbuffer[xbufferCurrentLine + pos] = val;
 			}
+			// logInfo("here2");
 		}
 		else if constexpr (std::is_same_v<std::remove_const_t<RetT>, cxd>)
 		{
@@ -270,14 +251,15 @@ struct BufferedOutputs : TypeBox<Ts...>
 		}
 	}
 
-	template <MODE M, typename WHEN, REP R, OPTIMS opt, typename T, typename retT, typename... Op, size_t...Is>
-	inline void compute(T&& comp, COMPUTATION<retT, Op...>&&, seq<Is...>&&)
+	template <class PROP, MODE M, typename WHEN, REP R, typename T, typename retT, typename... Op, size_t...Is>
+	inline void compute(PROP& propagator, T&& comp, COMPUTATION<retT, Op...>&&, seq<Is...>&&)
 	{
-		T::template forerunner<M, R, opt>();
-
+		// T::template forerunner<M, R, opt>();
+		// logInfo("compute:");
 		// Timings::measure::start(comp.name);
 		(storeInBuffer < Is, usesReduceBuffer<T>, retT>(
-			comp.template calc<R, opt, Op>()), ...);
+			propagator.template calc<R, Op>()), ...);
+			// comp.template calc<R, opt, Op>()), ...);
 			// Timings::measure::stop(comp.name);
 
 		// runEach<R, opt, >(T{});
@@ -286,7 +268,7 @@ struct BufferedOutputs : TypeBox<Ts...>
 	template <REP R>
 	static constexpr inline bool needsFFT()
 	{
-		return ((Ts::rep == REP::BOTH ^ R) | ... | 0);
+		return ((Ts::rep == (REP::BOTH ^ R)) | ... | 0);
 	}
 
 	static inline void setupComputations()
@@ -312,10 +294,6 @@ struct BufferedOutputs : TypeBox<Ts...>
 
 		// 		});
 	}
-
-
-
-
 
 
 	template <typename ...T>
@@ -510,6 +488,48 @@ template <typename ... Ts>
 using BufferedBinaryOutputs = BufferedOutputs<true, Ts...>;
 template <typename ... Ts>
 using BufferedTextOutputs = BufferedOutputs<false, Ts...>;
+
+
+
+
+// template <typename...T>
+// struct Run :TypeBox<T...>
+// {
+
+// 	using base = TypeBox<T...>;
+// 	using indices = typename base::indices;
+// 	// static constexpr indices {};
+// 	static constexpr MODE modes[] = { T::mode... };
+// 	// static constexpr auto runnableIndices = filter_seq<runnableQ, n_seq<sizeof...(T)>>{};
+
+// 	// template <MODE M>
+// 	// constexpr static bool canRunMode = ((size_t(M) & MODES) || MODES == 0);
+
+// private:
+// 	static inline void cancel(size_t I)
+// 	{
+// 		logWarning("Routine %td will not be executed, because mode %s is disabled via compilation option -MODES", I, modeName(modes[I]));
+// 	}
+
+// 	template <size_t...I>
+// 	static inline void run(int argc, char* argv[], seq<I...>)
+// 	{
+// 		([&]
+// 		 {
+// 			//  if constexpr (canRunMode<T::mode>)
+// 			//  {
+// 			 T routine{ };
+// 			 routine.template run<I>(argc, argv);
+// 		//  }
+// 		//  else cancel(I);
+// 		 }(), ...);
+// 	}
+// public:
+// 	static inline void run(int argc, char* argv[])
+// 	{
+// 		run(argc, argv, indices{});
+// 	}
+// };
 
 // ForEach(comps, [&](auto index) {
 			// 	using comp_type = tuple_element_t<index, decltype(comps)>;

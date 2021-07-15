@@ -21,9 +21,9 @@ struct Split3Base :_SplitBase<first, middle, last>
 	static constexpr double mults[3] = { 0.5,1.0,0.5 };
 	static constexpr std::string_view name = "BASE";
 	using base = _SplitBase<first, middle, last>;
-	using base::canJoin;
-	using base::baseSplitsNumber;
 	using base::restCount;
+	using base::baseSplitsNumber;
+	using base::canJoin;
 };
 
 /* ::::::::::::::::::: Chain Implementation ::::::::::::::::::: */
