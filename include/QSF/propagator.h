@@ -1,4 +1,6 @@
 #include "splitting.h"
+#include <fstream>
+#include "autoconfig.h"
 
 struct Step {
 	static constexpr REP rep = REP::BOTH;
@@ -7,14 +9,48 @@ struct Time {
 	static constexpr REP rep = REP::BOTH;
 };
 
+struct Config
+{
+	inipp::Ini<char> ini;
+	char config[100];
+
+	explicit Config(std::string_view name, int DIMS, int ELEC)
+	{
+		logInfo("Parsing %s", name.data());
+		// if (MPI::pID)
+		std::ifstream is(name.data());
+		// ini.clear();
+		ini.parse(is);
+		// logINI("Raw INI file:");
+		// if (DEBUG & DEBUG_INI) ini.generate(std::cout);
+		ini.strip_trailing_comments();
+		sprintf(config, "%de%dd", DIMS, ELEC);
+		// constexpr auto dimelec = STRINGIFY(ELEC) "e" STRINGIFY(DIM) "d";
+		ini.default_section(ini.sections[config]);
+		ini.default_section(ini.sections["DEFAULT"]);
+		ini.interpolate();
+		// logINI("Parsed & interpolated project.ini file:");
+		// ini.generate(std::cout);
+		// if (DEBUG & DEBUG_INI) ini.generate(std::cout);
+		// if (DEBUG & DEBUG_INI) MPI_Barrier(MPI_COMM_WORLD);
+	}
+};
+
+
 struct PropagatorBase
 {
+	Config config;
+	Section settings;
+
 	double dt;
 	ind step{ 0 };
 	double timer{ 0.0 };
 	double timer_copy;
-	PropagatorBase(Section& settings)
+	PropagatorBase(std::string_view name, int DIMS, int ELEC) :
+		config("project.ini", DIMS, ELEC),
+		settings(config.ini.sections[name.data()])
 	{
+		file_log = openLog(name);
 		inipp::get_value(settings, "dt", dt);
 		logInfo("dt %g", dt);
 		//TODO: if 0 autoset?
@@ -42,13 +78,11 @@ struct PropagatorBase
 	}
 };
 
-
-
 template <MODE M>
 struct TimeMode;
 
 template <>
-struct TimeMode<MODE::RE>
+struct TimeMode<MODE::IM>
 {
 	static constexpr MODE mode = MODE::IM;
 	static constexpr std::string_view name = "IM";
@@ -71,7 +105,7 @@ struct TimeMode<MODE::RE>
 
 
 template <>
-struct TimeMode<MODE::IM>
+struct TimeMode<MODE::RE>
 {
 	static constexpr MODE mode = MODE::RE;
 	static constexpr std::string_view name = "RE";
@@ -86,7 +120,7 @@ struct TimeMode<MODE::IM>
 	}
 };
 
-template <MODE M, class SpType, class HamWF, class OUTS>
+template <MODE M, class SpType, class HamWF>
 struct SplitPropagator : PropagatorBase, TimeMode<M>
 {
 	using SplitType = SpType;
@@ -106,8 +140,13 @@ struct SplitPropagator : PropagatorBase, TimeMode<M>
 
 	// static constexpr std::string_view name = SplitType::name;
 	HamWF wf;
-	OUTS outputs;
-	SplitPropagator(Section& settings) : PropagatorBase(settings), TimeMode<M>(settings), wf(settings), outputs(settings, M) {}
+
+	// SplitPropagator(Section& settings) : PropagatorBase(settings), TimeMode<M>(settings), wf(settings), outputs(settings, M) {}
+
+
+	SplitPropagator() : PropagatorBase(TimeMode<M>::name, 1, 1),
+		TimeMode<M>(settings),
+		wf(settings) {}
 
 	inline bool stillEvolving()
 	{
@@ -138,6 +177,66 @@ struct SplitPropagator : PropagatorBase, TimeMode<M>
 				 incrementBy(Chain<splitGroup>::mults[SI] * 1.0);
 		 }(), ...);
 	}
+
+	template <REP R, class Op>
+	inline double calc()
+	{
+		if constexpr (std::is_same_v<Op, Time>)
+		{
+			return timer;
+		}
+		else if constexpr (std::is_same_v<Op, Step>)
+		{
+			return double(step);
+		}
+		else
+		{
+			return wf.template avg<AXIS::XYZ, Op>();
+		}
+	}
+
+	template <class OUTS, class Worker>
+	void run(Worker&& worker, uind i = 0)
+	{
+		OUTS outputs{ settings, M };
+		outputs.init(i, TimeMode<M>::name);
+		outputs.template compute< M, EARLY, firstREP>(this);
+		outputs.template logOrPass<BEFORE<>>(step);
+		while (stillEvolving())
+		{
+			makeStep(ChainExpander{});
+			outputs.template logOrPass<DURING<>>(step);
+			wf.post_evolve();
+			outputs.template compute< M, EARLY, firstREP>(this);
+			// outputs.template logOrPass<DURING<>>(step);
+		}
+		// HACK: This makes sure, the steps are always evenly spaced
+		// step += (outputs.comp_interval - 1);
+		// Evolution::incrementBy(outputs.comp_interval);
+		/* if (imaginaryTimeQ)
+		{
+			Eigen::store<startREP>(state, PASS, energy);
+			Eigen::saveEnergyInfo(RT::name, state, PASS, energy, dE);
+			energy = 0;
+			energy_prev = 0;
+			dE = 0;
+		}  */
+	}
+
+	template <size_t... splitGroup>
+	void makeStep(seq<splitGroup...> t)
+	{
+		groupBackup();
+		((
+			groupRestore<splitGroup>()
+		//   , Timings::measure::start("EVOLUTION")
+			, evolve<splitGroup>(reps<splitGroup>{}, splits<splitGroup>{})
+		  //   , Timings::measure::stop("EVOLUTION")
+			, groupComplete<splitGroup>()
+			), ...);
+		step++;
+	}
+
 
 	template <ind splitGroup> void groupRestore()
 	{
@@ -172,58 +271,6 @@ struct SplitPropagator : PropagatorBase, TimeMode<M>
 		}
 	}
 
-	template <REP R, class Op>
-	inline double calc()
-	{
-		if constexpr (std::is_same_v<Op, Time>)
-			return timer;
-		else if constexpr (std::is_same_v<Op, Step>)
-		{
-			return double(step);
-		}
-		else return wf.template avg<AXIS::XYZ, Op>();
-	}
-
-	template <class Worker>
-	void run(Worker&& worker, uind i = 0)
-	{
-		outputs.init(i, TimeMode<M>::name);
-		outputs.template run< M, EARLY, firstREP>(this);
-		outputs.template logOrPass<BEFORE<>>(step);
-		while (stillEvolving())
-		{
-			makeStep(ChainExpander{});
-			outputs.template logOrPass<DURING<>>(step);
-			wf.post_evolve();
-			outputs.template run< M, EARLY, firstREP>(this);
-			// outputs.template logOrPass<DURING<>>(step);
-		}
-		// HACK: This makes sure, the steps are always evenly spaced
-		// step += (outputs.comp_interval - 1);
-		// Evolution::incrementBy(outputs.comp_interval);
-		/* if (imaginaryTimeQ)
-		{
-			Eigen::store<startREP>(state, PASS, energy);
-			Eigen::saveEnergyInfo(RT::name, state, PASS, energy, dE);
-			energy = 0;
-			energy_prev = 0;
-			dE = 0;
-		}  */
-	}
-
-	template <size_t... splitGroup>
-	void makeStep(seq<splitGroup...> t)
-	{
-		groupBackup();
-		((
-			groupRestore<splitGroup>()
-		//   , Timings::measure::start("EVOLUTION")
-			, evolve<splitGroup>(reps<splitGroup>{}, splits<splitGroup>{})
-		  //   , Timings::measure::stop("EVOLUTION")
-			, groupComplete<splitGroup>()
-			), ...);
-		step++;
-	}
 };
 
 struct ADV_CONFIG

@@ -1,63 +1,31 @@
-#include <fstream>
-#include "autoconfig.h"
 
 
-struct RoutineBase
-{
-	inipp::Ini<char> ini;
 
-	RoutineBase() = default;
-	char config[100];
 
-	explicit RoutineBase(std::string_view name, int DIMS, int ELEC)
-	{
-		logInfo("Parsing %s", name.data());
-// if (MPI::pID)
-		std::ifstream is(name.data());
-		ini.clear();
-		ini.parse(is);
-		// logINI("Raw INI file:");
-		// if (DEBUG & DEBUG_INI) ini.generate(std::cout);
-		ini.strip_trailing_comments();
-		sprintf(config, "%de%dd", DIMS, ELEC);
-		// constexpr auto dimelec = STRINGIFY(ELEC) "e" STRINGIFY(DIM) "d";
-		ini.default_section(ini.sections[config]);
-		ini.default_section(ini.sections["DEFAULT"]);
-		ini.interpolate();
-		// logINI("Parsed & interpolated project.ini file:");
-		// ini.generate(std::cout);
-		// if (DEBUG & DEBUG_INI) ini.generate(std::cout);
-		// if (DEBUG & DEBUG_INI) MPI_Barrier(MPI_COMM_WORLD);
-	}
-};
 
-template <class PASSES, class PROP, OPTIMS opt, class Worker>
+template <class PASSES, class PROP, class Worker>
 struct Routine;
 
-template <uind ...PASS, class PROP, OPTIMS opt, class Worker>
-struct Routine<seq<PASS...>, PROP, opt, Worker> : RoutineBase
+template <uind ...PASS, class PROP, class Worker>
+struct Routine<seq<PASS...>, PROP, Worker>
 {
 	static constexpr auto mode = PROP::mode;
-	static constexpr auto optims = opt;
-	Section settings;
-	Worker worker;
+
 	PROP propagator;
+
+	Worker worker;
 	std::string_view name;
 
-	explicit Routine(std::string_view name) : name(name),
-		settings(ini.sections[name.data()]) {}
 
 	explicit Routine(PROP propagator) : propagator(propagator)
 	{
-		name = PROP::name;
-		file_log = openLog(PROP::name);
 	};
 
-	Routine(Worker&& worker) : RoutineBase("project.ini", 1, 1),
-		settings(ini.sections[PROP::name.data()]), worker(std::move(worker)), propagator(settings)
+	Routine(Worker&& worker) :
+		worker(std::move(worker))
 	{
 		name = PROP::name;
-		file_log = openLog(PROP::name);
+
 	}
 	// LambdaClass(const F &lambdaFunc_): lambdaFunc(lambdaFunc_) {}
 	// LambdaClass(F &&lambdaFunc_) : lambdaFunc(std::move(lambdaFunc_)) {}
@@ -166,10 +134,10 @@ struct Routine<seq<PASS...>, PROP, opt, Worker> : RoutineBase
 	}
 
 };
-template <class PASSES, class PROP, OPTIMS opt, class Worker>
-Routine<PASSES, PROP, opt, Worker> Repeat(Worker&& w)
+template <class PASSES, class PROP, class Worker>
+Routine<PASSES, PROP, Worker> Repeat(Worker&& w)
 {
-	return Routine<PASSES, PROP, opt, Worker>(std::move(w));
+	return Routine<PASSES, PROP, Worker>(std::move(w));
 }
 
 

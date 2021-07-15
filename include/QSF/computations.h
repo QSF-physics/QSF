@@ -205,17 +205,7 @@ struct BufferedOutputs : TypeBox<Ts...>
 	}
 
 	inline void ditch() {}
-
-	template <MODE M, typename WHEN, REP R, class PROP>
-	inline void run(const PROP& propagator)
-	{
-		((Ts::template canRun<R, WHEN> ?
-		  compute<PROP, M, WHEN, R, Ts, typename Ts::returnT>
-		  (propagator, Ts{}, (typename Ts::types) {}, pos<Ts>{}) : ditch()), ...);
-	}
-
-
-	// template <size_t pos, size_t offset, bool usingReduceBuffer, typename RetT>
+// template <size_t pos, size_t offset, bool usingReduceBuffer, typename RetT>
 	template <size_t pos, bool usingReduceBuffer, typename RetT>
 	inline void storeInBuffer(RetT val)
 	{
@@ -257,8 +247,19 @@ struct BufferedOutputs : TypeBox<Ts...>
 		}
 	}
 
+	template <MODE M, typename WHEN, REP R, class PROP>
+	inline void compute(const PROP& propagator)
+	{
+		((Ts::template canRun<R, WHEN> ?
+		  computeEach<PROP, M, WHEN, R, Ts, typename Ts::returnT>
+		  (propagator, Ts{}, (typename Ts::types) {}, pos<Ts>{}) : ditch()), ...);
+	}
+
+
+
+
 	template <class PROP, MODE M, typename WHEN, REP R, typename T, typename retT, typename... Op, size_t...Is>
-	inline void compute(const PROP& propagator, T&& comp, COMPUTATION<retT, Op...>&&, seq<Is...>&&)
+	inline void computeEach(const PROP& propagator, T&& comp, COMPUTATION<retT, Op...>&&, seq<Is...>&&)
 	{
 		// T::template forerunner<M, R, opt>();
 		// logInfo("compute:");
