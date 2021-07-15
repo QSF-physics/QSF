@@ -1,62 +1,5 @@
 #include "splitting.h"
 
-struct PropagatorBase
-{
-	double dt;
-	ind step{ 0 };
-	double timer{ 0.0 };
-
-	PropagatorBase(Section& settings)
-	{
-		inipp::get_value(settings, "dt", dt);
-		logInfo("dt %g", dt);
-		//TODO: if 0 autoset?
-	}
-	void reset()
-	{
-		step = 0; timer = 0;
-	}
-	void incrementBy(double fraction = 1.0) { timer += dt * fraction; }
-};
-
-template <MODE M>
-struct SplitPropagatorBase;
-
-template <>
-struct SplitPropagatorBase<MODE::IM> : PropagatorBase
-{
-	ind max_steps;
-	double state_accuracy;
-	double dE = 10.0;
-	double energy;
-	bool stillEvolving()
-	{
-		return fabs(dE) > state_accuracy && step != max_steps;
-		// !((fabs(dE) < state_accuracy || dE / energy == 0.) || step == max_steps);
-	}
-	SplitPropagatorBase(Section& settings) : PropagatorBase(settings)
-	{
-		inipp::get_value(settings, "max_steps", max_steps);
-		inipp::get_value(settings, "state_accuracy", state_accuracy);
-		logInfo("max_steps %td", max_steps);
-	}
-};
-
-template <>
-struct SplitPropagatorBase<MODE::RE> : PropagatorBase
-{
-	ind max_steps;
-	bool stillEvolving()
-	{
-		return (step < max_steps);
-	}
-	SplitPropagatorBase(Section& settings) : PropagatorBase(settings)
-	{
-		// inipp::get_value(settings, "max_steps", max_steps);
-	}
-};
-
-
 struct Step {
 	static constexpr REP rep = REP::BOTH;
 };
@@ -64,40 +7,23 @@ struct Time {
 	static constexpr REP rep = REP::BOTH;
 };
 
-template <MODE M, class HamWF, class SpBase, template <class, size_t> class SpType, size_t Order>
-struct SplitPropagator : SplitPropagatorBase<M>
+struct PropagatorBase
 {
-	using SplitPropagatorBase<M>::step;
-	using SplitPropagatorBase<M>::timer;
-	using SplitPropagatorBase<M>::dt;
-	using SplitPropagatorBase<M>::incrementBy;
-	using SplitPropagatorBase<M>::reset;
-	using SplitBase = SpBase;
-	using SplitType = SpType<SplitBase, Order>;
-	using ChainExpander = typename SplitType::ChainExpander;
-
-	template <size_t splitGroup>
-	using Chain = typename SplitType::template Chain<splitGroup>;
-
-	template <size_t splitGroup>
-	using reps = typename Chain<splitGroup>::reps;
-	template <size_t splitGroup>
-	using splits = typename Chain<splitGroup>::splits;
-
-	static constexpr size_t ChainCount = ChainExpander::size;
-	static constexpr REP startsIn = SplitBase::firstREP;
-	// static constexpr REP couplesInRep = C::couplesInRep;
-	static constexpr MODE mode = M;
-	static constexpr std::string_view name = (M == MODE::IM) ? "IM" : "RE";
-	// static constexpr std::string_view name = SplitType::name;
-	HamWF wf;
-	SplitPropagator(Section& settings) : SplitPropagatorBase<M>(settings), wf(settings)
+	double dt;
+	ind step{ 0 };
+	double timer{ 0.0 };
+	double timer_copy;
+	PropagatorBase(Section& settings)
 	{
-
+		inipp::get_value(settings, "dt", dt);
+		logInfo("dt %g", dt);
+		//TODO: if 0 autoset?
 	}
 
-
-	double timer_copy;
+	inline void incrementBy(double fraction = 1.0)
+	{
+		timer += dt * fraction;
+	}
 	inline void time_backup()
 	{
 		timer_copy = timer;
@@ -110,6 +36,83 @@ struct SplitPropagator : SplitPropagatorBase<M>
 	{
 		timer = 0;
 	}
+	void reset()
+	{
+		step = 0; timer = 0;
+	}
+};
+
+
+
+template <MODE M>
+struct TimeMode;
+
+template <>
+struct TimeMode<MODE::RE>
+{
+	static constexpr MODE mode = MODE::IM;
+	static constexpr std::string_view name = "IM";
+	ind max_steps;
+	double state_accuracy;
+	double dE = 10.0;
+	double energy;
+	inline bool stillEvolving(ind step)
+	{
+		return fabs(dE) > state_accuracy && step != max_steps;
+		// !((fabs(dE) < state_accuracy || dE / energy == 0.) || step == max_steps);
+	}
+	TimeMode(Section& settings)
+	{
+		inipp::get_value(settings, "max_steps", max_steps);
+		inipp::get_value(settings, "state_accuracy", state_accuracy);
+		logInfo("max_steps %td", max_steps);
+	}
+};
+
+
+template <>
+struct TimeMode<MODE::IM>
+{
+	static constexpr MODE mode = MODE::RE;
+	static constexpr std::string_view name = "RE";
+	ind max_steps;
+	bool stillEvolving(ind step)
+	{
+		return (step <= max_steps);
+	}
+	TimeMode(Section& settings)
+	{
+		// inipp::get_value(settings, "max_steps", max_steps);
+	}
+};
+
+template <MODE M, class SpType, class HamWF, class OUTS>
+struct SplitPropagator : PropagatorBase, TimeMode<M>
+{
+	using SplitType = SpType;
+	using ChainExpander = typename SplitType::ChainExpander;
+
+	template <size_t splitGroup>
+	using Chain = typename SplitType::template Chain<splitGroup>;
+
+	template <size_t splitGroup>
+	using reps = typename Chain<splitGroup>::reps;
+	template <size_t splitGroup>
+	using splits = typename Chain<splitGroup>::splits;
+
+	static constexpr size_t ChainCount = ChainExpander::size;
+	static constexpr REP firstREP = SplitType::firstREP;
+	// static constexpr REP couplesInRep = C::couplesInRep;
+
+	// static constexpr std::string_view name = SplitType::name;
+	HamWF wf;
+	OUTS outputs;
+	SplitPropagator(Section& settings) : PropagatorBase(settings), TimeMode<M>(settings), wf(settings), outputs(settings, M) {}
+
+	inline bool stillEvolving()
+	{
+		return TimeMode<M>::stillEvolving(step);
+	}
 
 	template <REP R>
 	void fourier()
@@ -120,7 +123,6 @@ struct SplitPropagator : SplitPropagatorBase<M>
 	template <size_t splitGroup, size_t ... repI, size_t ... SI>
 	inline void evolve(seq<repI...>, seq<SI...>)
 	{
-
 		([&]
 		 {
 			 constexpr REP rep = REP(repI);
@@ -159,7 +161,6 @@ struct SplitPropagator : SplitPropagatorBase<M>
 				wf.accumulate(coeff);
 		}
 	}
-
 	void groupBackup()
 	{
 		if constexpr (ChainCount > 1)
@@ -170,21 +171,49 @@ struct SplitPropagator : SplitPropagatorBase<M>
 			// HamWF::Coupling::backup();
 		}
 	}
+
 	template <REP R, class Op>
 	inline double calc()
 	{
 		if constexpr (std::is_same_v<Op, Time>)
 			return timer;
 		else if constexpr (std::is_same_v<Op, Step>)
+		{
 			return double(step);
+		}
 		else return wf.template avg<AXIS::XYZ, Op>();
+	}
+
+	template <class Worker>
+	void run(Worker&& worker, uind i = 0)
+	{
+		outputs.init(i, TimeMode<M>::name);
+		outputs.template run< M, EARLY, firstREP>(this);
+		outputs.template logOrPass<BEFORE<>>(step);
+		while (stillEvolving())
+		{
+			makeStep(ChainExpander{});
+			outputs.template logOrPass<DURING<>>(step);
+			wf.post_evolve();
+			outputs.template run< M, EARLY, firstREP>(this);
+			// outputs.template logOrPass<DURING<>>(step);
+		}
+		// HACK: This makes sure, the steps are always evenly spaced
+		// step += (outputs.comp_interval - 1);
+		// Evolution::incrementBy(outputs.comp_interval);
+		/* if (imaginaryTimeQ)
+		{
+			Eigen::store<startREP>(state, PASS, energy);
+			Eigen::saveEnergyInfo(RT::name, state, PASS, energy, dE);
+			energy = 0;
+			energy_prev = 0;
+			dE = 0;
+		}  */
 	}
 
 	template <size_t... splitGroup>
 	void makeStep(seq<splitGroup...> t)
 	{
-		step++;
-		// (printf("split %td %td\n", splitGroup, ChainCount), ...);
 		groupBackup();
 		((
 			groupRestore<splitGroup>()
@@ -193,15 +222,9 @@ struct SplitPropagator : SplitPropagatorBase<M>
 		  //   , Timings::measure::stop("EVOLUTION")
 			, groupComplete<splitGroup>()
 			), ...);
-		  // wf.post_evolve();
-	}
-
-	static bool calcsEnabled()
-	{
-		return true;
+		step++;
 	}
 };
-
 
 struct ADV_CONFIG
 {

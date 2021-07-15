@@ -35,7 +35,6 @@ struct Dumps
 	{
 
 	}
-
 };
 
 template <typename RET, typename ... Ops>
@@ -109,7 +108,11 @@ template <typename ... Args> struct VALUE : COMPUTATION<double, Args...>, _XBUFF
 	static constexpr bool canRun = COMPUTATION<double, Args...>::template goodRep<R> && std::is_same_v<WHEN, EARLY>;
 
 };
-
+template <typename ... Args> struct EARLY_OPERATION : COMPUTATION<double>
+{
+	template <REP R, typename WHEN>
+	static constexpr bool canRun = COMPUTATION<double, Args...>::template goodRep<R> && std::is_same_v<WHEN, EARLY>;
+};
 
 template <bool binary, typename...Ts>
 struct BufferedOutputs : TypeBox<Ts...>
@@ -164,16 +167,15 @@ struct BufferedOutputs : TypeBox<Ts...>
 		else return xbuffer + xbufferCurrentLine;
 	}
 
-	BufferedOutputs(Section& settings, ind PASS, MODE M, std::string_view name)
+	BufferedOutputs(Section& settings, MODE M)
 	{
 		inipp::get_value(settings, "log_interval", log_interval);
 		inipp::get_value(settings, "comp_interval", comp_interval);
 		logInfo("log_interval %d", log_interval);
 		logInfo("comp_interval %d", comp_interval);
-		if (comp_interval > 0)
-			file_dat = openOut<IO_ATTR::WRITE >(name, PASS, binary);
 
-		(printf("size in buffers: %d %td %s", Ts::sizeInBuffer, TypeBox<Ts...>::size, typeid(Ts).name()), ...);
+
+		// (printf("size in buffers: %d %td %s", Ts::sizeInBuffer, TypeBox<Ts...>::size, typeid(Ts).name()), ...);
 		bufferHeight = log_interval / comp_interval;
 		rbufferSize = sizeInBuffer<true> *bufferHeight;
 		xbufferSize = sizeInBuffer<false> *bufferHeight;
@@ -189,9 +191,12 @@ struct BufferedOutputs : TypeBox<Ts...>
 		{
 			if (xbufferSize > 0) xbuffer = new double[xbufferSize];
 		}
-		logInfo("got here");
 	}
-
+	void init(ind PASS, std::string_view name)
+	{
+		if (comp_interval > 0)
+			file_dat = openOut<IO_ATTR::WRITE >(name, PASS, binary);
+	}
 	~BufferedOutputs()
 	{
 		if (rbufferSize > 0) { logSETUP("Destroying rbuffer"); delete[] rbuffer; }
@@ -202,7 +207,7 @@ struct BufferedOutputs : TypeBox<Ts...>
 	inline void ditch() {}
 
 	template <MODE M, typename WHEN, REP R, class PROP>
-	inline void run(PROP& propagator)
+	inline void run(const PROP& propagator)
 	{
 		((Ts::template canRun<R, WHEN> ?
 		  compute<PROP, M, WHEN, R, Ts, typename Ts::returnT>
@@ -214,7 +219,7 @@ struct BufferedOutputs : TypeBox<Ts...>
 	template <size_t pos, bool usingReduceBuffer, typename RetT>
 	inline void storeInBuffer(RetT val)
 	{
-		// logInfo("About to stack... %td %d", pos, usingReduceBuffer);
+		// logInfo("About to stack... %td %d %g", pos, usingReduceBuffer, val);
 
 		if constexpr (std::is_same_v<std::remove_const_t<RetT>, double> || std::is_convertible_v<RetT, double>)
 		{
@@ -222,6 +227,7 @@ struct BufferedOutputs : TypeBox<Ts...>
 			if constexpr (usingReduceBuffer) rbuffer[rbufferCurrentLine + pos] = val;
 			else if (!MPI::pID)
 			{
+				// logInfo("Stacked at %td ", xbufferCurrentLine + pos);
 				xbuffer[xbufferCurrentLine + pos] = val;
 			}
 			// logInfo("here2");
@@ -252,13 +258,13 @@ struct BufferedOutputs : TypeBox<Ts...>
 	}
 
 	template <class PROP, MODE M, typename WHEN, REP R, typename T, typename retT, typename... Op, size_t...Is>
-	inline void compute(PROP& propagator, T&& comp, COMPUTATION<retT, Op...>&&, seq<Is...>&&)
+	inline void compute(const PROP& propagator, T&& comp, COMPUTATION<retT, Op...>&&, seq<Is...>&&)
 	{
 		// T::template forerunner<M, R, opt>();
 		// logInfo("compute:");
 		// Timings::measure::start(comp.name);
 		(storeInBuffer < Is, usesReduceBuffer<T>, retT>(
-			propagator.template calc<R, Op>()), ...);
+			propagator->template calc<R, Op>()), ...);
 			// comp.template calc<R, opt, Op>()), ...);
 			// Timings::measure::stop(comp.name);
 
@@ -311,9 +317,9 @@ struct BufferedOutputs : TypeBox<Ts...>
 		// constexpr auto comps = getComputations<RI>();
 		// if constexpr (tuple_size_v < decltype(comps) > > 0)
 		// {
-		// 	LOG_INLINE_START(__LOG_NC);
+			// LOG_INLINE_START(__LOG_NC);
 
-		// 	ForEach(comps, [](auto index)
+			// ForEach(comps, [](auto index)
 		// 			{
 		// 				constexpr auto comps = getComputations<RI>();
 		// 				// using type = tuple_element_t<index, decltype(comps)>;
@@ -351,7 +357,8 @@ struct BufferedOutputs : TypeBox<Ts...>
 	template <typename T, size_t ... I>
 	inline void log(seq<I...>)
 	{
-		LOG_INLINE(T::format.data(), ((usesReduceBuffer<T> ? rbuffer + rbufferLastLine : xbuffer + xbufferLastLine) + I)...);
+		// logInfo("logging %g from %d",((usesReduceBuffer<T> ? rbuffer + rbufferLastLine : xbuffer + xbufferLastLine) + I))
+		LOG_INLINE(T::format.data(), *((usesReduceBuffer<T> ? (rbuffer + rbufferLastLine) : xbuffer + xbufferLastLine) + I)...);
 	}
 	// template <typename T>
 	// inline void log(seq<I...>)

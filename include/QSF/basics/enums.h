@@ -27,7 +27,7 @@ struct DATA_FORMAT
 
 enum class MODE
 {
-	DONE = 0,
+	UNDEFINED = 0,
 	IM = 1,
 	RE = 2,
 	ALL = IM + RE
@@ -94,7 +94,12 @@ enum class AXIS
 // #endif
 };
 
-
+enum class WHEN : ind
+{
+	AT_START = 0,
+	AT_END = -1,
+	DURING,
+};
 
 using FREE_COORD = AXIS;
 

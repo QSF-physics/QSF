@@ -1,9 +1,37 @@
-struct KinEnergy {
+struct KineticEnergy {
 	static constexpr REP rep = REP::P;
 };
-struct PotEnergy {
+struct PotentialEnergy {
 	static constexpr REP rep = REP::X;
 };
+struct Identity {
+	static constexpr REP rep = REP::NONE;
+};
+struct TotalEnergy
+{
+	static constexpr REP rep = REP::NONE;
+};
+struct EnergyDifference
+{
+	static constexpr REP rep = REP::NONE;
+};
+struct Symmetrize
+{
+	static constexpr REP rep = REP::NONE;
+};
+struct AntiSymmetrize
+{
+	static constexpr REP rep = REP::NONE;
+};
+struct Orthogonalize
+{
+	static constexpr REP rep = REP::NONE;
+};
+struct Normalize
+{
+	static constexpr REP rep = REP::NONE;
+};
+
 namespace Schrodinger
 {
 	/* Define named operators that can be used in computations */
@@ -126,18 +154,4 @@ namespace Schrodinger
 		}
 
 	};
-
-	// template <class V_Op, class C_Op, class GType>
-	// template <>
-	// auto Spin0::compute(CO_AVG<KinEnergy>)
-	// {
-	// 	return operator() < REP::P, OPTIMS::NONE > (0, 0, 0);
-	// }
-
-	// template <class V_Op, class C_Op, class GType>
-	// template <>
-	// auto Spin0::compute(CO_AVG<PotEnergy>)
-	// {
-	// 	return operator() < REP::P, OPTIMS::NONE > (0, 0, 0);
-	// }
 }

@@ -61,6 +61,7 @@ struct _SplitChain
 template <typename Base, size_t Order>
 struct MultiProductSplit
 {
+	static constexpr REP firstREP = Base::firstREP;
 	static constexpr std::string_view name = "MP";
 	using ChainExpander = from_to_t<1, Order>;
 

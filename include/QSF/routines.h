@@ -1,5 +1,4 @@
 #include <fstream>
-#include "sources.h"
 #include "autoconfig.h"
 
 
@@ -32,15 +31,12 @@ struct RoutineBase
 	}
 };
 
-template <class PASSES, class PROP, template <class, ind> class OUTS,
-	OPTIMS opt, class Worker>
-	struct Routine : RoutineBase
-{
-	template <ind PASS>
-	using OutputsPerPass_t = OUTS<PASSES, PASS>;
-	// template <ind PASS>
-	// using DumpsPerPass_t = DUMPS<PASS>;
+template <class PASSES, class PROP, OPTIMS opt, class Worker>
+struct Routine;
 
+template <uind ...PASS, class PROP, OPTIMS opt, class Worker>
+struct Routine<seq<PASS...>, PROP, opt, Worker> : RoutineBase
+{
 	static constexpr auto mode = PROP::mode;
 	static constexpr auto optims = opt;
 	Section settings;
@@ -75,12 +71,7 @@ template <class PASSES, class PROP, template <class, ind> class OUTS,
 					 MPI::regionCount,
 					 PROP::name.data());
 	}
-	template <uind... PASS>
-	void dispatchLoops(seq<PASS...>)
-	{
-		worker();
-		((PassEnv<PASS>(settings, propagator)).run(), ...);
-	}
+
 
 	void setupOptimizations()
 	{
@@ -95,147 +86,92 @@ template <class PASSES, class PROP, template <class, ind> class OUTS,
 	void run()
 	{
 		greet();
-
-		// get_value(settings, "n", n);
-		// get_value(settings, "L", L);
-		// get_value(settings, "max_imaginary_steps", max_imaginary_steps);
-		// get_value(settings, "state_accuracy", state_accuracy);
-		// 		configChecks<RI>();
-		// config();
-		// MPI::test();
-// config<RI>(settings, argc, argv);		//User defined
-
-// propagator.setup();
-// wf.setup();
-// Eigen::setup(eigenUsedByComp<typename RT::template Output_t<0>>, imaginaryTimeQ);
-// constexpr auto seq = (typename RT::Passes_t){};
-		dispatchLoops(PASSES{});
+		/* configChecks<RI>();
+		config();
+		MPI::test();
+		propagator.setup();
+		wf.setup();
+		Eigen::setup(eigenUsedByComp<typename RT::template Output_t<0>>, imaginaryTimeQ);
+		constexpr auto seq = (typename RT::Passes_t){}; */
+		(run(PASS), ...);
 	}
 
 	~Routine()
 	{
-		// logInfo("RoutineEnv destructs");
+		/* logInfo("RoutineEnv destructs");
+		Eigen::destroy();
+		// WAVE::destroySlice();
+		if (psi_total != nullptr)
+		{
+			delete[] psi_total;
+			psi_total = nullptr;
+		}
+		// // closeFile(file_log);
 		// Eigen::destroy();
-		// // WAVE::destroySlice();
-		// if (psi_total != nullptr)
-		// {
-		// 	delete[] psi_total;
-		// 	psi_total = nullptr;
-		// }
-		// // // closeFile(file_log);
-		// // Eigen::destroy();
 
-		// // fftw_free(WF::psi);
-		// // fftw_destroy_plan(WF::transf_p2x);
-		// // fftw_destroy_plan(transf_p2x);
-		// // http://www.fftw.org/fftw3_doc/MPI-Initialization.html
-		// fftw_mpi_cleanup();
+		// fftw_free(WF::psi);
+		// fftw_destroy_plan(WF::transf_p2x);
+		// fftw_destroy_plan(transf_p2x);
+		// http://www.fftw.org/fftw3_doc/MPI-Initialization.html
+		fftw_mpi_cleanup(); */
 	}
 
-	template <ind PASS>
-	struct PassEnv
+	template <typename WHEN>
+	inline void reapData()
 	{
-		PROP& propagator;
-		OutputsPerPass_t<PASS> outputs;
-		// using Dumps_t = DumpsPerPass_t<PASS>;
-		static constexpr REP startREP = PROP::startsIn;
+		// runDumps<RI, R, WHEN>();
+		// Dumps_t::template run<startREP, WHEN>();
 
-
-		PassEnv(Section& settings, PROP& propagator) :
-			outputs(settings, PASS, mode, PROP::name), propagator(propagator)
-		{
-			propagator.reset();
-		}
-
-		template <typename WHEN> inline void reapData()
-		{
-			// logInfo("PROP STARTS IN %d", startREP);
-			// runDumps<RI, R, WHEN>();
-			// Dumps_t::template run<startREP, WHEN>();
-			// if (PROP::calcsEnabled())
-			// {
-			outputs.template run< mode, EARLY, startREP>(propagator);
 		// 	propagator.template fourier<REP::BOTH^ startREP>();
 		// 	Dumps_t::template run< REP::BOTH^ startREP, WHEN>();
 		// 	outputs.template run < mode, LATE, REP::BOTH^ startREP, optims>(propagator);
 		// 	propagator.template fourier<startREP>();
 		// 	outputs.template logOrPass<WHEN>(1);
-		// }
-		}
+	}
 
-		inline void before()
-		{
-			// if (eigenUsedByCompQ<Output_t>)
-			// 	Eigen::load<RI, PASS, mode>(eigenUsedByComp<Output_t>);
+	inline void start()
+	{
 
-			if (PROP::calcsEnabled())
-			{
-				// setupInitialState<PASS, REP::X, mode>();
-				outputs.setupComputations();
-			}
-			if constexpr (startREP == REP::P)
-			{
-				logInfo("Starts in P");
-				propagator.template fourier<REP::P>();
-			}
-			outputs.writeCaptions();
-			reapData<BEFORE<>>();
-		}
+	}
 
-		inline void after()
-		{
-			//HACK: This makes sure, the steps are always evenly spaced
-			// step += (outputs.comp_interval - 1);
-			// Evolution::incrementBy(outputs.comp_interval);
-			// reapData<AFTER<>>();			//ψ(p,t) -> ψ(p,t)
-			// propagator.transfer();
-			// if (imaginaryTimeQ)
-			// {
-			// 	Eigen::store<startREP>(state, PASS, energy);
-			// 	Eigen::saveEnergyInfo(RT::name, state, PASS, energy, dE);
-			// 	energy = 0;
-			// 	energy_prev = 0;
-			// 	dE = 0;
-			// }
-
-
-			// TODO: Complete
-			// saveFluxRegions();
-			// saveHHG();
-
-		}
-		// inline bool stepExitCondition()
+	void run(uind i)
+	{
+		propagator.run(std::move(worker), i);
+		// // Timings::start(name, RI, PASS);
+		// worker(ind(WHEN::AT_START), i, propagator.wf);
+		// // if (eigenUsedByCompQ<Output_t>)
+		// // 	Eigen::load<RI, PASS, mode>(eigenUsedByComp<Output_t>);
+		// propagator.reset();
+		// if (PROP::calcsEnabled())
 		// {
-		// 	if constexpr (imaginaryTimeQ) return stillConverging();
-		// 	else return (step < ntsteps);
+		// 	// setupInitialState<PASS, REP::X, mode>();
+		// 	// outputs.setupComputations();
 		// }
-		// template <ind PASS, ind ... SplitGroups>
+		// // if constexpr (startREP == REP::P)
+		// // {
+		// // 	logInfo("Starts in P");
+		// // 	propagator.template fourier<REP::P>();
+		// // }
+		// propagator.outputs.writeCaptions();
 
-		// template <typename F>
-		void run()
-		{
-			// state = PASS;
-			// Timings::start(name, RI, PASS);
-			before();
+		// while (propagator.stillEvolving());
+		// {
+		// 	propagator.makeStep((typename PROP::ChainExpander) {});
+		// 	// reapData<DURING<>>();
+		// 	worker(ind(propagator.step), i, propagator.wf);
+		// }
+		// worker(ind(WHEN::AT_END), i, propagator.wf);
 
-			while (propagator.stillEvolving())
-			{
-				// if (PROP::evoEnabled())
-				propagator.makeStep((typename PROP::ChainExpander) {});
+		// Timings::stop();
+	}
 
-				// propagator.transfer();
-				reapData<DURING<>>();
-			}
-			after();
-			// Timings::stop();
-		}
-
-
-	};
 };
+template <class PASSES, class PROP, OPTIMS opt, class Worker>
+Routine<PASSES, PROP, opt, Worker> Repeat(Worker&& w)
+{
+	return Routine<PASSES, PROP, opt, Worker>(std::move(w));
+}
 
-template <class PASSES, class PROP, template <class, ind> class OUTS,
-	OPTIMS opt, class Worker> Routine(Worker&&)->Routine<PASSES, PROP, OUTS, opt, Worker>;
 
 // im load
 /*
