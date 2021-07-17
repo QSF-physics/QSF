@@ -230,7 +230,7 @@ namespace MPI
 				}
 			}
 
-			__logMPI("[group %d region %d pID %d] has %td sources\n", group, region, pID, sourceRegions.size());
+			_logMPI("[group %d region %d pID %d] has %td sources", group, region, pID, sourceRegions.size());
 		}
 
 		static bool calcsEnabled()

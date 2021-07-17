@@ -36,26 +36,24 @@ struct Normalize
 
 template <class Hamiltonian, class GridBase, size_t Components>
 struct WF : Grid <GridBase, Components>
-	// GridBase::MPIGrids, //MPIGrids need to init before Grid
-
 {
 
 	using H = Hamiltonian; //Derived type!
 	using MPIStrategy = typename GridBase::MPIStrategy;
 	using MPIGrids = typename GridBase::MPIGrids;
 
-	using grid = Grid <GridBase, Components>;
-	using grid::post_step;
-	using grid::pos;
-	using grid::local_n;
-	using grid::DIM;
-	using grid::psi;
-	using grid::dx;
-	WF(Section& settings) :grid(settings) {
+	using InducedGrid = Grid <GridBase, Components>;
+	using InducedGrid::post_step;
+	using InducedGrid::pos;
+	using InducedGrid::local_n;
+	using InducedGrid::DIM;
+	using InducedGrid::psi;
+	using InducedGrid::dx;
+	WF(Section& settings) :InducedGrid(settings) {
 		logInfo("WF init");
 	}
 
-	WF(grid g) :grid(g) {
+	WF(GridBase g) :InducedGrid(g) {
 		logInfo("WF init");
 	}
 	void initHelpers()
@@ -72,9 +70,7 @@ struct WF : Grid <GridBase, Components>
 	template <REP R, class BO, class COMP, size_t...Is>
 	inline void compute(BO& bo, COMP&& c, seq<Is...>&& s)
 	{
-		logInfo("winowajca");
-		using retT = typename COMP::returnT;
-		((bo.template storeInBuffer < Is, COMP, retT>(1.0)), ...);
+		((bo.template storeInBuffer < Is, COMP>(1.0)), ...);
 	}
 
 
@@ -93,10 +89,9 @@ struct WF : Grid <GridBase, Components>
 			 res = 0;
 			 for (ind i = 0; i < local_n; i++)
 			 {
-
 				 res += std::norm(psi[i]) *
 					 static_cast<Hamiltonian*>(this)->
-					 template call < Op >(grid::template pos<REP::X>(i));
+					 template call < Op >(InducedGrid::template pos<REP::X>(i));
 			 }
 		 // logInfo("returning pos %td %td", Is...);
 		 // getOperator(Op{})

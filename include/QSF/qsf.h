@@ -16,11 +16,11 @@
 using Section = inipp::Ini<char>::Section;
 
 
-#include "setup/config.h"
-#include "absorber.h"
-#include "coords.h"
-#include "computations.h"
-#include "grid.h"
+// #include "setup/config.h"
+#include "wf/absorbers.h"
+#include "wf/coords.h"
+#include "wf/computations.h"
+#include "wf/grid.h"
 #include "wf.h"
 #include "dumps.h"
 #include "average.h"

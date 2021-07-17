@@ -14,6 +14,7 @@ struct Config
 	inipp::Ini<char> ini;
 	char config[100];
 
+	Config() = default;
 	explicit Config(std::string_view name, int DIMS, int ELEC)
 	{
 		logInfo("Parsing %s", name.data());
@@ -120,7 +121,10 @@ struct SplitPropagator : Config, PropagatorBase
 		logInfo("dt %g", dt);
 	}
 
-
+	~SplitPropagator()
+	{
+		logInfo("SplitPropagation done!\n");
+	}
 	inline bool stillEvolving()
 	{
 		if constexpr (mode == MODE::RE) return (step <= max_steps);
@@ -197,16 +201,15 @@ struct SplitPropagator : Config, PropagatorBase
 	}
 
 	template <class OUTS, class Worker>
-	void run(Worker&& worker, uind i = 0)
+	void run(OUTS&& outputs, Worker&& worker, uind i = 0)
 	{
-		OUTS outputs{ settings, M ,i, name };
+		outputs.initLogger(M, i, name);
 		computeEach<WHEN::AT_START>(outputs);
 		while (stillEvolving())
 		{
 			makeStep(ChainExpander{});
 			wf.post_step();
 			computeEach<WHEN::DURING>(outputs);
-
 		   // outputs.template logOrPass<DURING<>>(step);
 		}
 		// HACK: This makes sure, the steps are always evenly spaced
@@ -221,6 +224,30 @@ struct SplitPropagator : Config, PropagatorBase
 			dE = 0;
 		}  */
 	}
+	template <class OUTS>
+	void run(OUTS&& outputs, uind pass = 0)
+	{
+		run<OUTS>(std::forward<OUTS>(outputs), [](ind step, uind PASS, const auto& wf) {}, pass);
+	}
+
+	// template <class OUTS>
+	// void run(OUTS& outputs, uind pass = 0)
+	// {
+	// 	run<OUTS>(std::move(outputs), [](ind step, uind PASS, const auto& wf) {}, pass);
+	// }
+
+	template <class OUTS, class Worker>
+	void run(Worker&& worker, uind pass = 0)
+	{
+		run(std::move(OUTS{ settings }), std::forward<Worker>(worker), pass);
+	}
+
+	template <class OUTS>
+	void run(uind pass = 0)
+	{
+		run<OUTS>([](ind step, uind PASS, const auto& wf) {}, pass);
+	}
+
 
 	template <size_t... splitGroup>
 	void makeStep(seq<splitGroup...> t)

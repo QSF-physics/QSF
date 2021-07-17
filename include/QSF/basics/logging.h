@@ -22,7 +22,7 @@ FILE* file_log;
 
 #if defined DEBUG && DEBUG
 int qdd;
-#define qd() {MPI_Barrier(MPI_COMM_WORLD); if (!MPI::pID) { fprintf(stdout, "%27s:%-5i| ", GOBACK __FILE__, __LINE__);  fprintf(stdout, "------------------------------------------------------------------------------ >QD: %d\n", qdd); qdd++; }}
+#define qd() {MPI_Barrier(MPI_COMM_WORLD); if (!MPI::pID) { fprintf(stdout, "%35s:%-5i| ", GOBACK __FILE__, __LINE__);  fprintf(stdout, "------------------------------------------------------------------------------ >QD: %d\n", qdd); qdd++; }}
 // use __func__
 
 #else
@@ -76,7 +76,7 @@ constexpr const char* file_name(const char* path)
 #endif
 
 #if (DEBUG & DEBUG_CALLS)
-#define __LOG_SRC_LOC(color) {__LOG2S("%31s:%-4i| %s" , file_name(__FILE__), __LINE__, color); }
+#define __LOG_SRC_LOC(color) {__LOG2S("%35s:%-4i| %s" , file_name(__FILE__), __LINE__, color); }
 #else
 #define __LOG_SRC_LOC(color) {__LOG2S("%s", color); }
 // #define __LOG_SRC_LOC(color) {}

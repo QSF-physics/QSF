@@ -59,9 +59,15 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	{
 		init();
 	}
+
+	Grid(BaseGrid g) : BaseGrid(g)
+	{
+		init();
+	}
+
 	void init()
 	{
-		logInfo("Grid Base init");
+		logInfo("Grid Base init %td", n);
 		fftw_mpi_init();
 		local_n = n / MPI::rSize; //Expected split
 		strides[DIM - 1] = 1;
@@ -74,8 +80,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 		}
 
 		logSETUP("Setting up " psi_symbol "(x,t) arrays and plans...");
-		logSETUP("Grid size n (%td) will split into local_n (%td) by rSize (%d)",
-				 n, local_n, MPI::rSize);
+		logSETUP("Grid size n (%td) will split into local_n (%td) by rSize (%d)", n, local_n, MPI::rSize);
 
 		if constexpr (DIM == 1)
 		{
@@ -162,7 +167,7 @@ transforms are coupled together if involve consecutive directions (case for 1-3D
 			}
 		}
 
-		__logMPI("region %d mpiFFTW %d extra_plans_count %d\n", MPI::region, mpiFFTW, extra_plans_count);
+		_logMPI("region %d mpiFFTW %d extra_plans_count %d", MPI::region, mpiFFTW, extra_plans_count);
 
 
 		local_end = local_start + local_n - 1;
@@ -335,20 +340,20 @@ transforms are coupled together if involve consecutive directions (case for 1-3D
 template <class BaseGrid, size_t Components>
 struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Components, MPI::Slices, MPI::Single>
 {
-	using base = Grid<BaseGrid, Components, MPI::Slices, MPI::Single>;
-	using base::DIM;
-	using base::pos;
-	using base::sol;
-	using base::psi;
-	using base::m;
-	using base::n;
-	using base::xmin;
-	using base::dx;
-	using base::nn;
-	using base::local_n;
-	using base::absorber;
-	using base::local_start;
-	using base::local_end;
+	using Base = Grid<BaseGrid, Components, MPI::Slices, MPI::Single>;
+	using Base::DIM;
+	using Base::pos;
+	using Base::sol;
+	using Base::psi;
+	using Base::m;
+	using Base::n;
+	using Base::xmin;
+	using Base::dx;
+	using Base::nn;
+	using Base::local_n;
+	using Base::absorber;
+	using Base::local_start;
+	using Base::local_end;
 	static inline constexpr cxd zero = { 0.0, 0.0 };
 	ind slice_n;
 	ind slice_start;
@@ -372,9 +377,9 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 		if (sol.moreFree) MPI_Win_create(psi, m * sizeof(cxd), sizeof(cxd), MPI_INFO_NULL, sol.moreFree, &moreFreeWin);
 		if (sol.lessFree) MPI_Win_create(NULL, 0, sizeof(cxd), MPI_INFO_NULL, sol.lessFree, &lessFreeWin);
 	}
-	Grid(Section& settings) :base(settings)
+	void init()
 	{
-		logInfo("Grid ext init");
+		logInfo("Grid MultiExtension init");
 		// absorber.correct(n, L);
 		// nCAP = absorber.nCAP;
 		// boxesCount = DIM < 3 ? 1 : n / nCAP;
@@ -382,10 +387,14 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 		initSlice();
 		initWindow();
 	}
-	~Grid()
-	{
-		// destroySlice();
-	}
+	Grid(Section& settings) :Base(settings) { init(); }
+
+	Grid(BaseGrid g) : Base(g) { init(); }
+
+	// ~Grid()
+	// {
+	// 	// destroySlice();
+	// }
 
 	//See: http://www.fftw.org/fftw3_doc/Load-balancing.html#Load-balancing
 	void test()
@@ -800,7 +809,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 
 	void post_step()
 	{
-		base::post_step();
+		Base::post_step();
 		transfer();
 	}
 };

@@ -11,10 +11,9 @@ namespace Schrodinger
 		using Base = WF < Spin0<GType, V_Op, C_Op>, GType, 1>;
 		using Base::psi;
 		using Base::post_step;
-		using grid = typename Base::grid;
-		// using Base::transfer;
-		// using V = V_Op;
-		// using C = C_Op;
+		using InducedGrid = typename Base::InducedGrid;
+		static constexpr REP couplesInRep = C_Op::couplesInRep;
+
 		V_Op potential;
 		C_Op coupling;
 
@@ -23,10 +22,8 @@ namespace Schrodinger
 			logInfo("Spin0 init");
 		}
 
-		Spin0(GType gtype, V_Op potential, C_Op coupling) :Base(gtype), potential(potential),
-			coupling(coupling) {}
+		Spin0(GType gtype, V_Op potential, C_Op coupling) :Base(gtype), potential(potential), coupling(coupling) {}
 
-		static constexpr REP couplesInRep = C_Op::couplesInRep;
 		// V pot;
 		// static constexpr REP rep = REP::BOTH;
 		// static constexpr string_view name = "Schrodinger";
@@ -37,9 +34,9 @@ namespace Schrodinger
 			if constexpr (R == REP::P)
 			{
 				if constexpr (C_Op::couplesInRep == R && C_Op::size)
-					return (grid::kin_scale * (Power(args, 2) + ...) +
+					return (InducedGrid::kin_scale * (Power(args, 2) + ...) +
 							C_Op::template operator() < R, OPTIMS::NONE > (args...));
-				else return grid::template kin_scale * (Power(args, 2) + ...);
+				else return InducedGrid::template kin_scale * (Power(args, 2) + ...);
 			}
 			else if (R == REP::X)
 			{
@@ -87,9 +84,9 @@ namespace Schrodinger
 			// 		psi[i] *= expOp<M>(delta * operator() < R, OPTIMS::NONE > (i + local_start));
 			// 	else
 			// 	{
-			// 		ind readInd1 = i * grid::n;
+			// 		ind readInd1 = i * InducedGrid::n;
 			// 		//Due to FFTW flag FFTW_MPI_TRANSPOSED_OUT we need to switch x<->y for DIM>1
-			// 		for (ind j = 0; j < grid::n; j++)
+			// 		for (ind j = 0; j < InducedGrid::n; j++)
 			// 		{
 			// 			ind readInd2 = readInd1 + j;
 			// 			if constexpr (DIM == 2)
@@ -101,8 +98,8 @@ namespace Schrodinger
 			// 			}
 			// 			else
 			// 			{
-			// 				ind readInd2 = readInd2 * grid::n;
-			// 				for (ind k = 0; k < grid::n; k++)
+			// 				ind readInd2 = readInd2 * InducedGrid::n;
+			// 				for (ind k = 0; k < InducedGrid::n; k++)
 			// 				{
 			// 					ind readInd3 = readInd2 + k;
 			// 					if (R == REP::X || MPI::region)

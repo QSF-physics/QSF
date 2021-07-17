@@ -121,8 +121,16 @@ template <typename ... Args> struct EARLY_OPERATION : COMPUTATION<double>
 	static constexpr bool canRun = COMPUTATION<double, Args...>::template goodRep<R> && std::is_same_v<WHEN, EARLY>;
 };
 
+
+struct BufferedOutputsBase
+{
+	int comp_interval;			// How often time dependent info will be writen
+	int log_interval;			// How often logs will be written to stdout 
+	FILE* file_dat = nullptr; 	// for writing the results of time evolution
+};
+
 template <bool binary, typename...Ts>
-struct BufferedOutputs : TypeBox<Ts...>
+struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 {
 	using TypeBox<Ts...>::size;
 
@@ -152,10 +160,6 @@ struct BufferedOutputs : TypeBox<Ts...>
 	static constexpr auto pos_v() { return pos<T>{}; }
 	// using all_pos = concat_all_seq<pos<Ts>...>;
 
-	FILE* file_dat = nullptr; 	// for writing the results of time evolution
-	int comp_interval;			// How often time dependent info will be writen
-	int log_interval;			// How often logs will be written to stdout 
-
 	int bufferHeight;
 
 	double* rbuffer;
@@ -175,17 +179,12 @@ struct BufferedOutputs : TypeBox<Ts...>
 			return rbuffer + rbufferCurrentLine;
 		else return xbuffer + xbufferCurrentLine;
 	}
-
-	BufferedOutputs(Section& settings, MODE M, uind PASS, std::string_view name)
+	void init()
 	{
-		inipp::get_value(settings, "log_interval", log_interval);
-		inipp::get_value(settings, "comp_interval", comp_interval);
 		logInfo("log_interval %d", log_interval);
 		logInfo("comp_interval %d", comp_interval);
 
-		if (comp_interval > 0)
-			file_dat = openOut<IO_ATTR::WRITE >(name, PASS, binary);
-	// (printf("size in buffers: %d %td %s", Ts::sizeInBuffer, TypeBox<Ts...>::size, typeid(Ts).name()), ...);
+		// (printf("size in buffers: %d %td %s", Ts::sizeInBuffer, TypeBox<Ts...>::size, typeid(Ts).name()), ...);
 		bufferHeight = log_interval / comp_interval;
 		rbufferSize = sizeInBuffer<true> *bufferHeight;
 		xbufferSize = sizeInBuffer<false> *bufferHeight;
@@ -203,6 +202,23 @@ struct BufferedOutputs : TypeBox<Ts...>
 		}
 	}
 
+	BufferedOutputs(Section& settings)
+	{
+		inipp::get_value(settings, "log_interval", log_interval);
+		inipp::get_value(settings, "comp_interval", comp_interval);
+		init();
+	}
+
+	BufferedOutputs(BufferedOutputsBase bob) :BufferedOutputsBase(bob)
+	{
+		init();
+	}
+
+	void initLogger(MODE M, uind PASS, std::string_view name)
+	{
+		if (comp_interval > 0)
+			file_dat = openOut<IO_ATTR::WRITE >(name, PASS, binary);
+	}
 	~BufferedOutputs()
 	{
 		if (rbufferSize > 0) { logSETUP("Destroying rbuffer"); delete[] rbuffer; }
