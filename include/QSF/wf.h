@@ -1,4 +1,37 @@
 
+struct KineticEnergy {
+	static constexpr REP rep = REP::P;
+};
+struct PotentialEnergy {
+	static constexpr REP rep = REP::X;
+};
+struct Identity {
+	static constexpr REP rep = REP::NONE;
+};
+struct TotalEnergy
+{
+	static constexpr REP rep = REP::NONE;
+};
+struct EnergyDifference
+{
+	static constexpr REP rep = REP::NONE;
+};
+struct Symmetrize
+{
+	static constexpr REP rep = REP::NONE;
+};
+struct AntiSymmetrize
+{
+	static constexpr REP rep = REP::NONE;
+};
+struct Orthogonalize
+{
+	static constexpr REP rep = REP::NONE;
+};
+struct Normalize
+{
+	static constexpr REP rep = REP::NONE;
+};
 
 
 template <class Hamiltonian, class GridBase, size_t Components>
@@ -12,11 +45,19 @@ struct WF : Grid <GridBase, Components>
 	using MPIGrids = typename GridBase::MPIGrids;
 
 	using grid = Grid <GridBase, Components>;
-	using grid::post_evolve;
+	using grid::post_step;
+	using grid::pos;
+	using grid::local_n;
+	using grid::DIM;
+	using grid::psi;
+	using grid::dx;
 	WF(Section& settings) :grid(settings) {
 		logInfo("WF init");
 	}
 
+	WF(grid g) :grid(g) {
+		logInfo("WF init");
+	}
 	void initHelpers()
 	{
 		// if constexpr (Propagator_t::ChainCount)
@@ -26,14 +67,42 @@ struct WF : Grid <GridBase, Components>
 		// 	psi_acc = (cxd*)fftw_malloc(sizeof(cxd) * local_m);
 		// }
 	}
-	template <typename Quantity, typename ... Args>
-	auto compute(Args...args)
-	{
-		// if constexpr (is_same_v<Quantity,KinEnergy>)
 
+	//TODO: if no match here pass to derived class
+	template <REP R, class BO, class COMP, size_t...Is>
+	inline void compute(BO& bo, COMP&& c, seq<Is...>&& s)
+	{
+		logInfo("winowajca");
+		using retT = typename COMP::returnT;
+		((bo.template storeInBuffer < Is, COMP, retT>(1.0)), ...);
 	}
 
 
+	// inline double getOperator(KineticEnergy) { return 3; }
+	// inline double getOperator(PotentialEnergy) { return 2; }
+
+	template <REP R, class BO, AXIS AX, class... Op, size_t...Is>
+	inline void compute(BO& bo, AVG<AX, Op...>&&, seq<Is...>&&)
+	{
+		using T = AVG<AX, Op...>;
+		// using retT = typename T::returnT;
+		// logInfo("local_n %td", local_n);
+		double res = 0;
+		([&]
+		 {
+			 res = 0;
+			 for (ind i = 0; i < local_n; i++)
+			 {
+
+				 res += std::norm(psi[i]) *
+					 static_cast<Hamiltonian*>(this)->
+					 template call < Op >(grid::template pos<REP::X>(i));
+			 }
+		 // logInfo("returning pos %td %td", Is...);
+		 // getOperator(Op{})
+			 bo.template storeInBuffer < Is, T>(res);
+		 }(), ...);
+	}
 
 	void addToInitialStateFromEigenstate(size_t index, size_t state, double weight);
 

@@ -106,8 +106,15 @@ template <typename ... Args> struct VALUE : COMPUTATION<double, Args...>, _XBUFF
 
 	template <REP R, typename WHEN>
 	static constexpr bool canRun = COMPUTATION<double, Args...>::template goodRep<R> && std::is_same_v<WHEN, EARLY>;
-
 };
+template <typename ... Args> struct PROPAGATOR_VALUE : COMPUTATION<double, Args...>, _XBUFFER
+{
+	static constexpr std::string_view name = "";
+
+	template <REP R, typename WHEN>
+	static constexpr bool canRun = COMPUTATION<double, Args...>::template goodRep<R> && std::is_same_v<WHEN, EARLY>;
+};
+
 template <typename ... Args> struct EARLY_OPERATION : COMPUTATION<double>
 {
 	template <REP R, typename WHEN>
@@ -141,6 +148,8 @@ struct BufferedOutputs : TypeBox<Ts...>
 	template <typename T>
 	using pos = offset_seq_t<offset<T>(), typename T::bufferOffsets>;
 
+	template <typename T>
+	static constexpr auto pos_v() { return pos<T>{}; }
 	// using all_pos = concat_all_seq<pos<Ts>...>;
 
 	FILE* file_dat = nullptr; 	// for writing the results of time evolution
@@ -167,15 +176,16 @@ struct BufferedOutputs : TypeBox<Ts...>
 		else return xbuffer + xbufferCurrentLine;
 	}
 
-	BufferedOutputs(Section& settings, MODE M)
+	BufferedOutputs(Section& settings, MODE M, uind PASS, std::string_view name)
 	{
 		inipp::get_value(settings, "log_interval", log_interval);
 		inipp::get_value(settings, "comp_interval", comp_interval);
 		logInfo("log_interval %d", log_interval);
 		logInfo("comp_interval %d", comp_interval);
 
-
-		// (printf("size in buffers: %d %td %s", Ts::sizeInBuffer, TypeBox<Ts...>::size, typeid(Ts).name()), ...);
+		if (comp_interval > 0)
+			file_dat = openOut<IO_ATTR::WRITE >(name, PASS, binary);
+	// (printf("size in buffers: %d %td %s", Ts::sizeInBuffer, TypeBox<Ts...>::size, typeid(Ts).name()), ...);
 		bufferHeight = log_interval / comp_interval;
 		rbufferSize = sizeInBuffer<true> *bufferHeight;
 		xbufferSize = sizeInBuffer<false> *bufferHeight;
@@ -192,11 +202,7 @@ struct BufferedOutputs : TypeBox<Ts...>
 			if (xbufferSize > 0) xbuffer = new double[xbufferSize];
 		}
 	}
-	void init(ind PASS, std::string_view name)
-	{
-		if (comp_interval > 0)
-			file_dat = openOut<IO_ATTR::WRITE >(name, PASS, binary);
-	}
+
 	~BufferedOutputs()
 	{
 		if (rbufferSize > 0) { logSETUP("Destroying rbuffer"); delete[] rbuffer; }
@@ -206,9 +212,10 @@ struct BufferedOutputs : TypeBox<Ts...>
 
 	inline void ditch() {}
 // template <size_t pos, size_t offset, bool usingReduceBuffer, typename RetT>
-	template <size_t pos, bool usingReduceBuffer, typename RetT>
+	template <size_t pos, class Op, typename RetT = typename Op::returnT>
 	inline void storeInBuffer(RetT val)
 	{
+		constexpr bool usingReduceBuffer = usesReduceBuffer<Op>;
 		// logInfo("About to stack... %td %d %g", pos, usingReduceBuffer, val);
 
 		if constexpr (std::is_same_v<std::remove_const_t<RetT>, double> || std::is_convertible_v<RetT, double>)
@@ -247,35 +254,35 @@ struct BufferedOutputs : TypeBox<Ts...>
 		}
 	}
 
-	template <MODE M, typename WHEN, REP R, class PROP>
-	inline void compute(const PROP& propagator)
-	{
-		((Ts::template canRun<R, WHEN> ?
-		  computeEach<PROP, M, WHEN, R, Ts, typename Ts::returnT>
-		  (propagator, Ts{}, (typename Ts::types) {}, pos<Ts>{}) : ditch()), ...);
-	}
+	// template <MODE M, typename WHEN, REP R, class PROP>
+	// inline void compute(const PROP& propagator)
+	// {
+	// 	((Ts::template canRun<R, WHEN> ?
+	// 	  computeEach<PROP, M, WHEN, R, Ts, typename Ts::returnT>
+	// 	  (propagator, Ts{}, (typename Ts::types) {}, pos<Ts>{}) : ditch()), ...);
+	// }
 
 
 
 
-	template <class PROP, MODE M, typename WHEN, REP R, typename T, typename retT, typename... Op, size_t...Is>
-	inline void computeEach(const PROP& propagator, T&& comp, COMPUTATION<retT, Op...>&&, seq<Is...>&&)
-	{
-		// T::template forerunner<M, R, opt>();
-		// logInfo("compute:");
-		// Timings::measure::start(comp.name);
-		(storeInBuffer < Is, usesReduceBuffer<T>, retT>(
-			propagator->template calc<R, Op>()), ...);
-			// comp.template calc<R, opt, Op>()), ...);
-			// Timings::measure::stop(comp.name);
+	// template <class PROP, MODE M, typename WHEN, REP R, typename T, typename retT, typename... Op, size_t...Is>
+	// inline void computeEach(const PROP& propagator, T&& comp, COMPUTATION<retT, Op...>&&, seq<Is...>&&)
+	// {
+	// 	// T::template forerunner<M, R, opt>();
+	// 	// logInfo("compute:");
+	// 	// Timings::measure::start(comp.name);
+	// 	(storeInBuffer < Is, usesReduceBuffer<T>, retT>(
+	// 		propagator->template calc<R, Op>()), ...);
+	// 		// comp.template calc<R, opt, Op>()), ...);
+	// 		// Timings::measure::stop(comp.name);
 
-		// runEach<R, opt, >(T{});
-	}
+	// 	// runEach<R, opt, >(T{});
+	// }
 
 	template <REP R>
 	static constexpr inline bool needsFFT()
 	{
-		return ((Ts::rep == (REP::BOTH ^ R)) | ... | 0);
+		return (int(Ts::rep & (REP::BOTH ^ R)) | ... | 0);
 	}
 
 	static inline void setupComputations()
@@ -395,10 +402,10 @@ struct BufferedOutputs : TypeBox<Ts...>
 		// }
 	}
 
-	template <typename WHEN>
+	template <WHEN when>
 	inline void logAll()
 	{
-		if constexpr (std::is_same_v<WHEN, AFTER<>>)
+		if constexpr (when == WHEN::AT_END)
 		{
 			rbufferLastLine = rbufferCurrentLine;
 			xbufferLastLine = xbufferCurrentLine;
@@ -416,18 +423,18 @@ struct BufferedOutputs : TypeBox<Ts...>
 		{
 			int i;
 			int end;
-			if constexpr (binary && std::is_same_v<BEFORE<>, WHEN>)
+			if constexpr (binary && when == WHEN::AT_START)
 			{
 				// constexpr auto x_comp = getComputations<RI, _XBUFFER>();
 				// constexpr auto r_comp = getComputations<RI, _RBUFFER>();
 				// writeDataBinaryHeader(sizeInBuffer<false> +sizeInBuffer<true>, x_comp, r_comp);
 			}
-			if constexpr (std::is_same_v<WHEN, BEFORE<>>)
+			if constexpr (when == WHEN::AT_START)
 			{
 				i = bufferHeight - 1;
 				end = bufferHeight;
 			}
-			else if constexpr (std::is_same_v<WHEN, AFTER<>>)
+			else if constexpr (when == WHEN::AT_END)
 			{
 				i = 0;
 				end = (xbufferCurrentLine / sizeInBuffer<false>) + 1;
@@ -468,13 +475,13 @@ struct BufferedOutputs : TypeBox<Ts...>
 		}
 	}
 
-	template <typename WHEN>
+	template <WHEN when>
 	inline void logOrPass(ind step)
 	{
-		if ((log_interval > 0 && (step % log_interval == 0)) || std::is_same_v<WHEN, AFTER<>>)
+		if ((log_interval > 0 && (step % log_interval == 0)) || when == WHEN::AT_END)
 		{
 			reduce();
-			if (!MPI::pID) logAll<WHEN>();
+			if (!MPI::pID) logAll<when>();
 			rbufferCurrentLine = 0;
 			xbufferCurrentLine = 0;
 		}

@@ -1,7 +1,7 @@
 template <class BaseGrid, size_t Components, class MPIStrategy = typename BaseGrid::MPIStrategy, class MPIGrids = typename BaseGrid::MPIGrids>
 struct Grid;
 
-template <class BaseGrid, size_t Components>
+template <class BaseGrid, uind Components>
 struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 {
 	// 	static_assert(std::is_base_of_v< CoordinateSystem, CS>,
@@ -11,14 +11,16 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 // 				//   "Third GridType template argument must be type derived from MPI::Grid");
 
 // 	static_assert((!std::is_same_v<MPI::Rods, MPIStrategy>) || (DIM >= DIMS::D3), "Rod MPI strategy not supported for dimensionality < 3");
-	using BaseGrid::DIM;
 	using MPISol = MPIGrid<typename BaseGrid::MPIGrids, BaseGrid::D, MPI::Slices>;
-	MPISol sol;
+	using BaseGrid::pos;
+	using BaseGrid::DIM;
 	using BaseGrid::absorber;
 	using BaseGrid::m;
 	using BaseGrid::n;
 	using BaseGrid::inv_m;
 	using BaseGrid::nn;
+
+	MPISol sol;
 	cxd* psi_total = nullptr; // total ψ on m grid (used for X and P)
 	cxd* psi;      			// local ψ(x,t) on local_m grid
 	cxd* psi_copy;      		// backup ψ(x,t) on local_m grid
@@ -54,6 +56,10 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	}
 
 	Grid(Section& settings) : BaseGrid(settings)
+	{
+		init();
+	}
+	void init()
 	{
 		logInfo("Grid Base init");
 		fftw_mpi_init();
@@ -261,7 +267,7 @@ transforms are coupled together if involve consecutive directions (case for 1-3D
 		Timings::measure::stop("FFTW");
 
 	}
-	void post_evolve()
+	void post_step()
 	{
 
 	}
@@ -331,6 +337,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 {
 	using base = Grid<BaseGrid, Components, MPI::Slices, MPI::Single>;
 	using base::DIM;
+	using base::pos;
 	using base::sol;
 	using base::psi;
 	using base::m;
@@ -791,9 +798,9 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 		Timings::measure::stop("TRANSFER");
 	}
 
-	void post_evolve()
+	void post_step()
 	{
-		base::post_evolve();
+		base::post_step();
 		transfer();
 	}
 };

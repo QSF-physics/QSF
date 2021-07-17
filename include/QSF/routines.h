@@ -1,8 +1,3 @@
-
-
-
-
-
 template <class PASSES, class PROP, class Worker>
 struct Routine;
 

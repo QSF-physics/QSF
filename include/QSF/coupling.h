@@ -37,33 +37,37 @@ as needed */
 template <class ApproxModel, class ... Fields>
 struct CouplingBase;
 
-template <>
-struct CouplingBase<DipoleApprox> : _XBUFFER
-{
-	// static_assert(is_unique<Fields...>, "All Fields need to act on different axes!");
+// template <>
+// struct CouplingBase<DipoleApprox> : _XBUFFER
+// {
+// 	// static_assert(is_unique<Fields...>, "All Fields need to act on different axes!");
 
-	// tuple<Fields...> fields;
-	// double last_values[sizeof...(Fields)]{ 0 };
-	// double last_values_backup[sizeof...(Fields)]{ 0 };
+// 	// tuple<Fields...> fields;
+// 	// double last_values[sizeof...(Fields)]{ 0 };
+// 	// double last_values_backup[sizeof...(Fields)]{ 0 };
+// 	CouplingBase(Section& settings) {}
+// 	static double maxPulseDuration() { return 0; }
+// 	// void reset() { last_values{ 0 }; last_values_backup{ 0 }; }
+// 	double operator[](AXIS ax)
+// 	{
+// 		return 0;
+// 	}
+// };
 
-	static double maxPulseDuration() { return 0; }
-	// void reset() { last_values{ 0 }; last_values_backup{ 0 }; }
-	double operator[](AXIS ax)
-	{
-		return 0;
-	}
-};
 
 template <class ... Fields>
 struct CouplingBase<DipoleApprox, Fields...> : _XBUFFER
 {
 	static_assert(is_unique<Fields...>, "All Fields need to act on different axes!");
-
+	static constexpr uind size = sizeof...(Fields);
 	std::tuple<Fields...> fields;
-	double last_values[sizeof...(Fields)]{ 0 };
-	double last_values_backup[sizeof...(Fields)]{ 0 };
+	double last_values[Max(sizeof...(Fields), 1)]{ 0 };
+	double last_values_backup[Max(sizeof...(Fields), 1)]{ 0 };
 
+	CouplingBase(Section& settings) : fields(Fields{ settings }...) {}
+	CouplingBase(Fields...fields) :fields(fields...) {}
 	static double maxPulseDuration() { return Max(Fields::maxPulseDuration()...); }
+
 	// void reset() { last_values{ 0 }; last_values_backup{ 0 }; }
 	double operator[](AXIS ax)
 	{
@@ -80,21 +84,28 @@ struct CouplingBase<NoApprox, Fields...> : _XBUFFER
 
 	static double maxPulseDuration() { return Max(Fields::maxPulseDuration()...); }
 	// void reset() { middle_values{ 0 }; middle_values_backup{ 0 }; }
+
 	double operator[](AXIS ax)
 	{
 		return middle_values[ax];
 	}
 };
 
-template <class GaugeType, class ApproxModel, class ... Fields>
-struct Coupling;
+template <class GaugeType, class ... Fields>
+struct DipoleCoupling;
 
 template <class ... Fields>
-struct Coupling<VelocityGauge, DipoleApprox, Fields...> : CouplingBase<DipoleApprox, Fields...>
+struct DipoleCoupling<VelocityGauge, Fields...> : CouplingBase<DipoleApprox, Fields...>
 {
-	static constexpr REP couplesInRep = REP::P;
 	using base = CouplingBase<DipoleApprox, Fields...>;
+	static constexpr REP couplesInRep = REP::P;
+
 	double lastTime;
+	DipoleCoupling(Section& settings) : base(settings) {}
+
+	DipoleCoupling(Fields...fields) :base(fields...) {}
+
+	DipoleCoupling(const DipoleCoupling&) = default;
 	// A(t) = -int_0^t E(t) dt
 	template <REP R, OPTIMS opt>
 	inline void precalc() const

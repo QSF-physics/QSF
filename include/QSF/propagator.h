@@ -36,25 +36,15 @@ struct Config
 	}
 };
 
-
 struct PropagatorBase
 {
-	Config config;
-	Section settings;
-
 	double dt;
+	ind max_steps;
+	double state_accuracy;
+
 	ind step{ 0 };
 	double timer{ 0.0 };
-	double timer_copy;
-	PropagatorBase(std::string_view name, int DIMS, int ELEC) :
-		config("project.ini", DIMS, ELEC),
-		settings(config.ini.sections[name.data()])
-	{
-		file_log = openLog(name);
-		inipp::get_value(settings, "dt", dt);
-		logInfo("dt %g", dt);
-		//TODO: if 0 autoset?
-	}
+	double timer_copy{ 0.0 };
 
 	inline void incrementBy(double fraction = 1.0)
 	{
@@ -78,50 +68,12 @@ struct PropagatorBase
 	}
 };
 
-template <MODE M>
-struct TimeMode;
-
-template <>
-struct TimeMode<MODE::IM>
-{
-	static constexpr MODE mode = MODE::IM;
-	static constexpr std::string_view name = "IM";
-	ind max_steps;
-	double state_accuracy;
-	double dE = 10.0;
-	double energy;
-	inline bool stillEvolving(ind step)
-	{
-		return fabs(dE) > state_accuracy && step != max_steps;
-		// !((fabs(dE) < state_accuracy || dE / energy == 0.) || step == max_steps);
-	}
-	TimeMode(Section& settings)
-	{
-		inipp::get_value(settings, "max_steps", max_steps);
-		inipp::get_value(settings, "state_accuracy", state_accuracy);
-		logInfo("max_steps %td", max_steps);
-	}
-};
 
 
-template <>
-struct TimeMode<MODE::RE>
-{
-	static constexpr MODE mode = MODE::RE;
-	static constexpr std::string_view name = "RE";
-	ind max_steps;
-	bool stillEvolving(ind step)
-	{
-		return (step <= max_steps);
-	}
-	TimeMode(Section& settings)
-	{
-		// inipp::get_value(settings, "max_steps", max_steps);
-	}
-};
+
 
 template <MODE M, class SpType, class HamWF>
-struct SplitPropagator : PropagatorBase, TimeMode<M>
+struct SplitPropagator : Config, PropagatorBase
 {
 	using SplitType = SpType;
 	using ChainExpander = typename SplitType::ChainExpander;
@@ -134,23 +86,45 @@ struct SplitPropagator : PropagatorBase, TimeMode<M>
 	template <size_t splitGroup>
 	using splits = typename Chain<splitGroup>::splits;
 
+	static constexpr MODE mode = M;
+	static constexpr std::string_view name = M == MODE::IM ? "IM" : "RE";
 	static constexpr size_t ChainCount = ChainExpander::size;
 	static constexpr REP firstREP = SplitType::firstREP;
 	// static constexpr REP couplesInRep = C::couplesInRep;
 
+	Section settings;
 	// static constexpr std::string_view name = SplitType::name;
 	HamWF wf;
-
+	double energy{ 0 };
+	double dE{ 10.0 };
 	// SplitPropagator(Section& settings) : PropagatorBase(settings), TimeMode<M>(settings), wf(settings), outputs(settings, M) {}
+	SplitPropagator(PropagatorBase pb, HamWF wf) : PropagatorBase(pb), wf(wf) {}
 
+	SplitPropagator() :
+		Config("project.ini", 1, 1),//DIMS, ELEC
+		settings(ini.sections[name.data()]),
+		wf(settings)
+	{
+		inipp::get_value(settings, "dt", dt);
+		if constexpr (M == MODE::IM)
+		{
+			inipp::get_value(settings, "max_steps", max_steps);
+			inipp::get_value(settings, "state_accuracy", state_accuracy);
+			logInfo("max_steps %td", max_steps);
+		}
+		else
+		{
+			//TODO: init RE
+		}
+		file_log = openLog(name);
+		logInfo("dt %g", dt);
+	}
 
-	SplitPropagator() : PropagatorBase(TimeMode<M>::name, 1, 1),
-		TimeMode<M>(settings),
-		wf(settings) {}
 
 	inline bool stillEvolving()
 	{
-		return TimeMode<M>::stillEvolving(step);
+		if constexpr (mode == MODE::RE) return (step <= max_steps);
+		else return fabs(dE) > state_accuracy && step != max_steps;
 	}
 
 	template <REP R>
@@ -178,37 +152,62 @@ struct SplitPropagator : PropagatorBase, TimeMode<M>
 		 }(), ...);
 	}
 
-	template <REP R, class Op>
-	inline double calc()
+
+	// template <typename Op> inline void getOperator(Op);
+	inline double getOperator(Time) { return timer; }
+	inline double getOperator(Step) { return step; }
+
+	//If no match here is found pass to the wavefunction
+	template < REP R, class BO, class COMP, size_t...Is>
+	inline void compute(BO& bo, COMP&& c, seq<Is...>&& s)
 	{
-		if constexpr (std::is_same_v<Op, Time>)
+		wf.template compute<R>(bo, std::move(c), std::move(s));
+	}
+	template <REP R, class BO, class... Op, size_t...Is>
+	inline void compute(BO& bo, PROPAGATOR_VALUE<Op...>&&, seq<Is...>&&)
+	{
+		using T = PROPAGATOR_VALUE<Op...>;
+		// logInfo("returning pos %td %td", Is...);
+		((bo.template storeInBuffer < Is, T>(getOperator(Op{}))), ...);
+	}
+
+	inline void ditch() {}
+
+	template <WHEN when, bool B, class... COMP>
+	inline void computeEach(BufferedOutputs<B, COMP...>& bo)
+	{
+		// compute< M, EARLY, firstREP>(this);
+		using BO = BufferedOutputs<B, COMP...>;
+		((COMP::template canRun<firstREP, EARLY>
+		  ? compute<firstREP, BO>(bo, COMP{}, BO::template pos_v<COMP>())
+		  : ditch()),
+		 ...);
+
+		if constexpr (BO::template needsFFT<firstREP>())
 		{
-			return timer;
+			wf.template fourier<REP::BOTH^ firstREP>();
+
+			wf.template fourier<firstREP>();
 		}
-		else if constexpr (std::is_same_v<Op, Step>)
+		else if (step < 2)
 		{
-			return double(step);
+			logWarning("Computations do not require FFT, if you need to output wavefunction in the opposite REP make sure to export the WF explicitly in the desired REP.");
 		}
-		else
-		{
-			return wf.template avg<AXIS::XYZ, Op>();
-		}
+		bo.template logOrPass<when>(step);
 	}
 
 	template <class OUTS, class Worker>
 	void run(Worker&& worker, uind i = 0)
 	{
-		OUTS outputs{ settings, M };
-		outputs.init(i, TimeMode<M>::name);
-		outputs.template compute< M, EARLY, firstREP>(this);
-		outputs.template logOrPass<BEFORE<>>(step);
+		OUTS outputs{ settings, M ,i, name };
+		computeEach<WHEN::AT_START>(outputs);
 		while (stillEvolving())
 		{
 			makeStep(ChainExpander{});
-			outputs.template logOrPass<DURING<>>(step);
-			wf.post_evolve();
-			outputs.template compute< M, EARLY, firstREP>(this);
-			// outputs.template logOrPass<DURING<>>(step);
+			wf.post_step();
+			computeEach<WHEN::DURING>(outputs);
+
+		   // outputs.template logOrPass<DURING<>>(step);
 		}
 		// HACK: This makes sure, the steps are always evenly spaced
 		// step += (outputs.comp_interval - 1);

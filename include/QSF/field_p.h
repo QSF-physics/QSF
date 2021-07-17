@@ -166,7 +166,7 @@ struct GaussianEnvelope : Pulse
 	GaussianEnvelope() = default;
 	GaussianEnvelope(_FieldConfig p) :
 		Pulse{ p },
-		gauss_pow(-4.0 * log(2) / POW2(p.FWHM_percent * Pulse::pulse_time))
+		gauss_pow(-4.0 * log(2) / Power(p.FWHM_percent * Pulse::pulse_time, 2))
 	{
 		//TODO: Warn. Supported FWHM range: (0.0-0.35], otherwise might not start from zero
 	}
