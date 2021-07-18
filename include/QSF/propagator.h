@@ -48,15 +48,14 @@ struct SplitPropagator : Config, PropagatorBase
 	using SplitType = SpType;
 	using ChainExpander = typename SplitType::ChainExpander;
 
-	template <size_t splitGroup>
-	using Chain = typename SplitType::template Chain<splitGroup>;
+	template <uind chain>
+	using Chain = typename SplitType::template Chain<chain>;
+	template <uind chain>
+	using reps = typename Chain<chain>::reps;
+	template <uind chain>
+	using splits = typename Chain<chain>::splits;
 
-	template <size_t splitGroup>
-	using reps = typename Chain<splitGroup>::reps;
-	template <size_t splitGroup>
-	using splits = typename Chain<splitGroup>::splits;
-
-	static constexpr size_t ChainCount = ChainExpander::size;
+	static constexpr uind ChainCount = ChainExpander::size;
 	static constexpr REP firstREP = SplitType::firstREP;
 	static constexpr std::string_view name = M == MODE::IM ? "IM" : "RE";
 	static constexpr MODE mode = M;
@@ -116,12 +115,12 @@ struct SplitPropagator : Config, PropagatorBase
 	inline double getOperator(Step) { return step; }
 
 	//If no match here is found pass to the wavefunction
-	template < REP R, class BO, class COMP, size_t...Is>
+	template < REP R, class BO, class COMP, uind...Is>
 	inline void compute(BO& bo, COMP&& c, seq<Is...>&& s)
 	{
 		wf.template compute<R>(bo, std::move(c), std::move(s));
 	}
-	template <REP R, class BO, class... Op, size_t...Is>
+	template <REP R, class BO, class... Op, uind...Is>
 	inline void compute(BO& bo, PROPAGATOR_VALUE<Op...>&&, seq<Is...>&&)
 	{
 		using T = PROPAGATOR_VALUE<Op...>;
@@ -168,7 +167,7 @@ struct SplitPropagator : Config, PropagatorBase
 		wf.template fourier<R>();
 	}
 
-	template <size_t splitGroup, size_t ... repI, size_t ... SI>
+	template <uind chain, uind ... repI, uind ... SI>
 	inline void evolve(seq<repI...>, seq<SI...>)
 	{
 		([&]
@@ -177,14 +176,14 @@ struct SplitPropagator : Config, PropagatorBase
 			 wf.template fourier<rep>();
 			//  wf.template precalc<rep, NO_OPTIMIZATIONS>();
 			//  Timings::measure::start(op.name);
-			 wf.template evolve<M, rep>(dt * Chain<splitGroup>::mults[SI]);
+			 wf.template evolve<M, rep>(dt * Chain<chain>::mults[SI]);
 			//  Timings::measure::stop(op.name);
 			 if (step == 4)
-				 logInfo("SplitGroup %td Evolving in REP %td with delta=%g", splitGroup, repI, Chain<splitGroup>::mults[SI]);
+				 logInfo("SplitGroup %td Evolving in REP %td with delta=%g", chain, repI, Chain<chain>::mults[SI]);
 			 if constexpr (REP::BOTH == HamWF::couplesInRep)
-				 incrementBy(Chain<splitGroup>::mults[SI] * 0.5);
+				 incrementBy(Chain<chain>::mults[SI] * 0.5);
 			 else if constexpr (rep == HamWF::couplesInRep)
-				 incrementBy(Chain<splitGroup>::mults[SI] * 1.0);
+				 incrementBy(Chain<chain>::mults[SI] * 1.0);
 		 }(), ...);
 	}
 
@@ -240,42 +239,43 @@ struct SplitPropagator : Config, PropagatorBase
 	}
 
 
-	template <size_t... splitGroup>
-	void makeStep(seq<splitGroup...>)
+	template <uind... chain>
+	void makeStep(seq<chain...>)
 	{
-		logInfo("About to make step with %td splitGroups", sizeof...(splitGroup));
 		groupBackup();
 		((
-			groupRestore<splitGroup>()
+			groupRestore<chain>()
 		//   , Timings::measure::start("EVOLUTION")
-			, evolve<splitGroup>(reps<splitGroup>{}, splits<splitGroup>{})
+			, evolve<chain>(reps<chain>{}, splits<chain>{})
 		  //   , Timings::measure::stop("EVOLUTION")
-			, groupComplete<splitGroup>()
+			, groupComplete<chain>()
 			), ...);
 		step++;
 	}
 
 
-	template <ind splitGroup> void groupRestore()
+	template <ind chain> void groupRestore()
 	{
-		if constexpr (splitGroup > 1)//changed from 0 14.07
+		if constexpr (chain > 1)//changed from 0 14.07
 		{
-			if (step == 4) { logInfo("group %td restore", splitGroup); }
+			if (step == 4) { logInfo("group %td restore", chain); }
 			time_restore();
 			wf.restore();
 			// HamWF::Coupling::restore();
 		}
 	}
-	template <ind splitGroup> void groupComplete()
+	template <ind chain> void groupComplete()
 	{
 		if constexpr (ChainCount > 1)
 		{
-			constexpr auto coeff = Chain<splitGroup>::value;// <splitGroup>().coeff;
-			if (step == 4) { logInfo("group %td complete, applying coeff=%g", splitGroup, coeff); }
-			if constexpr (splitGroup == ChainCount - 1)
-				wf.collect(coeff);
-			else
-				wf.accumulate(coeff);
+			if (step == 4)
+			{
+				logInfo("group %td complete, applying coeff=%g", chain, Chain<chain>::value);
+			}
+			if constexpr (chain == ChainCount - 1)
+				wf.collect(Chain<chain>::value);
+			else wf.accumulate(Chain<chain>::value);
+
 		}
 	}
 	void groupBackup()
@@ -344,7 +344,7 @@ struct RealTime
 
 /* old get chain
 SplitType splitSum;
-	template <size_t Chain>
+	template <uind Chain>
 	constexpr size_t splitCount() const { return splitSum.sizes[Chain]; };
 
 	constexpr SplitPropagator() {}

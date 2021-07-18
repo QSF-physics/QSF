@@ -73,12 +73,12 @@ struct MultiProductSplit
 
 	//this is not necessairly equal to the number of real splits
 	template <size_t N>
-	using InternalSplitExp = from_to_t<1, N>;
+	using SplitExpander = from_to_t<1, N>;
 
-	template <size_t I, class = InternalSplitExp<I> >
+	template <size_t I, class = SplitExpander<I>, class = ChainExpander >
 	struct Chain;
-	template <size_t I, size_t ... Is>
-	struct Chain < I, seq<Is...>> : _SplitChain<Base, SplitCoeff<I, Is>...>
+	template <size_t I, size_t ... Js, size_t ... Is>
+	struct Chain < I, seq<Js...>, seq<Is...>> : _SplitChain<Base, SplitCoeff<I, Js>...>
 	{
 		static constexpr double value = (...* (Is != I ? double(I * I) / (double(I * I) - double(Is * Is)) : 1.0));
 	};
