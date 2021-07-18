@@ -6,9 +6,9 @@ struct CAP : AbsorberType
 {
 	double CAPlength = 10;
 	double dx;
+	ind nCAP;
 	double eta;
 	double L2_effective;
-	ind nCAP;
 	CAP() {}
 	CAP(double CAPlength, double dx, double L) :
 		CAPlength(CAPlength),

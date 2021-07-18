@@ -17,6 +17,8 @@ struct CartesianGrid :CoordinateSystem
 	ind nn;
 	ind m;
 	double inv_m;
+	double inv_n;
+	double inv_nn;
 
 	double dV;
 	double dVm;
@@ -43,11 +45,13 @@ struct CartesianGrid :CoordinateSystem
 	{
 		logInfo("Carte init");
 		n2 = n / 2;
-		nn = (n * n);
-		m = (Power(n, DIM));
-		inv_m = (1.0 / m);
-		dV = (Power(dx, DIM));
-		dVm = (dV * inv_m);
+		nn = n * n;
+		m = Power(n, DIM);
+		inv_m = 1.0 / m;
+		inv_n = 1.0 / n;
+		inv_nn = 1 / nn;
+		dV = Power(dx, DIM);
+		dVm = dV * inv_m;
 		L = (dx * (n - 1));
 		xmin = (-0.5 * L);
 		inv_dx = (1.0 / dx);

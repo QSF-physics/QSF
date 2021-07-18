@@ -57,7 +57,7 @@ namespace uniq_impl
 
 	template <class> struct uniq_seq;
 	template <size_t... I> struct uniq_seq<seq<I...>> : uniq<seq<>, I...> {};
-};
+}
 template<class SEQ> using uniq_seq = typename uniq_impl::uniq_seq<SEQ>::type;
 
 template<size_t... Ns> using uniq = typename uniq_impl::uniq<seq<>, Ns...>::type;
@@ -81,7 +81,7 @@ namespace seq_gen_impl
 	template <size_t M, size_t ... I> struct seq_mult<M, seq<I...>> : seq<(M* I)...> {};
 
 	template <size_t S, size_t E, typename = std::enable_if_t<(S <= E)>> struct seq_gen_from : seq_offset<S, typename seq_gen<E - S>::type> { static_assert(S < E, "S<E"); };
-};
+}
 
 //FILTER SEQUENCE
 namespace filter_impl
@@ -119,7 +119,7 @@ namespace filter_impl
 	// 	if constexpr (sizeof...(Ns)>0)
 	// 		return concat_all_seq<
 	// }
-};
+}
 template<template <auto> typename Pred, class SEQ> using filter_seq = typename filter_impl::filter<Pred, SEQ>::type;
 // template<size_t... Ns> using filter = typename uniq_impl::filter<seq<>, Ns...>::type;
 

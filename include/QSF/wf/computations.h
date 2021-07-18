@@ -181,8 +181,8 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 	}
 	void init()
 	{
-		logInfo("log_interval %d", log_interval);
 		logInfo("comp_interval %d", comp_interval);
+		logInfo("log_interval %d", log_interval);
 
 		// (printf("size in buffers: %d %td %s", Ts::sizeInBuffer, TypeBox<Ts...>::size, typeid(Ts).name()), ...);
 		bufferHeight = log_interval / comp_interval;
@@ -193,8 +193,7 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 		xbufferLastLine = (bufferHeight - 1) * sizeInBuffer<false>;
 		rbufferCurrentLine = rbufferLastLine;
 		xbufferCurrentLine = xbufferLastLine;
-		logBUFFER("REDUCABLE BUFFER SIZE: %tdx%d, NORMAL BUFFER SIZE: %tdx%d",
-				  sizeInBuffer<true>, bufferHeight, sizeInBuffer<false>, bufferHeight);
+		logBUFFER("REDUCABLE BUFFER SIZE: %tdx%d, NORMAL BUFFER SIZE: %tdx%d", sizeInBuffer<true>, bufferHeight, sizeInBuffer<false>, bufferHeight);
 		if (rbufferSize > 0) rbuffer = new double[rbufferSize];
 		if (!MPI::pID)
 		{
@@ -204,8 +203,8 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 
 	BufferedOutputs(Section& settings)
 	{
-		inipp::get_value(settings, "log_interval", log_interval);
 		inipp::get_value(settings, "comp_interval", comp_interval);
+		inipp::get_value(settings, "log_interval", log_interval);
 		init();
 	}
 
@@ -228,10 +227,11 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 
 	inline void ditch() {}
 // template <size_t pos, size_t offset, bool usingReduceBuffer, typename RetT>
-	template <size_t pos, class Op, typename RetT = typename Op::returnT>
+	template <size_t pos, class COMP, typename RetT = typename COMP::returnT>
 	inline void storeInBuffer(RetT val)
 	{
-		constexpr bool usingReduceBuffer = usesReduceBuffer<Op>;
+		// logInfo("would store %s at %td", typeid(COMP).name(), pos);
+		constexpr bool usingReduceBuffer = usesReduceBuffer<COMP>;
 		// logInfo("About to stack... %td %d %g", pos, usingReduceBuffer, val);
 
 		if constexpr (std::is_same_v<std::remove_const_t<RetT>, double> || std::is_convertible_v<RetT, double>)
@@ -247,7 +247,6 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 		}
 		else if constexpr (std::is_same_v<std::remove_const_t<RetT>, cxd>)
 		{
-
 			if constexpr (usingReduceBuffer)
 			{
 				rbuffer[rbufferCurrentLine + pos] = val.real();
@@ -281,7 +280,7 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 
 
 
-	// template <class PROP, MODE M, typename WHEN, REP R, typename T, typename retT, typename... Op, size_t...Is>
+	// template <class PROP, MODE M, typename WHEN, REP R, typename T, typename retT, typename... COMP, size_t...Is>
 	// inline void computeEach(const PROP& propagator, T&& comp, COMPUTATION<retT, Op...>&&, seq<Is...>&&)
 	// {
 	// 	// T::template forerunner<M, R, opt>();
@@ -298,17 +297,11 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 	template <REP R>
 	static constexpr inline bool needsFFT()
 	{
-		return (int(Ts::rep & (REP::BOTH ^ R)) | ... | 0);
+		return ((bool(Ts::rep & (REP::BOTH ^ R)) || std::is_base_of_v<LATE, Ts>) | ... | 0);
 	}
 
 	static inline void setupComputations()
 	{
-		//TODO: IMPLEMENT!
-		// constexpr auto rout = getRoutine<RI>();
-		// constexpr auto optims = rout.Optims();
-		// constexpr auto mode = rout.Mode();
-		// constexpr auto comps = getComputations<RI, _COMPUTATION>();
-
 		// if (optims & PRECOMP_COORDS) precomputeCoords();
 
 		// ForEach(comps, [&](auto index)

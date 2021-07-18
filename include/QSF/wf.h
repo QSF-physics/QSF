@@ -33,11 +33,18 @@ struct Normalize
 	static constexpr REP rep = REP::NONE;
 };
 
+// template <typename ... Args>
+// inline double gaussian(double at, double delta, Args...args)
+// {
+// 	double delta_inv = 1 / delta;
+// 	double norm = 1.0 * sqrt(delta_inv * sqrt(1.0 / pi));
+// 	norm = (((Args)norm) *...);
+// 	return exp(-0.5 * (((args - at) * (args - at) * delta_inv * delta_inv) + ...)) * norm;
+// }
 
 template <class Hamiltonian, class GridBase, size_t Components>
 struct WF : Grid <GridBase, Components>
 {
-
 	using H = Hamiltonian; //Derived type!
 	using MPIStrategy = typename GridBase::MPIStrategy;
 	using MPIGrids = typename GridBase::MPIGrids;
@@ -56,15 +63,7 @@ struct WF : Grid <GridBase, Components>
 	WF(GridBase g) :InducedGrid(g) {
 		logInfo("WF init");
 	}
-	void initHelpers()
-	{
-		// if constexpr (Propagator_t::ChainCount)
-		// {
-		// 	logInfo("Using Operator Split Groups (Multiproduct splitting)");
-		// 	psi_copy = (cxd*)fftw_malloc(sizeof(cxd) * local_m);
-		// 	psi_acc = (cxd*)fftw_malloc(sizeof(cxd) * local_m);
-		// }
-	}
+
 
 	//TODO: if no match here pass to derived class
 	template <REP R, class BO, class COMP, size_t...Is>
@@ -73,16 +72,11 @@ struct WF : Grid <GridBase, Components>
 		((bo.template storeInBuffer < Is, COMP>(1.0)), ...);
 	}
 
-
-	// inline double getOperator(KineticEnergy) { return 3; }
-	// inline double getOperator(PotentialEnergy) { return 2; }
-
 	template <REP R, class BO, AXIS AX, class... Op, size_t...Is>
 	inline void compute(BO& bo, AVG<AX, Op...>&&, seq<Is...>&&)
 	{
 		using T = AVG<AX, Op...>;
-		// using retT = typename T::returnT;
-		// logInfo("local_n %td", local_n);
+
 		double res = 0;
 		([&]
 		 {
@@ -91,10 +85,8 @@ struct WF : Grid <GridBase, Components>
 			 {
 				 res += std::norm(psi[i]) *
 					 static_cast<Hamiltonian*>(this)->
-					 template call < Op >(InducedGrid::template pos<REP::X>(i));
+					 template call < Op >(InducedGrid::template pos<R>(i));
 			 }
-		 // logInfo("returning pos %td %td", Is...);
-		 // getOperator(Op{})
 			 bo.template storeInBuffer < Is, T>(res);
 		 }(), ...);
 	}

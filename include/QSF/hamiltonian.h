@@ -36,7 +36,7 @@ namespace Schrodinger
 				if constexpr (C_Op::couplesInRep == R && C_Op::size)
 					return (InducedGrid::kin_scale * (Power(args, 2) + ...) +
 							C_Op::template operator() < R, OPTIMS::NONE > (args...));
-				else return InducedGrid::template kin_scale * (Power(args, 2) + ...);
+				else return InducedGrid::kin_scale * (Power(args, 2) + ...);
 			}
 			else if (R == REP::X)
 			{
@@ -114,7 +114,4 @@ namespace Schrodinger
 		}
 
 	};
-
-	template <class GType, class V_Op, class C_Op >
-	Spin0(GType, V_Op, C_Op)->Spin0<GType, V_Op, C_Op>;
 }

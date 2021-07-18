@@ -72,6 +72,9 @@ enum class REP
 	BOTH = 3
 };
 
+constexpr REP invREP(REP R) { return REP::BOTH ^ R; };
+
+
 enum class AXIS
 {
 	NO = 0,

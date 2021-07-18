@@ -1,6 +1,4 @@
 #include "splitting.h"
-#include <fstream>
-#include "autoconfig.h"
 
 struct Step {
 	static constexpr REP rep = REP::BOTH;
@@ -9,33 +7,6 @@ struct Time {
 	static constexpr REP rep = REP::BOTH;
 };
 
-struct Config
-{
-	inipp::Ini<char> ini;
-	char config[100];
-
-	Config() = default;
-	explicit Config(std::string_view name, int DIMS, int ELEC)
-	{
-		logInfo("Parsing %s", name.data());
-		// if (MPI::pID)
-		std::ifstream is(name.data());
-		// ini.clear();
-		ini.parse(is);
-		// logINI("Raw INI file:");
-		// if (DEBUG & DEBUG_INI) ini.generate(std::cout);
-		ini.strip_trailing_comments();
-		sprintf(config, "%de%dd", DIMS, ELEC);
-		// constexpr auto dimelec = STRINGIFY(ELEC) "e" STRINGIFY(DIM) "d";
-		ini.default_section(ini.sections[config]);
-		ini.default_section(ini.sections["DEFAULT"]);
-		ini.interpolate();
-		// logINI("Parsed & interpolated project.ini file:");
-		// ini.generate(std::cout);
-		// if (DEBUG & DEBUG_INI) ini.generate(std::cout);
-		// if (DEBUG & DEBUG_INI) MPI_Barrier(MPI_COMM_WORLD);
-	}
-};
 
 struct PropagatorBase
 {
@@ -71,8 +42,6 @@ struct PropagatorBase
 
 
 
-
-
 template <MODE M, class SpType, class HamWF>
 struct SplitPropagator : Config, PropagatorBase
 {
@@ -87,10 +56,10 @@ struct SplitPropagator : Config, PropagatorBase
 	template <size_t splitGroup>
 	using splits = typename Chain<splitGroup>::splits;
 
-	static constexpr MODE mode = M;
-	static constexpr std::string_view name = M == MODE::IM ? "IM" : "RE";
 	static constexpr size_t ChainCount = ChainExpander::size;
 	static constexpr REP firstREP = SplitType::firstREP;
+	static constexpr std::string_view name = M == MODE::IM ? "IM" : "RE";
+	static constexpr MODE mode = M;
 	// static constexpr REP couplesInRep = C::couplesInRep;
 
 	Section settings;
@@ -99,7 +68,19 @@ struct SplitPropagator : Config, PropagatorBase
 	double energy{ 0 };
 	double dE{ 10.0 };
 	// SplitPropagator(Section& settings) : PropagatorBase(settings), TimeMode<M>(settings), wf(settings), outputs(settings, M) {}
-	SplitPropagator(PropagatorBase pb, HamWF wf) : PropagatorBase(pb), wf(wf) {}
+	void autosetTimestep()
+	{
+		if (dt == 0.0)
+		{
+			// dt = 0.5 * pow(0.5, DIM - 1) * dx * dx;
+			logWarning("Timestep dt was 0, using automatic value dt=%g", dt);
+		}
+	}
+
+	SplitPropagator(PropagatorBase pb, HamWF wf) : PropagatorBase(pb), wf(wf) {
+		max_steps = 100;//FIXME 
+		state_accuracy = 0;
+	}
 
 	SplitPropagator() :
 		Config("project.ini", 1, 1),//DIMS, ELEC
@@ -117,6 +98,8 @@ struct SplitPropagator : Config, PropagatorBase
 		{
 			//TODO: init RE
 		}
+		if constexpr (ChainCount > 1) wf.initHelpers();
+
 		file_log = openLog(name);
 		logInfo("dt %g", dt);
 	}
@@ -124,6 +107,54 @@ struct SplitPropagator : Config, PropagatorBase
 	~SplitPropagator()
 	{
 		logInfo("SplitPropagation done!\n");
+	}
+
+
+
+	// template <typename Op> inline void getOperator(Op);
+	inline double getOperator(Time) { return timer; }
+	inline double getOperator(Step) { return step; }
+
+	//If no match here is found pass to the wavefunction
+	template < REP R, class BO, class COMP, size_t...Is>
+	inline void compute(BO& bo, COMP&& c, seq<Is...>&& s)
+	{
+		wf.template compute<R>(bo, std::move(c), std::move(s));
+	}
+	template <REP R, class BO, class... Op, size_t...Is>
+	inline void compute(BO& bo, PROPAGATOR_VALUE<Op...>&&, seq<Is...>&&)
+	{
+		using T = PROPAGATOR_VALUE<Op...>;
+		// logInfo("returning pos %td %td", Is...);
+		((bo.template storeInBuffer < Is, T>(getOperator(Op{}))), ...);
+	}
+
+	inline void ditch() {}
+
+	template <bool B, class... COMP>
+	inline void computeEach(BufferedOutputs<B, COMP...>& bo)
+	{
+		using BO = BufferedOutputs<B, COMP...>;
+
+		((COMP::template canRun<firstREP, EARLY>
+		  ? compute<firstREP>(bo, COMP{}, BO::template pos_v<COMP>())
+		  : ditch()),
+		 ...);
+
+		if constexpr (BO::template needsFFT<firstREP>())
+		{
+			wf.template fourier<invREP(firstREP)>();
+			((COMP::template canRun<invREP(firstREP), LATE>
+			  ? compute<invREP(firstREP)>(bo, COMP{}, BO::template pos_v<COMP>())
+			  : ditch()),
+			 ...);
+			wf.template fourier<firstREP>();
+		}
+		else if (step < 2)
+		{
+			logWarning("Computations do not require FFT, if you need to output wavefunction in the opposite REP make sure to export the WF explicitly in the desired REP.");
+		}
+
 	}
 	inline bool stillEvolving()
 	{
@@ -148,7 +179,8 @@ struct SplitPropagator : Config, PropagatorBase
 			//  Timings::measure::start(op.name);
 			 wf.template evolve<M, rep>(dt * Chain<splitGroup>::mults[SI]);
 			//  Timings::measure::stop(op.name);
-			//  printf("Evolving with %g (%g)\n", dt * Chain<splitGroup>::mults[SI], Chain<splitGroup>::mults[SI]);
+			 if (step == 4)
+				 logInfo("SplitGroup %td Evolving in REP %td with delta=%g", splitGroup, repI, Chain<splitGroup>::mults[SI]);
 			 if constexpr (REP::BOTH == HamWF::couplesInRep)
 				 incrementBy(Chain<splitGroup>::mults[SI] * 0.5);
 			 else if constexpr (rep == HamWF::couplesInRep)
@@ -156,62 +188,27 @@ struct SplitPropagator : Config, PropagatorBase
 		 }(), ...);
 	}
 
-
-	// template <typename Op> inline void getOperator(Op);
-	inline double getOperator(Time) { return timer; }
-	inline double getOperator(Step) { return step; }
-
-	//If no match here is found pass to the wavefunction
-	template < REP R, class BO, class COMP, size_t...Is>
-	inline void compute(BO& bo, COMP&& c, seq<Is...>&& s)
-	{
-		wf.template compute<R>(bo, std::move(c), std::move(s));
-	}
-	template <REP R, class BO, class... Op, size_t...Is>
-	inline void compute(BO& bo, PROPAGATOR_VALUE<Op...>&&, seq<Is...>&&)
-	{
-		using T = PROPAGATOR_VALUE<Op...>;
-		// logInfo("returning pos %td %td", Is...);
-		((bo.template storeInBuffer < Is, T>(getOperator(Op{}))), ...);
-	}
-
-	inline void ditch() {}
-
-	template <WHEN when, bool B, class... COMP>
-	inline void computeEach(BufferedOutputs<B, COMP...>& bo)
-	{
-		// compute< M, EARLY, firstREP>(this);
-		using BO = BufferedOutputs<B, COMP...>;
-		((COMP::template canRun<firstREP, EARLY>
-		  ? compute<firstREP, BO>(bo, COMP{}, BO::template pos_v<COMP>())
-		  : ditch()),
-		 ...);
-
-		if constexpr (BO::template needsFFT<firstREP>())
-		{
-			wf.template fourier<REP::BOTH^ firstREP>();
-
-			wf.template fourier<firstREP>();
-		}
-		else if (step < 2)
-		{
-			logWarning("Computations do not require FFT, if you need to output wavefunction in the opposite REP make sure to export the WF explicitly in the desired REP.");
-		}
-		bo.template logOrPass<when>(step);
-	}
-
 	template <class OUTS, class Worker>
-	void run(OUTS&& outputs, Worker&& worker, uind i = 0)
+	void run(OUTS&& outputs, Worker&& worker, uind pass = 0)
 	{
-		outputs.initLogger(M, i, name);
-		computeEach<WHEN::AT_START>(outputs);
+		outputs.initLogger(M, pass, name);
+		computeEach(outputs);
+		outputs.template logOrPass<WHEN::AT_START>(step);
+		worker(step, pass, wf);
 		while (stillEvolving())
 		{
 			makeStep(ChainExpander{});
 			wf.post_step();
-			computeEach<WHEN::DURING>(outputs);
+			computeEach(outputs);
+			outputs.template logOrPass<WHEN::DURING>(step);
+			worker(step, pass, wf);
 		   // outputs.template logOrPass<DURING<>>(step);
 		}
+		makeStep(ChainExpander{});
+		wf.post_step();
+		computeEach(outputs);
+		outputs.template logOrPass<WHEN::AT_END>(step);
+		worker(step, pass, wf);
 		// HACK: This makes sure, the steps are always evenly spaced
 		// step += (outputs.comp_interval - 1);
 		// Evolution::incrementBy(outputs.comp_interval);
@@ -227,14 +224,8 @@ struct SplitPropagator : Config, PropagatorBase
 	template <class OUTS>
 	void run(OUTS&& outputs, uind pass = 0)
 	{
-		run<OUTS>(std::forward<OUTS>(outputs), [](ind step, uind PASS, const auto& wf) {}, pass);
+		run<OUTS>(std::forward<OUTS>(outputs), [](ind step, uind pass, const auto& wf) {}, pass);
 	}
-
-	// template <class OUTS>
-	// void run(OUTS& outputs, uind pass = 0)
-	// {
-	// 	run<OUTS>(std::move(outputs), [](ind step, uind PASS, const auto& wf) {}, pass);
-	// }
 
 	template <class OUTS, class Worker>
 	void run(Worker&& worker, uind pass = 0)
@@ -245,13 +236,14 @@ struct SplitPropagator : Config, PropagatorBase
 	template <class OUTS>
 	void run(uind pass = 0)
 	{
-		run<OUTS>([](ind step, uind PASS, const auto& wf) {}, pass);
+		run<OUTS>([](ind step, uind pass, const auto& wf) {}, pass);
 	}
 
 
 	template <size_t... splitGroup>
-	void makeStep(seq<splitGroup...> t)
+	void makeStep(seq<splitGroup...>)
 	{
+		logInfo("About to make step with %td splitGroups", sizeof...(splitGroup));
 		groupBackup();
 		((
 			groupRestore<splitGroup>()
@@ -268,7 +260,7 @@ struct SplitPropagator : Config, PropagatorBase
 	{
 		if constexpr (splitGroup > 1)//changed from 0 14.07
 		{
-			// if (step == 2)logInfo("group %td restore", splitGroup();
+			if (step == 4) { logInfo("group %td restore", splitGroup); }
 			time_restore();
 			wf.restore();
 			// HamWF::Coupling::restore();
@@ -278,8 +270,8 @@ struct SplitPropagator : Config, PropagatorBase
 	{
 		if constexpr (ChainCount > 1)
 		{
-			if (step == 2) logInfo("group %td complete", splitGroup);
 			constexpr auto coeff = Chain<splitGroup>::value;// <splitGroup>().coeff;
+			if (step == 4) { logInfo("group %td complete, applying coeff=%g", splitGroup, coeff); }
 			if constexpr (splitGroup == ChainCount - 1)
 				wf.collect(coeff);
 			else
@@ -290,7 +282,7 @@ struct SplitPropagator : Config, PropagatorBase
 	{
 		if constexpr (ChainCount > 1)
 		{
-			if (step == 2) logInfo("group %td(size) backup", ChainCount);
+			if (step == 4) { logInfo("group backup because ChainCount=%td", ChainCount); }
 			wf.backup();
 			time_backup();
 			// HamWF::Coupling::backup();

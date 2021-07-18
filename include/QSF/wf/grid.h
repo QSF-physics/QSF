@@ -1,3 +1,20 @@
+// #include <vector>
+// #define XTENSOR_USE_XSIMD
+// #define XTENSOR_DISABLE_EXCEPTIONS
+// #define XTENSOR_USE_OPENMP
+// #include <xtensor/xarray.hpp>
+// #include <xtensor/xio.hpp>
+// #include <xtensor/xview.hpp>
+// #include <xtensor/xfixed.hpp>
+// #include <xtensor/xreducer.hpp>
+// #include <xtensor/xeval.hpp>
+// #include "xtensor/xmath.hpp"
+// #include "xtensor/xrandom.hpp"
+// #include "xtensor/xsort.hpp"
+// #include "xtensor/xnorm.hpp"
+// #include "xtl/xtype_traits.hpp"
+
+
 template <class BaseGrid, size_t Components, class MPIStrategy = typename BaseGrid::MPIStrategy, class MPIGrids = typename BaseGrid::MPIGrids>
 struct Grid;
 
@@ -11,7 +28,6 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 // 				//   "Third GridType template argument must be type derived from MPI::Grid");
 
 // 	static_assert((!std::is_same_v<MPI::Rods, MPIStrategy>) || (DIM >= DIMS::D3), "Rod MPI strategy not supported for dimensionality < 3");
-	using MPISol = MPIGrid<typename BaseGrid::MPIGrids, BaseGrid::D, MPI::Slices>;
 	using BaseGrid::pos;
 	using BaseGrid::DIM;
 	using BaseGrid::absorber;
@@ -19,10 +35,13 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	using BaseGrid::n;
 	using BaseGrid::inv_m;
 	using BaseGrid::nn;
+	using MPISol = MPIGrid<typename BaseGrid::MPIGrids, BaseGrid::D, MPI::Slices>;
 
-	MPISol sol;
+	MPISol sol;//MPI Solution
 	cxd* psi_total = nullptr; // total ψ on m grid (used for X and P)
 	cxd* psi;      			// local ψ(x,t) on local_m grid
+	// std::vector<size_t> shape = { n,n };
+	// xt::xarray<cxd, xt::layout_type::row_major> psi(shape);
 	cxd* psi_copy;      		// backup ψ(x,t) on local_m grid
 	cxd* psi_acc;      		// accumulated ψ(x,t) on local_m grid
 	ind local_n;
@@ -30,9 +49,9 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	ind local_start;
 	ind local_end;
 
-	ind ns[DIM]; //dimensions
-	ind strides[DIM];
-	ind local_ns[DIM]; //dimensions
+	ind shape[DIM + (Components - 1)]; //dimensions
+	ind strides[DIM + (Components - 1)];
+	ind local_shape[DIM]; //dimensions
 	ind local_strides[DIM];
 
 	fftw_plan mpi_plans[2];
@@ -55,6 +74,23 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 		return psi[index];
 	}
 
+	const cxd& operator[](ind index) const
+	{
+		return psi[index];
+	}
+
+	template <class... I>
+	cxd& operator()(I... i)
+	{
+
+	}
+
+	template <class... I>
+	const cxd& operator()(I... i) const
+	{
+
+	}
+
 	Grid(Section& settings) : BaseGrid(settings)
 	{
 		init();
@@ -64,19 +100,24 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	{
 		init();
 	}
-
+	void initHelpers()
+	{
+		logInfo("Using Operator Split Groups (Multiproduct splitting)");
+		psi_copy = (cxd*)fftw_malloc(sizeof(cxd) * local_m);
+		psi_acc = (cxd*)fftw_malloc(sizeof(cxd) * local_m);
+	}
 	void init()
 	{
 		logInfo("Grid Base init %td", n);
 		fftw_mpi_init();
 		local_n = n / MPI::rSize; //Expected split
 		strides[DIM - 1] = 1;
-		ns[DIM - 1] = n;
+		shape[DIM - 1] = n;
 
 		for (int i = DIM - 2; i >= 0; i--)
 		{
-			ns[i] = n; //Size of each dimension
-			strides[i] = ns[i + 1] * strides[i + 1];
+			shape[i] = n; //Size of each dimension
+			strides[i] = shape[i + 1] * strides[i + 1];
 		}
 
 		logSETUP("Setting up " psi_symbol "(x,t) arrays and plans...");
@@ -91,35 +132,40 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 			local_m = fftw_mpi_local_size_1d(n, MPI::rComm, FFTW_FORWARD, MPI::plan_rigor, &local_n, &local_start, &local_n2, &local_start2);
 			// local_m = fftw_mpi_local_size_1d(n, MPI::rComm, FFTW_BACKWARD, plan_rigor, &local_n, &local_start, &local_n2, &local_start2);
 		}
-		else local_m = fftw_mpi_local_size(DIM, ns, MPI::rComm, &local_n, &local_start);
+		else local_m = fftw_mpi_local_size(DIM, shape, MPI::rComm, &local_n, &local_start);
 		psi = (cxd*)fftw_malloc(sizeof(cxd) * local_m);
 		// We should use non-MPI FFTW routines when transform doesn't involve X (is a free coord)
 
 		// Transposing the first two dimensions in not all-dim cases would lead to problems
 		mpiFFTW = sol.bounded[0];
-		const bool canLeaveTransposed = DIM > 1 && MPI::isMain;
+		const bool canLeaveTransposed = DIM > 1 && sol.isMain;
 		int transpose_f[2] = { FFTW_MPI_TRANSPOSED_OUT, FFTW_MPI_TRANSPOSED_IN };
 		int for_back[2] = { FFTW_FORWARD, FFTW_BACKWARD };
 		ind nd[1] = { n };
 
 /* Main region transforms all directions using MPI FFTW, others only use it to transform X */
-		if (mpiFFTW) for (int i = 0; i < 2; i++) //make forward and backward mpi plans
-			mpi_plans[i] = fftw_mpi_plan_many_dft(MPI::isMain ? DIM : 1, //rank
-												  MPI::isMain ? ns : nd, //dims
-												  MPI::isMain ? 1 : m / ns[0], //howmany
-												  FFTW_MPI_DEFAULT_BLOCK, //block 
-												  FFTW_MPI_DEFAULT_BLOCK, //tblock
-												  reinterpret_cast<fftw_complex*>(psi),
-												  reinterpret_cast<fftw_complex*>(psi),
-												  MPI::rComm, for_back[i], MPI::plan_rigor | (canLeaveTransposed ? transpose_f[i] : 0));
+		if (mpiFFTW)
+		{
+			//make forward and backward mpi plans
+			for (int i = 0; i < 2; i++)
+				mpi_plans[i] =
+				fftw_mpi_plan_many_dft(sol.isMain ? DIM : 1, //rank
+									   sol.isMain ? shape : nd, //dims
+									   sol.isMain ? 1 : m / shape[0], //howmany
+									   FFTW_MPI_DEFAULT_BLOCK, //block 
+									   FFTW_MPI_DEFAULT_BLOCK, //tblock
+									   reinterpret_cast<fftw_complex*>(psi),
+									   reinterpret_cast<fftw_complex*>(psi),
+									   MPI::rComm, for_back[i], MPI::plan_rigor | (canLeaveTransposed ? transpose_f[i] : 0));
+		}
 
 /* Non-mpi fftw (extra) plans for non-main region (region!=0)
 transforms are coupled together if involve consecutive directions (case for 1-3D)*/
-		ns[0] = local_n;
+		shape[0] = local_n;
 		int fftw_rank = 0;
 		int start_dim = -1;
 		extra_plans_count = 0;
-		if (!MPI::isMain) for (int i = 1; i <= DIM; i++)
+		if (!sol.isMain) for (int i = 1; i <= DIM; i++)
 		{
 			if (i == DIM || !sol.bounded[i])
 			{
@@ -128,8 +174,8 @@ transforms are coupled together if involve consecutive directions (case for 1-3D
 					fftw_iodim64* dims = new fftw_iodim64[fftw_rank];
 					for (int j = 0; j < fftw_rank; j++)
 					{
-						dims[j] = { ns[start_dim + j], strides[start_dim + j],strides[start_dim + j] };
-						__logMPI("region %d start_dim %d j %d ns[start_dim+j]=%td strides[start_dim+j]=%td\n", MPI::region, start_dim, j, ns[start_dim + j], strides[start_dim + j]);
+						dims[j] = { shape[start_dim + j], strides[start_dim + j],strides[start_dim + j] };
+						__logMPI("region %d start_dim %d j %d shape[start_dim+j]=%td strides[start_dim+j]=%td\n", MPI::region, start_dim, j, shape[start_dim + j], strides[start_dim + j]);
 					}
 
 					//define a loop over all howmany_dims (free) dimensions
@@ -140,9 +186,9 @@ transforms are coupled together if involve consecutive directions (case for 1-3D
 					{
 						if (j < start_dim || (j >= start_dim + fftw_rank && j < DIM))
 						{
-							howmany_dims[index] = { ns[j], strides[j], strides[j] };
+							howmany_dims[index] = { shape[j], strides[j], strides[j] };
 							index++;
-							__logMPI("region %d start_dim %d index %d j %d ns[j]=%td dist[j]=%td\n", MPI::region, start_dim, index, j, ns[j], strides[j]);
+							__logMPI("region %d start_dim %d index %d j %d shape[j]=%td dist[j]=%td\n", MPI::region, start_dim, index, j, shape[j], strides[j]);
 						}
 					};
 					for (int k = 0; k < 2; k++)
@@ -211,6 +257,7 @@ transforms are coupled together if involve consecutive directions (case for 1-3D
 			}
 		}
 	}
+
 	inline void reset()
 	{
 		resetArray(psi);
@@ -230,7 +277,6 @@ transforms are coupled together if involve consecutive directions (case for 1-3D
 		for (ind i = 0; i < local_m; i++) psi[i] = psi_copy[i];
 	}
 
-
 	void accumulate(double coeff)
 	{
 		for (ind i = 0; i < local_m; i++) psi_acc[i] += coeff * psi[i];
@@ -241,6 +287,7 @@ transforms are coupled together if involve consecutive directions (case for 1-3D
 		for (ind i = 0; i < local_m; i++)
 			psi[i] = coeff * psi[i] + psi_acc[i];
 	}
+
 	inline void normalizeAfterTwoFFT()
 	{
 		switch (sol.freeCoord)
@@ -262,14 +309,14 @@ transforms are coupled together if involve consecutive directions (case for 1-3D
 	template <REP R>
 	inline void fourier()
 	{
-		Timings::measure::start("FFTW");
+		// Timings::measure::start("FFTW");
 		static_assert(R == REP::X || R == REP::P, "Can only transform to X or P, unambigously.");
 		constexpr size_t shift = R == REP::P ? 0 : 1;
 		if (mpiFFTW) fftw_execute(mpi_plans[shift]);
 		for (int i = 0; i < extra_plans_count; i++)
 			fftw_execute(extra_plans[i + DIM * shift]);
 		if constexpr (shift) premultiplyArray(psi, inv_m * (pow(n, DIM - sol.boundedCoordDim)));
-		Timings::measure::stop("FFTW");
+		// Timings::measure::stop("FFTW");
 
 	}
 	void post_step()
@@ -436,22 +483,22 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 												 MPI::rComm, FFTW_FORWARD, MPI::plan_rigor);
 		if (transf_slice[0] == NULL) logInfo("fftw_mpi_plan... (slice) returned NULL");
 
-		ind ns[DIM];
-		ns[0] = local_n;
+		ind shape[DIM];
+		shape[0] = local_n;
 		ind strides[DIM];
 		strides[DIM - 1] = 1;
 		for (int i = 1; i < DIM; i++)
 		{
 			//HACK: very dirty
-			if constexpr (DIM == 2) ns[1] = n;
+			if constexpr (DIM == 2) shape[1] = n;
 			else if constexpr (DIM == 3)
 			{
-				ns[1] = (i == 1 ? n : nCAP);
-				ns[2] = (i == 1 ? nCAP : n);
+				shape[1] = (i == 1 ? n : nCAP);
+				shape[2] = (i == 1 ? nCAP : n);
 			}
 
 			for (int j = DIM - 2; j >= 0; j--)
-				strides[j] = ns[j + 1] * strides[j + 1];
+				strides[j] = shape[j + 1] * strides[j + 1];
 
 			fftw_iodim64 dims[1] = { n , strides[i], strides[i] };
 			fftw_iodim64 howmany_dims[DIM - 1];
@@ -460,11 +507,11 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 			{
 				if (j != i)
 				{
-					howmany_dims[index] = { ns[j], strides[j],strides[j] };
+					howmany_dims[index] = { shape[j], strides[j],strides[j] };
 					index++;
 				}
 			}
-			printf("i=%d ns[i]=%td %td\n", i, ns[i], strides[i]);
+			printf("i=%d shape[i]=%td %td\n", i, shape[i], strides[i]);
 			transf_slice[i] = fftw_plan_guru64_dft(
 				1, dims, DIM - 1, howmany_dims, //rank, dims, howmany_rank, howmany_dims
 				reinterpret_cast<fftw_complex*>(slice),
@@ -778,7 +825,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 
 	void transfer()
 	{
-		Timings::measure::start("TRANSFER");
+		// Timings::measure::start("TRANSFER");
 		for (int gI = 1; gI < MPI::groupCount; gI++)
 		{
 			// logInfo("Moving to group %d", gI);
@@ -804,7 +851,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 			}
 		}
 		if (MPI::group != MPI::groupCount - 1) maskRegion();
-		Timings::measure::stop("TRANSFER");
+		// Timings::measure::stop("TRANSFER");
 	}
 
 	void post_step()

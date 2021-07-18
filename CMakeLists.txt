@@ -22,8 +22,8 @@ if(MPI_FOUND)
   include(CMakePrintHelpers)
   cmake_print_properties(TARGETS MPI::MPI_CXX PROPERTIES INTERFACE_LINK_LIBRARIES)
 endif()
-find_package(FFTW REQUIRED)
-
+find_package(FFTW REQUIRED DOUBLE_MPI_LIB DOUBLE_LIB)
+# find_package(fmt)
 
 add_library(${PROJECT_NAME} INTERFACE)
 # add_library(QSF::QSF ALIAS ${PROJECT_NAME})
@@ -37,29 +37,18 @@ target_include_directories(${PROJECT_NAME} INTERFACE
 # maybe move to project
 # set(CMAKE_CXX_STANDARD 17) # C++17 (for all targets)
 # set_property(TARGET my_app PROPERTY CXX_STANDARD 17) # C++17
+# target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_17)
 target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_17)
+# special workaround for gcc version < 9 to link with std::filesystem libraries
+target_link_libraries(${PROJECT_NAME} INTERFACE $<$<AND:$<CXX_COMPILER_ID:GNU>,$<VERSION_LESS:$<CXX_COMPILER_VERSION>,9.0>>:stdc++fs>)
+
 target_link_libraries(${PROJECT_NAME} INTERFACE MPI::MPI_C)
-target_link_libraries(${PROJECT_NAME} INTERFACE MPI::MPI_CXX)
-
-
+# target_link_libraries(${PROJECT_NAME} INTERFACE MPI::MPI_CXX)
 message(STATUS "FFTW_DOUBLE_LIB_FOUND: ${FFTW_DOUBLE_LIB_FOUND}") 
 message(STATUS "FFTW_DOUBLE_MPI_LIB_FOUND: ${FFTW_DOUBLE_MPI_LIB_FOUND}") 
 target_link_libraries(${PROJECT_NAME} INTERFACE FFTW::Double)
 target_link_libraries(${PROJECT_NAME} INTERFACE FFTW::DoubleMPI)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# target_link_libraries(${PROJECT_NAME} INTERFACE fmt::fmt-header-only)
 
 
 

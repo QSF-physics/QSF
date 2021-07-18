@@ -3,13 +3,12 @@
 #include <mpi.h>
 #include "fftw3-mpi.h"
 #include <map>
+
 namespace MPI
 {
 	/* Current */
 	int group;
 	int region;
-
-
 
 	int groupCount;
 	int regionCount;
@@ -32,7 +31,7 @@ namespace MPI
 	MPI_Group gGroup;
 	MPI_Group rGroup;
 
-	bool isMain; //Whether the current wf interacts in all spatial directions
+
 	// All rigor opt: FFTW_ESTIMATE, FFTW_MEASURE, FFTW_PATIENT, FFTW_EXHAUSTIVE, FFTW_WISDOM_ONLY
 	int plan_rigor = FFTW_MEASURE;
 
@@ -97,11 +96,12 @@ namespace MPI
 	struct Regions<Slices, D, free_coord...>
 	{
 		// static_assert(Power(2, DIM) >= sizeof...(free_coord), "Number of regions must be less than 2^DIM");
+		using MPIStrategy = Slices;
+		//Whether the current wf interacts in all spatial directions
+		bool isMain;
 		bool bounded[intDIMS(D)];
 		FREE_COORD freeCoord;
 		int boundedCoordDim;
-		using MPIStrategy = Slices;
-
 		static constexpr inline bool many = (sizeof...(free_coord) > 1);
 		static constexpr inline FREE_COORD freeCoords[sizeof...(free_coord)]
 		{ free_coord... };
@@ -242,7 +242,7 @@ namespace MPI
 			return true;//region == 4;
 		}
 	};
-};
+}
 
 template <DIMS D, class MPIStrategy>
 struct MultiMPIGrid;

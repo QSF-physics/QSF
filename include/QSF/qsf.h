@@ -16,14 +16,14 @@
 using Section = inipp::Ini<char>::Section;
 
 
-// #include "setup/config.h"
+#include "config.h"
 #include "wf/absorbers.h"
 #include "wf/coords.h"
 #include "wf/computations.h"
 #include "wf/grid.h"
 #include "wf.h"
-#include "dumps.h"
-#include "average.h"
+// #include "dumps.h"
+// #include "average.h"
 #include "coupling.h"
 #include "hamiltonian.h"
 #include "potential.h"
@@ -46,4 +46,4 @@ namespace QSF
 	{
 		MPI_Finalize();
 	}
-};
+}

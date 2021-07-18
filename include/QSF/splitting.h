@@ -44,11 +44,11 @@ struct _SplitChain
 	{
 		// double arr[reps::size];
 		std::array<double, reps::size> arr{};
-		for (int i = 0; i < reps::size; i++) arr[i] = 0;
+		for (uind i = 0; i < reps::size; i++) arr[i] = 0;
 		int i = 0;
 		([&i, &arr]
 		 {
-			 for (int j = 0; j < Base::baseSplitsNumber; j++)
+			 for (uind j = 0; j < Base::baseSplitsNumber; j++)
 				 arr[i + j] += Base::mults[j] * Coeffs::value;
 			 i += (Base::baseSplitsNumber - (Base::canJoin ? 1 : 0));
 		 }(), ...);
@@ -65,7 +65,7 @@ struct MultiProductSplit
 	static constexpr std::string_view name = "MP";
 	using ChainExpander = from_to_t<1, Order>;
 
-	template <size_t N>
+	template <size_t N, size_t Ns>
 	struct SplitCoeff
 	{
 		static constexpr double value = 1.0 / N;
@@ -73,12 +73,12 @@ struct MultiProductSplit
 
 	//this is not necessairly equal to the number of real splits
 	template <size_t N>
-	using InternalSplitExp = ChainExpander;
+	using InternalSplitExp = from_to_t<1, N>;
 
 	template <size_t I, class = InternalSplitExp<I> >
 	struct Chain;
 	template <size_t I, size_t ... Is>
-	struct Chain < I, seq<Is...>> : _SplitChain<Base, SplitCoeff<Is>...>
+	struct Chain < I, seq<Is...>> : _SplitChain<Base, SplitCoeff<I, Is>...>
 	{
 		static constexpr double value = (...* (Is != I ? double(I * I) / (double(I * I) - double(Is * Is)) : 1.0));
 	};
