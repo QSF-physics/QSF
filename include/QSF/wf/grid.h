@@ -1,21 +1,4 @@
-// #include <vector>
-// #define XTENSOR_USE_XSIMD
-// #define XTENSOR_DISABLE_EXCEPTIONS
-// #define XTENSOR_USE_OPENMP
-// #include <xtensor/xarray.hpp>
-// #include <xtensor/xio.hpp>
-// #include <xtensor/xview.hpp>
-// #include <xtensor/xfixed.hpp>
-// #include <xtensor/xreducer.hpp>
-// #include <xtensor/xeval.hpp>
-// #include "xtensor/xmath.hpp"
-// #include "xtensor/xrandom.hpp"
-// #include "xtensor/xsort.hpp"
-// #include "xtensor/xnorm.hpp"
-// #include "xtl/xtype_traits.hpp"
-
-
-template <class BaseGrid, size_t Components, class MPIStrategy = typename BaseGrid::MPIStrategy, class MPIGrids = typename BaseGrid::MPIGrids>
+template <class BaseGrid, uind Components, class MPIStrategy = typename BaseGrid::MPIStrategy, class MPIGrids = typename BaseGrid::MPIGrids>
 struct Grid;
 
 template <class BaseGrid, uind Components>
@@ -34,30 +17,37 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	using BaseGrid::m;
 	using BaseGrid::n;
 	using BaseGrid::inv_m;
+	using BaseGrid::inv_nn;
+	using BaseGrid::inv_n;
 	using BaseGrid::nn;
+
 	using MPISol = MPIGrid<typename BaseGrid::MPIGrids, BaseGrid::D, MPI::Slices>;
+	static constexpr uind DIMC = DIM + (Components > 1 ? 1 : 0);
 
 	MPISol sol;//MPI Solution
+	cxd* psi = nullptr;      			// local ψ(x,t) on local_m grid
 	cxd* psi_total = nullptr; // total ψ on m grid (used for X and P)
-	cxd* psi;      			// local ψ(x,t) on local_m grid
-	// std::vector<size_t> shape = { n,n };
-	// xt::xarray<cxd, xt::layout_type::row_major> psi(shape);
-	cxd* psi_copy;      		// backup ψ(x,t) on local_m grid
-	cxd* psi_acc;      		// accumulated ψ(x,t) on local_m grid
+	cxd* psi_copy = nullptr;      		// backup ψ(x,t) on local_m grid
+	cxd* psi_acc = nullptr;      		// accumulated ψ(x,t) on local_m grid
 	ind local_n;
 	ind local_m;
 	ind local_start;
 	ind local_end;
+	ind shape[DIMC];
+	ind reverse_shape[DIMC];
+	ind strides[DIMC];
+	ind full_shape[DIMC];
+	ind full_strides[DIMC];
 
-	ind shape[DIM + (Components - 1)]; //dimensions
-	ind strides[DIM + (Components - 1)];
-	ind local_shape[DIM]; //dimensions
-	ind local_strides[DIM];
-
-	fftw_plan mpi_plans[2];
 	bool mpiFFTW;
+	fftw_plan mpi_plans[2];
 	fftw_plan extra_plans[2 * DIM];
 	int extra_plans_count;
+
+	const int transpose_f[2] = { FFTW_MPI_TRANSPOSED_OUT, FFTW_MPI_TRANSPOSED_IN };
+	const int for_back[2] = { FFTW_FORWARD, FFTW_BACKWARD };
+
+
 
 	void gather()
 	{
@@ -69,26 +59,30 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 		logMPI("Gathering " psi_symbol "...");
 		MPI_Gather(psi, local_m, MPI_CXX_DOUBLE_COMPLEX, psi_total, local_m, MPI_CXX_DOUBLE_COMPLEX, 0, MPI::rComm);
 	}
+
+
 	cxd& operator[](ind index)
 	{
 		return psi[index];
 	}
-
 	const cxd& operator[](ind index) const
 	{
 		return psi[index];
 	}
 
-	template <class... I>
-	cxd& operator()(I... i)
+	template <uind dim = 0, class I, class... Args>
+	constexpr inline auto data_offset(I i, Args... args) noexcept
 	{
-
+		if constexpr (DIM - 1 == dim) return i * strides[dim];
+		else return i * strides[dim] + data_offset<dim + 1>(args...);
 	}
-
-	template <class... I>
-	const cxd& operator()(I... i) const
+	template <class... I> cxd& operator()(I... i)
 	{
-
+		return psi[data_offset(i...)];
+	}
+	template <class... I> const cxd& operator()(I... i) const
+	{
+		return psi[data_offset(i...)];
 	}
 
 	Grid(Section& settings) : BaseGrid(settings)
@@ -113,12 +107,15 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 		local_n = n / MPI::rSize; //Expected split
 		strides[DIM - 1] = 1;
 		shape[DIM - 1] = n;
-
+		reverse_shape[0] = n;
 		for (int i = DIM - 2; i >= 0; i--)
 		{
 			shape[i] = n; //Size of each dimension
+			reverse_shape[i] = n;
 			strides[i] = shape[i + 1] * strides[i + 1];
 		}
+
+
 
 		logSETUP("Setting up " psi_symbol "(x,t) arrays and plans...");
 		logSETUP("Grid size n (%td) will split into local_n (%td) by rSize (%d)", n, local_n, MPI::rSize);
@@ -138,9 +135,8 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 
 		// Transposing the first two dimensions in not all-dim cases would lead to problems
 		mpiFFTW = sol.bounded[0];
-		const bool canLeaveTransposed = DIM > 1 && sol.isMain;
-		int transpose_f[2] = { FFTW_MPI_TRANSPOSED_OUT, FFTW_MPI_TRANSPOSED_IN };
-		int for_back[2] = { FFTW_FORWARD, FFTW_BACKWARD };
+		bool canLeaveTransposed = DIM > 1 && sol.isMain;
+
 		ind nd[1] = { n };
 
 /* Main region transforms all directions using MPI FFTW, others only use it to transform X */
@@ -158,10 +154,10 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 									   reinterpret_cast<fftw_complex*>(psi),
 									   MPI::rComm, for_back[i], MPI::plan_rigor | (canLeaveTransposed ? transpose_f[i] : 0));
 		}
-
-/* Non-mpi fftw (extra) plans for non-main region (region!=0)
-transforms are coupled together if involve consecutive directions (case for 1-3D)*/
+/* Non-mpi fftw (extra) plans for non-main region (region!=0) transforms are coupled together if involve consecutive directions (case for 1-3D)*/
 		shape[0] = local_n;
+		reverse_shape[DIM - 1] = local_n;
+
 		int fftw_rank = 0;
 		int start_dim = -1;
 		extra_plans_count = 0;
@@ -263,7 +259,7 @@ transforms are coupled together if involve consecutive directions (case for 1-3D
 		resetArray(psi);
 	}
 
-	void backup()
+	inline void backup()
 	{
 		for (ind i = 0; i < local_m; i++)
 		{
@@ -272,9 +268,10 @@ transforms are coupled together if involve consecutive directions (case for 1-3D
 		}
 	}
 
-	void restore()
+	inline void restore()
 	{
-		for (ind i = 0; i < local_m; i++) psi[i] = psi_copy[i];
+		copyArray(psi, psi_copy);
+		// for (ind i = 0; i < local_m; i++) psi[i] = psi_copy[i];
 	}
 
 	void accumulate(double coeff)
@@ -293,15 +290,15 @@ transforms are coupled together if involve consecutive directions (case for 1-3D
 		switch (sol.freeCoord)
 		{
 		case FREE_COORD::NO:
-			premultiplyArray(psi, inv_m); break;
+			multiplyArray(psi, inv_m); break;
 		case FREE_COORD::X:
 		case FREE_COORD::Y:
 		case FREE_COORD::Z:
-			premultiplyArray(psi, 1.0 / nn); break;
+			multiplyArray(psi, inv_nn); break;
 		case FREE_COORD::XY:
 		case FREE_COORD::YZ:
 		case FREE_COORD::XZ:
-			premultiplyArray(psi, 1.0 / n); break;
+			multiplyArray(psi, inv_n); break;
 		default: break;
 		}
 	}
@@ -311,49 +308,62 @@ transforms are coupled together if involve consecutive directions (case for 1-3D
 	{
 		// Timings::measure::start("FFTW");
 		static_assert(R == REP::X || R == REP::P, "Can only transform to X or P, unambigously.");
-		constexpr size_t shift = R == REP::P ? 0 : 1;
-		if (mpiFFTW) fftw_execute(mpi_plans[shift]);
+		constexpr uind back = R == REP::P ? 0 : 1;
+		if (mpiFFTW) fftw_execute(mpi_plans[back]);
 		for (int i = 0; i < extra_plans_count; i++)
-			fftw_execute(extra_plans[i + DIM * shift]);
-		if constexpr (shift) premultiplyArray(psi, inv_m * (pow(n, DIM - sol.boundedCoordDim)));
+			fftw_execute(extra_plans[i + DIM * back]);
+		if constexpr (back) normalizeAfterTwoFFT();
+		//premultiplyArray(psi, inv_m * (pow(n, DIM - sol.boundedCoordDim)));
 		// Timings::measure::stop("FFTW");
-
 	}
+
 	void post_step()
 	{
 
 	}
+
+	// template <class F, AXIS AX>
+	// inline void multiplyWith(F f)
+	// {
+	// 	for (ind i = 0;i < local_m; i++)
+	// 	{
+	// 		psi[i] *= f(...);
+	// 	}
+	// }
 	//BUNCH OF HELPFUL FUNCTIONS
-	inline void copyFullArray(cxd* to, cxd* from)
+	inline void resetArray(cxd* array)
 	{
-		for (ind i = 0; i < m; i++)
-			to[i] = from[i];
+		for (ind i = 0; i < local_m; i++)
+			array[i] = 0.;
+	}
+	inline void multiplyArray(cxd* array, const double mult)
+	{
+		for (ind i = 0; i < local_m; i++)
+			array[i] *= mult;
+	}
+	inline void multiplyArray(cxd* array, const double* mult)
+	{
+		for (ind i = 0; i < local_m; i++)
+			array[i] *= mult[i];
 	}
 	inline void copyArray(cxd* to, cxd* from)
 	{
 		for (ind i = 0; i < local_m; i++)
 			to[i] = from[i];
 	}
+
+	inline void copyFullArray(cxd* to, cxd* from)
+	{
+		for (ind i = 0; i < m; i++)
+			to[i] = from[i];
+	}
+
 	inline void premultiplyFullArray(cxd* array, const double mult)
 	{
 		for (ind i = 0; i < m; i++)
 			array[i] *= mult;
 	}
-	inline void premultiplyArray(cxd* array, const double mult)
-	{
-		for (ind i = 0; i < local_m; i++)
-			array[i] *= mult;
-	}
-	inline void multiplyArrayBy(cxd* array, const double* mult)
-	{
-		for (ind i = 0; i < local_m; i++)
-			array[i] *= mult[i];
-	}
-	inline void resetArray(cxd* array)
-	{
-		for (ind i = 0; i < local_m; i++)
-			array[i] = 0.;
-	}
+
 	inline cxd scalarProduct(cxd* to, cxd* from)
 	{
 		cxd over = 0.;
@@ -384,7 +394,7 @@ transforms are coupled together if involve consecutive directions (case for 1-3D
 
 
 
-template <class BaseGrid, size_t Components>
+template <class BaseGrid, uind Components>
 struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Components, MPI::Slices, MPI::Single>
 {
 	using Base = Grid<BaseGrid, Components, MPI::Slices, MPI::Single>;

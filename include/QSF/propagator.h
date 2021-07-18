@@ -59,6 +59,7 @@ struct SplitPropagator : Config, PropagatorBase
 	static constexpr REP firstREP = SplitType::firstREP;
 	static constexpr std::string_view name = M == MODE::IM ? "IM" : "RE";
 	static constexpr MODE mode = M;
+
 	// static constexpr REP couplesInRep = C::couplesInRep;
 
 	Section settings;
@@ -116,16 +117,15 @@ struct SplitPropagator : Config, PropagatorBase
 
 	//If no match here is found pass to the wavefunction
 	template < REP R, class BO, class COMP, uind...Is>
-	inline void compute(BO& bo, COMP&& c, seq<Is...>&& s)
+	inline void compute(BO& bo, COMP&& c)
 	{
-		wf.template compute<R>(bo, std::move(c), std::move(s));
+		wf.template compute<R>(bo, std::forward<COMP>(c));
 	}
-	template <REP R, class BO, class... Op, uind...Is>
-	inline void compute(BO& bo, PROPAGATOR_VALUE<Op...>&&, seq<Is...>&&)
+	template <REP R, class BO, class... Op>
+	inline void compute(BO& bo, PROPAGATOR_VALUE<Op...>&&)
 	{
 		using T = PROPAGATOR_VALUE<Op...>;
-		// logInfo("returning pos %td %td", Is...);
-		((bo.template storeInBuffer < Is, T>(getOperator(Op{}))), ...);
+		bo.template store <T>(getOperator(Op{}) ...);
 	}
 
 	inline void ditch() {}
@@ -136,7 +136,7 @@ struct SplitPropagator : Config, PropagatorBase
 		using BO = BufferedOutputs<B, COMP...>;
 
 		((COMP::template canRun<firstREP, EARLY>
-		  ? compute<firstREP>(bo, COMP{}, BO::template pos_v<COMP>())
+		  ? compute<firstREP>(bo, COMP{})
 		  : ditch()),
 		 ...);
 
@@ -144,7 +144,7 @@ struct SplitPropagator : Config, PropagatorBase
 		{
 			wf.template fourier<invREP(firstREP)>();
 			((COMP::template canRun<invREP(firstREP), LATE>
-			  ? compute<invREP(firstREP)>(bo, COMP{}, BO::template pos_v<COMP>())
+			  ? compute<invREP(firstREP)>(bo, COMP{})
 			  : ditch()),
 			 ...);
 			wf.template fourier<firstREP>();

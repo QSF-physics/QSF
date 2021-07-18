@@ -52,10 +52,15 @@ struct WF : Grid <GridBase, Components>
 	using InducedGrid = Grid <GridBase, Components>;
 	using InducedGrid::post_step;
 	using InducedGrid::pos;
-	using InducedGrid::local_n;
+	using InducedGrid::local_m;
 	using InducedGrid::DIM;
+	using InducedGrid::DIMC;
 	using InducedGrid::psi;
+	using InducedGrid::shape;
+	using InducedGrid::reverse_shape;
 	using InducedGrid::dx;
+	using InducedGrid::local_start;
+
 	WF(Section& settings) :InducedGrid(settings) {
 		logInfo("WF init");
 	}
@@ -64,31 +69,45 @@ struct WF : Grid <GridBase, Components>
 		logInfo("WF init");
 	}
 
-
 	//TODO: if no match here pass to derived class
-	template <REP R, class BO, class COMP, size_t...Is>
-	inline void compute(BO& bo, COMP&& c, seq<Is...>&& s)
+	template <REP R, class BO, class COMP>
+	inline void compute(BO& bo, COMP&& c)
 	{
-		((bo.template storeInBuffer < Is, COMP>(1.0)), ...);
+		bo.template store <COMP>(1.0);
 	}
 
-	template <REP R, class BO, AXIS AX, class... Op, size_t...Is>
-	inline void compute(BO& bo, AVG<AX, Op...>&&, seq<Is...>&&)
-	{
-		using T = AVG<AX, Op...>;
 
-		double res = 0;
-		([&]
-		 {
-			 res = 0;
-			 for (ind i = 0; i < local_n; i++)
-			 {
-				 res += std::norm(psi[i]) *
-					 static_cast<Hamiltonian*>(this)->
-					 template call < Op >(InducedGrid::template pos<R>(i));
-			 }
-			 bo.template storeInBuffer < Is, T>(res);
-		 }(), ...);
+	template <REP R, class Op, uind ... Is>
+	double average(seq<Is...>)
+	{
+		// logInfo("%td %td %td %td", shape[0], shape[1], shape[2], sizeof...(Is));
+		ind idxs[DIMC + 1]{ 0 };
+		double res;
+		do {
+			// if (R == REP::X)
+				// logInfo("%td/%td", idxs[DIMC], local_m);
+				// logInfo("[%2td %2td %2td] [%2td %2td %2td] %td %td", idxs[Is]..., reverse_shape[0], reverse_shape[1], reverse_shape[2], sizeof...(Is), idxs[DIMC]);
+			res += static_cast<Hamiltonian*>(this)->template call < Op >(InducedGrid::template pos<R>(idxs[Is] + (Is ? 0 : local_start))...) * std::norm(psi[idxs[DIMC]]);
+
+		} while (!((
+			(idxs[Is]++, idxs[Is] < reverse_shape[Is])
+			? (idxs[DIMC]++, false) : (idxs[Is] = 0, true)) && ...));
+		return res * InducedGrid::template vol<R>();
+	}
+
+	template <REP R> //FIXME: should respect propagator firstREP!
+	constexpr auto fftw_aware_indices()
+	{
+		if constexpr (R == REP::P && DIM > 1)
+			return switch_seq<n_seq_t<DIMC>>{};
+		else return n_seq<DIMC>;
+	}
+	template <REP R, class BO, class... Op>
+	inline void compute(BO& bo, AVG<Op...>&&)
+	{
+		using T = AVG<Op...>;
+		bo.template store<T>(average<R, Op>(
+			fftw_aware_indices<R>())...);
 	}
 
 	void addToInitialStateFromEigenstate(size_t index, size_t state, double weight);
@@ -98,6 +117,12 @@ struct WF : Grid <GridBase, Components>
 
 	template <ind SRC, ind ...I>
 	void loadFromRoutine(superpos<I... > sp);
+
+	// template <class F>
+	// void add(F f)
+	// {
+	// 	operator()()
+	// }
 
 	void initPsiByGuess(ind index);
 	template <REP R >

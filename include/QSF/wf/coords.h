@@ -17,8 +17,8 @@ struct CartesianGrid :CoordinateSystem
 	ind nn;
 	ind m;
 	double inv_m;
-	double inv_n;
 	double inv_nn;
+	double inv_n;
 
 	double dV;
 	double dVm;
@@ -34,11 +34,11 @@ struct CartesianGrid :CoordinateSystem
 	double kin_scale;
 
 	template <REP R>
-	inline double vol()
-	{
+	double vol() {
 		if constexpr (R == REP::X) return dV;
 		else return dVm;
 	}
+
 	static constexpr int DIM = intDIMS(Dflag);
 	static constexpr DIMS D = Dflag;
 	void init()
@@ -48,20 +48,20 @@ struct CartesianGrid :CoordinateSystem
 		nn = n * n;
 		m = Power(n, DIM);
 		inv_m = 1.0 / m;
+		inv_nn = 1.0 / nn;
 		inv_n = 1.0 / n;
-		inv_nn = 1 / nn;
 		dV = Power(dx, DIM);
 		dVm = dV * inv_m;
 		L = (dx * (n - 1));
-		xmin = (-0.5 * L);
-		inv_dx = (1.0 / dx);
-		inv_2dx = (inv_dx / 2.0);
+		xmin = -0.5 * L;
+		inv_dx = 1.0 / dx;
+		inv_2dx = inv_dx / 2.0;
 
-		dp = (2.0 * pi / double(n) / dx);
-		pmin = (-pi / dx);
-		pmax = (-pmin - dp);
-		dVP = (Power(dp, DIM));
-		kin_scale = (Power(dp, 2) * 0.5);
+		dp = 2.0 * pi / double(n) / dx;
+		pmin = -pi / dx;
+		pmax = -pmin - dp;
+		dVP = Power(dp, DIM);
+		kin_scale = Power(dp, 2) * 0.5;
 	}
 
 	CartesianGrid(Section& settings)
@@ -90,6 +90,6 @@ struct CartesianGrid :CoordinateSystem
 	double pos(ind index)
 	{
 		if constexpr (R == REP::X) return xmin + index * dx;
-		else return index >= n2 ? index - n : index; //after FFTW 0 freq is at 0 index
+		else return dp * (index >= n2 ? index - n : index); //after FFTW 0 freq is at 0 index
 	}
 };

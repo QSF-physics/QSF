@@ -17,26 +17,6 @@ struct TypeBox
 	using type = getType<N, T...>;
 };
 
-
-template <typename...Ts>
-struct Dumps
-{
-	static constexpr auto size = sizeof...(Ts);
-	using type = Dumps;
-
-	template <REP R, typename WHEN>
-	static inline void run()
-	{
-		(runEach<Ts, R, WHEN>(), ...);
-	}
-
-	template <typename T, REP R, typename WHEN>
-	static inline void runEach()
-	{
-
-	}
-};
-
 template <typename RET, typename ... Ops>
 struct COMPUTATION : _COMPUTATION
 {
@@ -44,26 +24,25 @@ struct COMPUTATION : _COMPUTATION
 	static_assert(((Ops::rep == REP::BOTH ? REP::NONE : Ops::rep) | ... | REP::NONE) != REP::BOTH,
 				  "Single computation cannot contain operators requiring different spaces (X and P).");
 
-	static_assert(std::is_convertible_v<RET, double> || sizeof(RET) % sizeof(double) == 0,
-				  "The size of RET (return type) is not a multiple of double");
+	using returnType = std::remove_const_t<std::remove_reference_t<RET>>;
+	using types = std::remove_const_t<COMPUTATION>;
 
-	using returnT = RET;
-	using types = COMPUTATION;
+	static_assert(std::is_convertible_v<returnType, double> || sizeof(returnType) % sizeof(double) == 0, "The size of returnType is not a multiple of double. Hint: Try casting your type to ");
 
-	static constexpr size_t retTypeSize = std::is_convertible_v<RET, double> ? 1 : (sizeof(RET) / sizeof(double));
+	static constexpr size_t returnTypeSize = std::is_convertible_v<returnType, double> ? 1 : (sizeof(returnType) / sizeof(double));
 
 	//Contains custom value in case of ALLOCS_EIGENSTATES base class
 	using type_seq = n_seq_t<sizeof...(Ops)>;
 	static constexpr size_t returnCount = (sizeof...(Ops));
-	static constexpr auto sizeInBuffer = returnCount * retTypeSize;
+	static constexpr auto sizeInBuffer = returnCount * returnTypeSize;
 
 	template <typename Op>
 	static constexpr bool holdsOp = (std::is_same_v<Op, Ops> || ... || false);
 	template <typename Op>
-	static constexpr size_t bufferIndexOp = Index_v<Op, Ops...>*retTypeSize;
+	static constexpr size_t bufferIndexOp = Index_v<Op, Ops...>*returnTypeSize;
 
-	// using bufferOffsets = accumulate<mult_seq_t <retTypeSize, n_seq_t<returnCount>>>;
-	using bufferOffsets = mult_seq_t <retTypeSize, n_seq_t<returnCount>>;
+	// using bufferOffsets = accumulate<mult_seq_t <returnTypeSize, n_seq_t<returnCount>>>;
+	using bufferOffsets = mult_seq_t <returnTypeSize, n_seq_t<returnCount>>;
 
 	static constexpr REP rep = (Ops::rep | ...);
 	static constexpr inline std::string_view formatting = FMT_DOUBLE;
@@ -77,7 +56,7 @@ struct COMPUTATION : _COMPUTATION
 	// template <MODE M, REP R, OPTIMS opts> inline static void forerunner() {}
 };
 
-template <AXIS AX, typename Op > struct AVG : COMPUTATION <double, Op>, _RBUFFER
+template <class Op> struct AVG : COMPUTATION <double, Op>, _RBUFFER
 {
 	template <REP R, typename WHEN>
 	static constexpr bool canRun = COMPUTATION<double, Op>::template goodRep<R>;
@@ -85,7 +64,7 @@ template <AXIS AX, typename Op > struct AVG : COMPUTATION <double, Op>, _RBUFFER
 	static constexpr std::string_view name = "AVG_";
 };
 
-template <AXIS AX, typename Op> struct IMMEDIATE_AVG : COMPUTATION <double, Op>, _XBUFFER
+template <class Op> struct IMMEDIATE_AVG : COMPUTATION <double, Op>, _XBUFFER
 {
 	static constexpr std::string_view name = "AVG_";
 
@@ -156,8 +135,7 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 	template <typename T>
 	using pos = offset_seq_t<offset<T>(), typename T::bufferOffsets>;
 
-	template <typename T>
-	static constexpr auto pos_v() { return pos<T>{}; }
+
 	// using all_pos = concat_all_seq<pos<Ts>...>;
 
 	int bufferHeight;
@@ -225,50 +203,56 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 		// closeFile(file_dat);
 	}
 
-	inline void ditch() {}
+
 // template <size_t pos, size_t offset, bool usingReduceBuffer, typename RetT>
-	template <size_t pos, class COMP, typename RetT = typename COMP::returnT>
-	inline void storeInBuffer(RetT val)
+
+
+	template <class COMP, class...Op>
+	void store(Op...val)
 	{
-		// logInfo("would store %s at %td", typeid(COMP).name(), pos);
+		using returnType = typename COMP::returnType;
 		constexpr bool usingReduceBuffer = usesReduceBuffer<COMP>;
-		// logInfo("About to stack... %td %d %g", pos, usingReduceBuffer, val);
+		size_t pos = offset<COMP>();
+		// logInfo("About to stack %s  at pos %td using rbuff %d", typeid(COMP).name(), pos, usingReduceBuffer);
 
-		if constexpr (std::is_same_v<std::remove_const_t<RetT>, double> || std::is_convertible_v<RetT, double>)
-		{
-			// logInfo("here %d", xbufferCurrentLine);
-			if constexpr (usingReduceBuffer) rbuffer[rbufferCurrentLine + pos] = val;
-			else if (!MPI::pID)
+		([&] {
+
+			if constexpr (std::is_same_v<returnType, double> || std::is_convertible_v<returnType, double>)
 			{
-				// logInfo("Stacked at %td ", xbufferCurrentLine + pos);
-				xbuffer[xbufferCurrentLine + pos] = val;
+				// logInfo("vals %g %g", val...);
+				if constexpr (usingReduceBuffer) rbuffer[rbufferCurrentLine + pos] = val;
+				else if (!MPI::pID)
+				{
+					// logInfo("Stacked at %td ", xbufferCurrentLine + pos);
+					xbuffer[xbufferCurrentLine + pos] = val;
+				}
+				// logInfo("here2");
 			}
-			// logInfo("here2");
-		}
-		else if constexpr (std::is_same_v<std::remove_const_t<RetT>, cxd>)
-		{
-			if constexpr (usingReduceBuffer)
+			else if constexpr (std::is_same_v<returnType, cxd>)
 			{
-				rbuffer[rbufferCurrentLine + pos] = val.real();
-				rbuffer[rbufferCurrentLine + pos + 1] = val.imag();
+				if constexpr (usingReduceBuffer)
+				{
+					rbuffer[rbufferCurrentLine + pos] = val.real();
+					rbuffer[rbufferCurrentLine + pos + 1] = val.imag();
+				}
+				else if (!MPI::pID)
+				{
+					xbuffer[xbufferCurrentLine + pos] = val.real();
+					xbuffer[xbufferCurrentLine + pos + 1] = val.imag();
+				}
 			}
-			else if (!MPI::pID)
+			else
 			{
-				xbuffer[xbufferCurrentLine + pos] = val.real();
-				xbuffer[xbufferCurrentLine + pos + 1] = val.imag();
+				constexpr size_t RetTsize = sizeof(returnType) / sizeof(double);
+				for (int i = 0; i < RetTsize; i++)
+				{
+					if constexpr (usingReduceBuffer)rbuffer[rbufferCurrentLine + pos + i] = val[i];
+					else if (!MPI::pID)  xbuffer[xbufferCurrentLine + pos + i] = val[i];
+				}
 			}
-		}
-		else
-		{
-			constexpr size_t RetTsize = sizeof(RetT) / sizeof(double);
-			for (int i = 0; i < RetTsize; i++)
-			{
-				if constexpr (usingReduceBuffer)rbuffer[rbufferCurrentLine + pos + i] = val[i];
-				else if (!MPI::pID)  xbuffer[xbufferCurrentLine + pos + i] = val[i];
-			}
-		}
+			pos += COMP::returnTypeSize;
+		 }(), ...);
 	}
-
 	// template <MODE M, typename WHEN, REP R, class PROP>
 	// inline void compute(const PROP& propagator)
 	// {
@@ -514,8 +498,69 @@ template <typename ... Ts>
 using BufferedTextOutputs = BufferedOutputs<false, Ts...>;
 
 
+/*
+template <typename...Ts>
+struct Dumps
+{
+	static constexpr auto size = sizeof...(Ts);
+	using type = Dumps;
+
+	template <REP R, typename WHEN>
+	static inline void run()
+	{
+		(runEach<Ts, R, WHEN>(), ...);
+	}
+
+	template <typename T, REP R, typename WHEN>
+	static inline void runEach()
+	{
+
+	}
+}; */
 
 
+/*
+template <size_t pos, class COMP, typename RetT = typename COMP::returnT>
+	inline void storeInBuffer(RetT val)
+	{
+		// logInfo("would store %s at %td", typeid(COMP).name(), pos);
+		constexpr bool usingReduceBuffer = usesReduceBuffer<COMP>;
+		// logInfo("About to stack... %td %d %g", pos, usingReduceBuffer, val);
+
+		if constexpr (std::is_same_v<std::remove_const_t<RetT>, double> || std::is_convertible_v<RetT, double>)
+		{
+			// logInfo("here %d", xbufferCurrentLine);
+			if constexpr (usingReduceBuffer) rbuffer[rbufferCurrentLine + pos] = val;
+			else if (!MPI::pID)
+			{
+				// logInfo("Stacked at %td ", xbufferCurrentLine + pos);
+				xbuffer[xbufferCurrentLine + pos] = val;
+			}
+			// logInfo("here2");
+		}
+		else if constexpr (std::is_same_v<std::remove_const_t<RetT>, cxd>)
+		{
+			if constexpr (usingReduceBuffer)
+			{
+				rbuffer[rbufferCurrentLine + pos] = val.real();
+				rbuffer[rbufferCurrentLine + pos + 1] = val.imag();
+			}
+			else if (!MPI::pID)
+			{
+				xbuffer[xbufferCurrentLine + pos] = val.real();
+				xbuffer[xbufferCurrentLine + pos + 1] = val.imag();
+			}
+		}
+		else
+		{
+			constexpr size_t RetTsize = sizeof(RetT) / sizeof(double);
+			for (int i = 0; i < RetTsize; i++)
+			{
+				if constexpr (usingReduceBuffer)rbuffer[rbufferCurrentLine + pos + i] = val[i];
+				else if (!MPI::pID)  xbuffer[xbufferCurrentLine + pos + i] = val[i];
+			}
+		}
+	} */
 // template <typename...T>
 // struct Run :TypeBox<T...>
 // {

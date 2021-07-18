@@ -56,9 +56,9 @@ namespace Schrodinger
 				return operator() < REP::P > (coords...);
 			else if constexpr (std::is_same_v<Op, PotentialEnergy>)
 			{
-				return operator() < REP::X > (coords...);
+				return 1.0;//operator() < REP::X > (coords...);
 			}
-			else if constexpr (std::is_same_v<Op, KineticEnergy>)
+			else //if constexpr (std::is_same_v<Op, KineticEnergy>)
 				return 3.0;
 		}
 

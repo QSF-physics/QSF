@@ -137,7 +137,7 @@ template <size_t N> constexpr static auto up_to = up_to_t<N>{};
 template <size_t S, size_t E> constexpr static auto from_to = from_to_t<S, E>{};
 
 
-namespace impl
+namespace detail
 {
 	template <class, size_t, class>
 	struct accumulate;
@@ -151,11 +151,29 @@ namespace impl
 		using type = seq<Is...>;
 	};
 }
-// template<class>
-// struct accumulate;
-
 template<typename SEQ>
-using accumulate = typename impl::accumulate<seq<>, 0, SEQ>::type;
+using accumulate = typename detail::accumulate<seq<>, 0, SEQ>::type;
+
+namespace detail
+{
+	template <class>
+	struct switch_first_two_indices;
+
+	template <size_t I>
+	struct switch_first_two_indices < seq<I>>
+	{
+		using type = seq<I>;
+	};
+
+	template <size_t I, size_t I2, size_t... Is>
+	struct switch_first_two_indices < seq<I, I2, Is...>>
+	{
+		using type = seq<I2, I, Is...>;
+	};
+}
+template<typename SEQ>
+using switch_seq = typename detail::switch_first_two_indices<SEQ>::type;
+
 
 namespace detail
 {
