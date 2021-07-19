@@ -27,22 +27,19 @@ namespace Schrodinger
 		// V pot;
 		// static constexpr REP rep = REP::BOTH;
 		// static constexpr string_view name = "Schrodinger";
-
+		template <REP R, typename ... Args>
+		double couple(Args ... args)
+		{
+			if constexpr (C_Op::couplesInRep == R && C_Op::size)
+				return ((args * coupling[AXIS::NO]) + ...);
+			else return 0.0;
+		}
 		template < REP R, typename ... Args>
 		inline double operator()(Args ... args)
 		{
 			if constexpr (R == REP::P)
-			{
-				if constexpr (C_Op::couplesInRep == R && C_Op::size)
-					return (InducedGrid::kin_scale * (Power(args, 2) + ...) - ((args * coupling[AXIS::NO]) + ...));
-				else return InducedGrid::kin_scale * (Power(args, 2) + ...);
-			}
-			else if (R == REP::X)
-			{
-				if constexpr (C_Op::couplesInRep == R && C_Op::size)
-					return (potential(args...) + ((args * coupling[AXIS::NO]) + ...));
-				else return potential(args...);
-			}
+				return InducedGrid::kin_scale * (Power(args, 2) + ...) - couple<R>(args...);
+			else return potential(args...) + couple<R>(args...);
 		}
 
 
