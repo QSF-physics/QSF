@@ -82,10 +82,10 @@ struct WF : Grid <GridBase, Components>
 	{
 		ind idxs[DIMC + 1] = { 0 };
 		do {
-
 			psi[idxs[DIMC]] *=
-				static_cast<Hamiltonian*>(this)->template expOp < M >(
-					static_cast<Hamiltonian*>(this)->template call<std::conditional_t<R == REP::P, KineticEnergy, PotentialEnergy>>(InducedGrid::template pos<R>(idxs[Is] + (Is == DIMC - 1 ? local_start : 0))...));
+				static_cast<Hamiltonian*>(this)->
+				template expOp < M, R>(
+					delta * static_cast<Hamiltonian*>(this)->template call<std::conditional_t<R == REP::P, KineticEnergy, PotentialEnergy>>(InducedGrid::template pos<R>(idxs[Is] + (Is == DIMC - 1 ? local_start : 0))...));
 
 		} while (!((
 			(idxs[Is]++, idxs[Is] < reverse_shape[Is])
@@ -154,10 +154,11 @@ struct WF : Grid <GridBase, Components>
 			? (idxs[DIMC]++, false) : (idxs[Is] = 0, true)) && ...));
 		return res * InducedGrid::template vol<R>();
 	}
-
+	/* Due to FFTW flag FFTW_MPI_TRANSPOSED_OUT we need to  switch
+	x<->y for DIM>1 */
 	template <REP R> //FIXME: should respect propagator firstREP!
 	constexpr auto fftw_aware_indices()
-	{
+	{	//FIXME: | !MPI::region
 		if constexpr (R == REP::P && DIM > 1)
 			return switch_seq<n_seq_t<DIMC>>{};
 		else return n_seq<DIMC>;
@@ -170,14 +171,53 @@ struct WF : Grid <GridBase, Components>
 		bo.template store<T>(average<R, Op>(fftw_aware_indices<R>())...);
 	}
 #pragma endregion Computations
+
+#pragma region Operations
 	template <REP R>
-	auto immediate(Normalize)
+	inline auto immediate(Normalize)
 	{
 		auto res = average<R, Identity>(fftw_aware_indices<R>());
 		MPI::reduceImmediataly(&res);
 		InducedGrid::multiplyArray(psi, sqrt(1.0 / res));
 		// return res;
 	}
+
+	template <REP R>
+	inline auto immediate(Symmetrize)
+	{
+
+	}
+
+	template <REP R>
+	inline auto immediate(AntiSymmetrize)
+	{
+
+	}
+	template <REP R>
+	inline auto immediate(Orthogonalize)
+	{
+		// if (state > 0)
+		// {
+		// 	int lower = 0;
+		// 	([&] {
+		// 		if (lower < state)
+		// 			amplits[lower] = _CO_PROJ<IdentityOperator<REP::X | REP::P>>::template calc<R, opt, integral_constant<size_t, Args>>();
+		// 		lower++;
+		// 	 }(), ...);
+
+		// 	MPI::reduceImmediataly(amplits, amplits_size);
+		// 	for (lower = 0; lower < state; lower++)
+		// 	{
+		// 		cplxd* ei = wf->states[lower];
+		// 		for (i = 0; i < local_m; i++)
+		// 			wf[i] = wf[i] - amplits[lower] * ei[i];
+		// 	}
+		// }
+		// auto res = average<R, Identity>(fftw_aware_indices<R>());
+		// MPI::reduceImmediataly(&res);
+		// InducedGrid::multiplyArray(psi, sqrt(1.0 / res));
+	}
+
 	template <REP R, class BO, class... Op>
 	inline void compute(BO& bo, EARLY_OPERATION<Op...>&&)
 	{
@@ -186,6 +226,7 @@ struct WF : Grid <GridBase, Components>
 		(immediate<R>(Op{}), ...);
 		// bo.template store<T>(average<R, Op>(fftw_aware_indices<R>())...);
 	}
+#pragma endregion
 
 #pragma region InitialConditions
 	void setConstantValue(cxd val)
@@ -217,6 +258,11 @@ struct WF : Grid <GridBase, Components>
 	void addUsingNodeFunction(F&& f)
 	{
 		add<F, R, false>(std::forward<F>(f), fftw_aware_indices<R>());
+	}
+
+	void addFromFile()
+	{
+
 	}
 
 #pragma endregion InitialConditions

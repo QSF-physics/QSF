@@ -71,7 +71,7 @@ struct CouplingBase<DipoleApprox, Fields...> : _XBUFFER
 	// void reset() { last_values{ 0 }; last_values_backup{ 0 }; }
 	double operator[](AXIS ax)
 	{
-		return last_values[ax];
+		return last_values[int(ax)];
 	}
 };
 
@@ -119,6 +119,10 @@ struct DipoleCoupling<VelocityGauge, Fields...> : CouplingBase<DipoleApprox, Fie
 			//  }(), ...);
 			// lastTime = timer;
 		}
+	}
+	inline double operator()()
+	{
+
 	}
 	// using base::fields;
 };

@@ -103,9 +103,9 @@ enum class AXIS : ind
 
 enum class WHEN : ind
 {
-	AT_START = 0,
 	AT_END = -1,
-	DURING,
+	AT_START = 0,
+	DURING = 1,
 };
 
 using FREE_COORD = AXIS;

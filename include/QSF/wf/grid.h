@@ -20,7 +20,9 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	using BaseGrid::inv_nn;
 	using BaseGrid::inv_n;
 	using BaseGrid::nn;
-
+	using BaseGrid::xmin;
+	using BaseGrid::dx;
+	using BaseGrid::D;
 	using MPISol = MPIGrid<typename BaseGrid::MPIGrids, BaseGrid::D, MPI::Slices>;
 	static constexpr uind DIMC = DIM + (Components > 1 ? 1 : 0);
 
@@ -323,7 +325,21 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	{
 
 	}
+	void save()
+	{
+		gather();
+		if (!MPI::rID)
+		{
 
+			logDUMPS("Dumping " psi_symbol " in X rep");
+
+			FILE* file = openPsi< AFTER<>, REP::X, D, IO_ATTR::WRITE>("name", 0, 0, true);
+			//HACK: change second false to true after done with Dmitry!
+			writePsiBinaryHeader<D>(file, xmin, -xmin, dx, DUMP_FORMAT{ true, true, true, true, false });
+			fwrite(psi_total, sizeof(cxd), m, file);
+			fclose(file);
+		}
+	}
 	//BUNCH OF HELPFUL FUNCTIONS
 	inline void resetArray(cxd* array)
 	{

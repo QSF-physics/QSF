@@ -34,15 +34,13 @@ namespace Schrodinger
 			if constexpr (R == REP::P)
 			{
 				if constexpr (C_Op::couplesInRep == R && C_Op::size)
-					return (InducedGrid::kin_scale * (Power(args, 2) + ...) +
-							C_Op::template operator() < R, OPTIMS::NONE > (args...));
+					return (InducedGrid::kin_scale * (Power(args, 2) + ...) - ((args * coupling[AXIS::NO]) + ...));
 				else return InducedGrid::kin_scale * (Power(args, 2) + ...);
 			}
 			else if (R == REP::X)
 			{
 				if constexpr (C_Op::couplesInRep == R && C_Op::size)
-					return (potential(args...) +
-							C_Op::template operator() < R, OPTIMS::NONE > (args...));
+					return (potential(args...) + ((args * coupling[AXIS::NO]) + ...));
 				else return potential(args...);
 			}
 		}
@@ -63,7 +61,7 @@ namespace Schrodinger
 		}
 
 
-		template <MODE M>
+		template <MODE M, REP R>
 		auto expOp(double val)
 		{
 			if constexpr (M == MODE::IM)

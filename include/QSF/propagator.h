@@ -152,7 +152,7 @@ struct SplitPropagator : Config, PropagatorBase
 			 ...);
 			fourier<firstREP>();
 		}
-		else if (step < 2)
+		else if (step < 1)
 		{
 			logWarning("Computations do not require FFT, if you need to output wavefunction in the opposite REP make sure to export the WF explicitly in the desired REP.");
 		}
@@ -250,7 +250,7 @@ struct SplitPropagator : Config, PropagatorBase
 	void run(OUTS&& outputs, Worker&& worker, uind pass = 0)
 	{
 		outputs.initLogger(M, pass, name);
-		worker(step, pass, wf);
+		worker(WHEN::AT_START, step, pass, wf);
 		computeEach(outputs);
 		outputs.template logOrPass<WHEN::AT_START>(step);
 		while (stillEvolving())
@@ -259,30 +259,31 @@ struct SplitPropagator : Config, PropagatorBase
 			computeEach(outputs);
 			wf.post_step();
 			outputs.template logOrPass<WHEN::DURING>(step);
-			worker(step, pass, wf);
-		   // outputs.template logOrPass<DURING<>>(step);
+			worker(WHEN::DURING, step, pass, wf);
+		  // outputs.template logOrPass<DURING<>>(step);
 		}
 		makeStep(ChainExpander{});
 		computeEach(outputs);
 		wf.post_step();
 		outputs.template logOrPass<WHEN::AT_END>(step);
-		worker(step, pass, wf);
-		// HACK: This makes sure, the steps are always evenly spaced
-		// step += (outputs.comp_interval - 1);
-		// Evolution::incrementBy(outputs.comp_interval);
-		/* if (imaginaryTimeQ)
-		{
-			Eigen::store<startREP>(state, PASS, energy);
-			Eigen::saveEnergyInfo(RT::name, state, PASS, energy, dE);
-			energy = 0;
-			energy_prev = 0;
-			dE = 0;
-		}  */
+		worker(WHEN::AT_END, step, pass, wf);
+	   // HACK: This makes sure, the steps are always evenly spaced
+	   // step += (outputs.comp_interval - 1);
+	   // Evolution::incrementBy(outputs.comp_interval);
+	   /* if (imaginaryTimeQ)
+	   {
+		   Eigen::store<startREP>(state, PASS, energy);
+		   Eigen::saveEnergyInfo(RT::name, state, PASS, energy, dE);
+		   energy = 0;
+		   energy_prev = 0;
+		   dE = 0;
+	   }  */
 	}
+
 	template <class OUTS>
 	void run(OUTS&& outputs, uind pass = 0)
 	{
-		run<OUTS>(std::forward<OUTS>(outputs), [](ind step, uind pass, const auto& wf) {}, pass);
+		run<OUTS>(std::forward<OUTS>(outputs), [](WHEN when, ind step, uind pass, const auto& wf) {}, pass);
 	}
 
 	template <class OUTS, class Worker>
@@ -294,7 +295,7 @@ struct SplitPropagator : Config, PropagatorBase
 	template <class OUTS>
 	void run(uind pass = 0)
 	{
-		run<OUTS>([](ind step, uind pass, const auto& wf) {}, pass);
+		run<OUTS>([](WHEN when, ind step, uind pass, const auto& wf) {}, pass);
 	}
 
 #pragma endregion Runner

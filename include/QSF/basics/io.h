@@ -104,7 +104,7 @@ template <typename WHEN, REP R, DIMS D, IO_ATTR ATTR>
 inline FILE* openPsi(std::string_view name, int state, ind step, bool binary)
 {
 	sprintf(char_label, "%s%d", name.data(), state);
-	if (std::is_base_of_v<DURING, WHEN>) sprintf(char_label, "%s_%td", char_label, step);
+	if (std::is_base_of_v<DURING<>, WHEN>) sprintf(char_label, "%s_%td", char_label, step);
 	return openFile<WHEN, D, ATTR>(char_label,
 								   R == REP::X ? psi_ext : mom_ext,
 								   binary);
