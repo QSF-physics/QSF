@@ -56,7 +56,7 @@ namespace Schrodinger
 				return operator() < REP::P > (coords...);
 			else if constexpr (std::is_same_v<Op, PotentialEnergy>)
 			{
-				return 1.0;//operator() < REP::X > (coords...);
+				return operator() < REP::X > (coords...);
 			}
 			else //if constexpr (std::is_same_v<Op, KineticEnergy>)
 				return 3.0;
@@ -75,43 +75,7 @@ namespace Schrodinger
 		using Base::local_start;
 		using Base::DIM;
 
-		template <MODE M, REP R>
-		void evolve(double delta)
-		{
-			// for (ind i = 0; i < local_n; i++)
-			// {
-			// 	if constexpr (DIM == 1)
-			// 		psi[i] *= expOp<M>(delta * operator() < R, OPTIMS::NONE > (i + local_start));
-			// 	else
-			// 	{
-			// 		ind readInd1 = i * InducedGrid::n;
-			// 		//Due to FFTW flag FFTW_MPI_TRANSPOSED_OUT we need to switch x<->y for DIM>1
-			// 		for (ind j = 0; j < InducedGrid::n; j++)
-			// 		{
-			// 			ind readInd2 = readInd1 + j;
-			// 			if constexpr (DIM == 2)
-			// 			{
-			// 				if (R == REP::X || MPI::region)
-			// 					psi[readInd2] *= expOp<M>(delta * operator() < R, OPTIMS::NONE > (i + local_start, j));
-			// 				else
-			// 					psi[readInd2] *= expOp<M>(delta * operator() < R, OPTIMS::NONE > (j, i + local_start));
-			// 			}
-			// 			else
-			// 			{
-			// 				ind readInd2 = readInd2 * InducedGrid::n;
-			// 				for (ind k = 0; k < InducedGrid::n; k++)
-			// 				{
-			// 					ind readInd3 = readInd2 + k;
-			// 					if (R == REP::X || MPI::region)
-			// 						psi[readInd3] *= expOp<M>(delta * operator() < R, OPTIMS::NONE > (i + local_start, j, k));
-			// 					else
-			// 						psi[readInd3] *= expOp<M>(delta * operator() < R, OPTIMS::NONE > (j, i + local_start, k));
-			// 				}
-			// 			}
-			// 		}
-			// 	}
-			// }
-		}
+
 
 	};
 }

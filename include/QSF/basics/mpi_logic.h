@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <mpi.h>
+#include "fftw3.h"
 #include "fftw3-mpi.h"
 #include <map>
 

@@ -56,11 +56,14 @@ struct _SplitChain
 
 	}
 	static constexpr auto mults = pack();
+	template <uind N>
+	static constexpr REP rep = REP(nth_seq_elem<N>(reps{}));
 };
 
 template <typename Base, size_t Order>
 struct MultiProductSplit
 {
+	static_assert(Order > 0, "Order of MultiProductSplit method must be 1>=0.");
 	static constexpr REP firstREP = Base::firstREP;
 	static constexpr std::string_view name = "MP";
 	using ChainExpander = from_to_t<1, Order>;

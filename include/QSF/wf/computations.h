@@ -21,7 +21,7 @@ template <typename RET, typename ... Ops>
 struct COMPUTATION : _COMPUTATION
 {
 	//14.07 this is not necessary any longer
-	static_assert(((Ops::rep == REP::BOTH ? REP::NONE : Ops::rep) | ... | REP::NONE) != REP::BOTH,
+	static_assert(((Ops::rep) | ... | REP::NONE) != REP::BOTH,
 				  "Single computation cannot contain operators requiring different spaces (X and P).");
 
 	using returnType = std::remove_const_t<std::remove_reference_t<RET>>;
@@ -44,11 +44,11 @@ struct COMPUTATION : _COMPUTATION
 	// using bufferOffsets = accumulate<mult_seq_t <returnTypeSize, n_seq_t<returnCount>>>;
 	using bufferOffsets = mult_seq_t <returnTypeSize, n_seq_t<returnCount>>;
 
-	static constexpr REP rep = (Ops::rep | ...);
+	static constexpr REP rep = (Ops::rep | ... | REP::NONE);
 	static constexpr inline std::string_view formatting = FMT_DOUBLE;
 	static constexpr inline std::string_view format = repeat_v<returnCount, formatting>;
 
-	template <REP R> static constexpr bool goodRep = bool(R & rep);
+	template <REP R> static constexpr bool goodRep = ((rep == REP::NONE) || bool(R & rep));
 	// template <typename WHEN> static constexpr bool canRun = true;
 
 

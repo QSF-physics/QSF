@@ -43,7 +43,6 @@ struct CartesianGrid :CoordinateSystem
 	static constexpr DIMS D = Dflag;
 	void init()
 	{
-		logInfo("Carte init");
 		n2 = n / 2;
 		nn = n * n;
 		m = Power(n, DIM);
@@ -62,6 +61,11 @@ struct CartesianGrid :CoordinateSystem
 		pmax = -pmin - dp;
 		dVP = Power(dp, DIM);
 		kin_scale = Power(dp, 2) * 0.5;
+		logSETUP("CartesianGrid init");
+		logSETUP("Total number of nodes m: %td, n: %td, grid size L: %g", m, m, L);
+		logSETUP("Grid spacing dx: %g, dp: %g", dx, dp);
+		// logSETUP("pmin:%g p_scale: %g", pmin, p_scale);
+		logSETUP("inv_m:%g inv_nn: %g", inv_m, inv_nn);
 	}
 
 	CartesianGrid(Section& settings)

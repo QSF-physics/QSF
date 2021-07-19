@@ -1,12 +1,3 @@
-
-//index in sequence parameter pack
-template <size_t T, size_t H, size_t... I>
-constexpr size_t index_in_seq()
-{
-	if constexpr (bool(sizeof ...(I))) return T == H ? 0 : 1 + index_in_seq<T, I...>();
-	else return 0;
-}
-
 //basic non-negative integer (index) seq type
 template<size_t... Ns> struct seq
 {
@@ -210,3 +201,38 @@ struct Index<T, U, Ts...> : std::integral_constant<size_t, 1 + Index<T, Ts...>::
 
 template <typename T, typename... Ts>
 constexpr size_t Index_v = Index<T, Ts...>::value;
+
+//index in sequence parameter pack
+template <size_t T, size_t H, size_t... Is>
+constexpr size_t index_in_seq()
+{
+	if constexpr (bool(sizeof ...(Is))) return T == H ? 0 : 1 + index_in_seq<T, Is...>();
+	else return 0;
+}
+
+
+template <size_t N, size_t H, size_t... Is>
+static constexpr size_t nth_seq_elem(seq<H, Is...>)
+{
+	if constexpr (N == 0) return H;
+	else return nth_seq_elem<N - 1>(seq<Is...>{});
+}
+
+
+// namespace detail
+// {
+// 	template <size_t, class>
+// 	struct nth_seq_elem;
+// 	template <size_t N, size_t I, size_t...Is>
+// 	struct nth_seq_elem<N, seq<Is...>>
+// 	{
+// 		type 
+// 	};
+// 	template <size_t N, size_t ...Is>
+// 	struct nth_seq_elem<N, seq<Is...>>
+// 	{
+
+// 	};
+
+// }
+

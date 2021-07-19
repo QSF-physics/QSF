@@ -5,6 +5,7 @@ struct KineticEnergy {
 struct PotentialEnergy {
 	static constexpr REP rep = REP::X;
 };
+
 struct Identity {
 	static constexpr REP rep = REP::NONE;
 };
@@ -33,14 +34,13 @@ struct Normalize
 	static constexpr REP rep = REP::NONE;
 };
 
-// template <typename ... Args>
-// inline double gaussian(double at, double delta, Args...args)
-// {
-// 	double delta_inv = 1 / delta;
-// 	double norm = 1.0 * sqrt(delta_inv * sqrt(1.0 / pi));
-// 	norm = (((Args)norm) *...);
-// 	return exp(-0.5 * (((args - at) * (args - at) * delta_inv * delta_inv) + ...)) * norm;
-// }
+template <typename ... Args>
+inline double gaussian(double at, double delta, Args...args)
+{
+	double delta_inv = 1.0 / delta;
+	double norm = Power(sqrt(delta_inv * sqrt(inv_pi)), sizeof...(Args));
+	return exp(-0.5 * (((args - at) * (args - at) * delta_inv * delta_inv) + ...)) * norm;
+}
 
 template <class Hamiltonian, class GridBase, size_t Components>
 struct WF : Grid <GridBase, Components>
@@ -69,6 +69,7 @@ struct WF : Grid <GridBase, Components>
 		logInfo("WF init");
 	}
 
+#pragma region Computations
 	//TODO: if no match here pass to derived class
 	template <REP R, class BO, class COMP>
 	inline void compute(BO& bo, COMP&& c)
@@ -76,18 +77,77 @@ struct WF : Grid <GridBase, Components>
 		bo.template store <COMP>(1.0);
 	}
 
+	template <MODE M, REP R, uind ... Is>
+	void evolve_internal(double delta, seq<Is...>)
+	{
+		ind idxs[DIMC + 1] = { 0 };
+		do {
+
+			psi[idxs[DIMC]] *=
+				static_cast<Hamiltonian*>(this)->template expOp < M >(
+					static_cast<Hamiltonian*>(this)->template call<std::conditional_t<R == REP::P, KineticEnergy, PotentialEnergy>>(InducedGrid::template pos<R>(idxs[Is] + (Is == DIMC - 1 ? local_start : 0))...));
+
+		} while (!((
+			(idxs[Is]++, idxs[Is] < reverse_shape[Is])
+			? (idxs[DIMC]++, false) : (idxs[Is] = 0, true)) && ...));
+		// for (ind i = 0; i < local_n; i++)
+		// {
+		// 	if constexpr (DIM == 1)
+		// 		psi[i] *= expOp<M>(delta * operator() < R, OPTIMS::NONE > (i + local_start));
+		// 	else
+		// 	{
+		// 		ind readInd1 = i * InducedGrid::n;
+		// 		//Due to FFTW flag FFTW_MPI_TRANSPOSED_OUT we need to switch x<->y for DIM>1
+		// 		for (ind j = 0; j < InducedGrid::n; j++)
+		// 		{
+		// 			ind readInd2 = readInd1 + j;
+		// 			if constexpr (DIM == 2)
+		// 			{
+		// 				if (R == REP::X || MPI::region)
+		// 					psi[readInd2] *= expOp<M>(delta * operator() < R, OPTIMS::NONE > (i + local_start, j));
+		// 				else
+		// 					psi[readInd2] *= expOp<M>(delta * operator() < R, OPTIMS::NONE > (j, i + local_start));
+		// 			}
+		// 			else
+		// 			{
+		// 				ind readInd2 = readInd2 * InducedGrid::n;
+		// 				for (ind k = 0; k < InducedGrid::n; k++)
+		// 				{
+		// 					ind readInd3 = readInd2 + k;
+		// 					if (R == REP::X || MPI::region)
+		// 						psi[readInd3] *= expOp<M>(delta * operator() < R, OPTIMS::NONE > (i + local_start, j, k));
+		// 					else
+		// 						psi[readInd3] *= expOp<M>(delta * operator() < R, OPTIMS::NONE > (j, i + local_start, k));
+		// 				}
+		// 			}
+		// 		}
+		// 	}
+		// }
+	}
+	template <MODE M, REP R>
+	void evolve(double delta)
+	{
+		evolve_internal<M, R>(delta, fftw_aware_indices<R>());
+	}
 
 	template <REP R, class Op, uind ... Is>
 	double average(seq<Is...>)
 	{
 		// logInfo("%td %td %td %td", shape[0], shape[1], shape[2], sizeof...(Is));
 		ind idxs[DIMC + 1]{ 0 };
-		double res;
+		double res = 0.0;
 		do {
+			// logInfo("This will get added %s", typeid(Op).name());
 			// if (R == REP::X)
 				// logInfo("%td/%td", idxs[DIMC], local_m);
 				// logInfo("[%2td %2td %2td] [%2td %2td %2td] %td %td", idxs[Is]..., reverse_shape[0], reverse_shape[1], reverse_shape[2], sizeof...(Is), idxs[DIMC]);
-			res += static_cast<Hamiltonian*>(this)->template call < Op >(InducedGrid::template pos<R>(idxs[Is] + (Is ? 0 : local_start))...) * std::norm(psi[idxs[DIMC]]);
+			// if (R == REP::X)
+				// logInfo("%td %g", idxs[DIMC], std::norm(psi[idxs[DIMC]]));
+
+			if constexpr (std::is_same_v<Op, Identity>)
+				res += std::norm(psi[idxs[DIMC]]);
+			else
+				res += static_cast<Hamiltonian*>(this)->template call < Op >(InducedGrid::template pos<R>(idxs[Is] + (Is == DIMC - 1 ? local_start : 0))...) * std::norm(psi[idxs[DIMC]]);
 
 		} while (!((
 			(idxs[Is]++, idxs[Is] < reverse_shape[Is])
@@ -102,13 +162,64 @@ struct WF : Grid <GridBase, Components>
 			return switch_seq<n_seq_t<DIMC>>{};
 		else return n_seq<DIMC>;
 	}
+
 	template <REP R, class BO, class... Op>
 	inline void compute(BO& bo, AVG<Op...>&&)
 	{
 		using T = AVG<Op...>;
-		bo.template store<T>(average<R, Op>(
-			fftw_aware_indices<R>())...);
+		bo.template store<T>(average<R, Op>(fftw_aware_indices<R>())...);
 	}
+#pragma endregion Computations
+	template <REP R>
+	auto immediate(Normalize)
+	{
+		auto res = average<R, Identity>(fftw_aware_indices<R>());
+		MPI::reduceImmediataly(&res);
+		InducedGrid::multiplyArray(psi, sqrt(1.0 / res));
+		// return res;
+	}
+	template <REP R, class BO, class... Op>
+	inline void compute(BO& bo, EARLY_OPERATION<Op...>&&)
+	{
+		using T = EARLY_OPERATION<Op...>;
+
+		(immediate<R>(Op{}), ...);
+		// bo.template store<T>(average<R, Op>(fftw_aware_indices<R>())...);
+	}
+
+#pragma region InitialConditions
+	void setConstantValue(cxd val)
+	{
+		for (ind i = 0;i < local_m; i++) psi[i] = val;
+	}
+
+	template <class F, REP R, bool coords, uind ... Is>
+	void add(F&& f, seq<Is...>)
+	{
+		// _logMPI("my local_start %td", local_start);
+		ind idxs[DIMC + 1] = { 0 };
+		do {
+			if constexpr (coords)
+				psi[idxs[DIMC]] += f(InducedGrid::template pos<R>(idxs[Is] + (Is == DIMC - 1 ? local_start : 0))...);
+			else psi[idxs[DIMC]] += f((idxs[Is] + (Is == DIMC - 1 ? local_start : 0))...);
+
+		} while (!((
+			(idxs[Is]++, idxs[Is] < reverse_shape[Is])
+			? (idxs[DIMC]++, false) : (idxs[Is] = 0, true)) && ...));
+	}
+
+	template <class F, REP R = REP::X>
+	void addUsingCoordinateFunction(F&& f)
+	{
+		add<F, R, true>(std::forward<F>(f), fftw_aware_indices<R>());
+	}
+	template <class F, REP R = REP::X>
+	void addUsingNodeFunction(F&& f)
+	{
+		add<F, R, false>(std::forward<F>(f), fftw_aware_indices<R>());
+	}
+
+#pragma endregion InitialConditions
 
 	void addToInitialStateFromEigenstate(size_t index, size_t state, double weight);
 

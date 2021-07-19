@@ -13,15 +13,15 @@ inline double ftcos_32s(double x)
 inline double cheap_cos(double angle)
 {
 	//clamp to the range 0..2pi
-	angle = angle - floorf(angle * invtwopi) * twopi;
+	angle = angle - floorf(angle * inv_twopi) * twopi;
 	angle = angle > 0.f ? angle : -angle;
 
-	if (angle < halfpi) return ftcos_32s(angle);
+	if (angle < pi2) return ftcos_32s(angle);
 	if (angle < pi) return -ftcos_32s(pi - angle);
-	if (angle < threehalfpi) return -ftcos_32s(angle - pi);
+	if (angle < threepi2) return -ftcos_32s(angle - pi);
 	return ftcos_32s(twopi - angle);
 }
 inline double cheap_sin(double angle)
 {
-	return cheap_cos(halfpi - angle);
+	return cheap_cos(pi2 - angle);
 }

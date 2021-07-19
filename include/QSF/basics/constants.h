@@ -40,7 +40,8 @@ constexpr double pi = M_PI;
 constexpr auto femtos = 41.34138;	  		// Femtosecond is this many atomic units
 
 
-constexpr double halfpi = pi / 2.0;
-constexpr double invtwopi = 1.0 / pi / 2.0;
+constexpr double pi2 = pi / 2.0;
+constexpr double inv_twopi = 1.0 / pi / 2.0;
+constexpr double inv_pi = 1.0 / pi;
 constexpr double twopi = 2.0 * pi;
-constexpr double threehalfpi = 1.5 * pi;
+constexpr double threepi2 = 1.5 * pi;

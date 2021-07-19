@@ -115,8 +115,6 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 			strides[i] = shape[i + 1] * strides[i + 1];
 		}
 
-
-
 		logSETUP("Setting up " psi_symbol "(x,t) arrays and plans...");
 		logSETUP("Grid size n (%td) will split into local_n (%td) by rSize (%d)", n, local_n, MPI::rSize);
 
@@ -139,7 +137,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 
 		ind nd[1] = { n };
 
-/* Main region transforms all directions using MPI FFTW, others only use it to transform X */
+		/* Main region transforms all directions using MPI FFTW, others only use it to transform X */
 		if (mpiFFTW)
 		{
 			//make forward and backward mpi plans
@@ -215,7 +213,10 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 		local_end = local_start + local_n - 1;
 
 		_logMPI("Region %d MPI::pID: %d got %td nodes or %td rows [start row: %td end row: %td]", MPI::region, MPI::pID, local_m, local_n, local_start, local_end);
-		logSETUP("Psi and forward/backward plans initialized");
+		logSETUP(psi_symbol " and forward/backward plans initialized");
+
+		reset();
+
 		// fftw_print_plan(transf_x2p);
 		// fftw_print_plan(transf_p2x);
 	}
@@ -308,12 +309,13 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	{
 		// Timings::measure::start("FFTW");
 		static_assert(R == REP::X || R == REP::P, "Can only transform to X or P, unambigously.");
+		// logInfo("FFTW into %d", int(R));
 		constexpr uind back = R == REP::P ? 0 : 1;
 		if (mpiFFTW) fftw_execute(mpi_plans[back]);
 		for (int i = 0; i < extra_plans_count; i++)
 			fftw_execute(extra_plans[i + DIM * back]);
 		if constexpr (back) normalizeAfterTwoFFT();
-		//premultiplyArray(psi, inv_m * (pow(n, DIM - sol.boundedCoordDim)));
+		// multiplyArray(psi, inv_m * (pow(n, DIM - sol.boundedCoordDim)));
 		// Timings::measure::stop("FFTW");
 	}
 
@@ -322,22 +324,17 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 
 	}
 
-	// template <class F, AXIS AX>
-	// inline void multiplyWith(F f)
-	// {
-	// 	for (ind i = 0;i < local_m; i++)
-	// 	{
-	// 		psi[i] *= f(...);
-	// 	}
-	// }
 	//BUNCH OF HELPFUL FUNCTIONS
 	inline void resetArray(cxd* array)
 	{
 		for (ind i = 0; i < local_m; i++)
-			array[i] = 0.;
+		{
+			array[i] = 0.0;
+		}
 	}
 	inline void multiplyArray(cxd* array, const double mult)
 	{
+		// logInfo("Multiplying array by %g", mult);
 		for (ind i = 0; i < local_m; i++)
 			array[i] *= mult;
 	}

@@ -1,10 +1,10 @@
 #include "splitting.h"
 
 struct Step {
-	static constexpr REP rep = REP::BOTH;
+	static constexpr REP rep = REP::NONE;
 };
 struct Time {
-	static constexpr REP rep = REP::BOTH;
+	static constexpr REP rep = REP::NONE;
 };
 
 
@@ -50,8 +50,9 @@ struct SplitPropagator : Config, PropagatorBase
 
 	template <uind chain>
 	using Chain = typename SplitType::template Chain<chain>;
-	template <uind chain>
-	using reps = typename Chain<chain>::reps;
+	// template <uind chain>
+	// using reps = typename Chain<chain>::reps;
+
 	template <uind chain>
 	using splits = typename Chain<chain>::splits;
 
@@ -59,15 +60,16 @@ struct SplitPropagator : Config, PropagatorBase
 	static constexpr REP firstREP = SplitType::firstREP;
 	static constexpr std::string_view name = M == MODE::IM ? "IM" : "RE";
 	static constexpr MODE mode = M;
-
+	// static constexpr std::string_view name = SplitType::name;
 	// static constexpr REP couplesInRep = C::couplesInRep;
 
 	Section settings;
-	// static constexpr std::string_view name = SplitType::name;
 	HamWF wf;
 	double energy{ 0 };
 	double dE{ 10.0 };
-	// SplitPropagator(Section& settings) : PropagatorBase(settings), TimeMode<M>(settings), wf(settings), outputs(settings, M) {}
+
+#pragma region Initialization
+
 	void autosetTimestep()
 	{
 		if (dt == 0.0)
@@ -108,9 +110,9 @@ struct SplitPropagator : Config, PropagatorBase
 	{
 		logInfo("SplitPropagation done!\n");
 	}
+#pragma endregion Initialization
 
-
-
+#pragma region Computations
 	// template <typename Op> inline void getOperator(Op);
 	inline double getOperator(Time) { return timer; }
 	inline double getOperator(Step) { return step; }
@@ -119,6 +121,7 @@ struct SplitPropagator : Config, PropagatorBase
 	template < REP R, class BO, class COMP, uind...Is>
 	inline void compute(BO& bo, COMP&& c)
 	{
+		// logInfo("Forwarding %s while in REP %d", typeid(COMP).name(), int(R));
 		wf.template compute<R>(bo, std::forward<COMP>(c));
 	}
 	template <REP R, class BO, class... Op>
@@ -142,19 +145,21 @@ struct SplitPropagator : Config, PropagatorBase
 
 		if constexpr (BO::template needsFFT<firstREP>())
 		{
-			wf.template fourier<invREP(firstREP)>();
+			fourier<invREP(firstREP)>();
 			((COMP::template canRun<invREP(firstREP), LATE>
 			  ? compute<invREP(firstREP)>(bo, COMP{})
 			  : ditch()),
 			 ...);
-			wf.template fourier<firstREP>();
+			fourier<firstREP>();
 		}
 		else if (step < 2)
 		{
 			logWarning("Computations do not require FFT, if you need to output wavefunction in the opposite REP make sure to export the WF explicitly in the desired REP.");
 		}
-
 	}
+#pragma endregion Computations
+
+#pragma region Evolution
 	inline bool stillEvolving()
 	{
 		if constexpr (mode == MODE::RE) return (step <= max_steps);
@@ -164,48 +169,102 @@ struct SplitPropagator : Config, PropagatorBase
 	template <REP R>
 	void fourier()
 	{
+		// logInfo("calling FFTW from propagator %d ", int(invREP(firstREP)));
 		wf.template fourier<R>();
 	}
 
-	template <uind chain, uind ... repI, uind ... SI>
-	inline void evolve(seq<repI...>, seq<SI...>)
+	template <uind chain, uind ... SI>
+	inline void chainEvolve(seq<SI...>)
 	{
-		([&]
-		 {
-			 constexpr REP rep = REP(repI);
-			 wf.template fourier<rep>();
-			//  wf.template precalc<rep, NO_OPTIMIZATIONS>();
-			//  Timings::measure::start(op.name);
-			 wf.template evolve<M, rep>(dt * Chain<chain>::mults[SI]);
-			//  Timings::measure::stop(op.name);
-			 if (step == 4)
-				 logInfo("SplitGroup %td Evolving in REP %td with delta=%g", chain, repI, Chain<chain>::mults[SI]);
-			 if constexpr (REP::BOTH == HamWF::couplesInRep)
-				 incrementBy(Chain<chain>::mults[SI] * 0.5);
-			 else if constexpr (rep == HamWF::couplesInRep)
-				 incrementBy(Chain<chain>::mults[SI] * 1.0);
+		([&] {
+			constexpr REP rep = Chain<chain>::template rep<SI>;
+			if (SI > 0) fourier<rep>();
+			   //  wf.template precalc<rep, NO_OPTIMIZATIONS>();
+			   //  Timings::measure::start(op.name);
+			wf.template evolve<M, rep>(dt * Chain<chain>::mults[SI]);
+		   //  Timings::measure::stop(op.name);
+			if (step == 4)
+				logInfo("SplitGroup %td Evolving in REP %td with delta=%g", chain, ind(rep), Chain<chain>::mults[SI]);
+			if constexpr (REP::BOTH == HamWF::couplesInRep)
+				incrementBy(Chain<chain>::mults[SI] * 0.5);
+			else if constexpr (rep == HamWF::couplesInRep)
+				incrementBy(Chain<chain>::mults[SI] * 1.0);
 		 }(), ...);
 	}
+
+	template <uind... chain>
+	void makeStep(seq<chain...>)
+	{
+		chainBackup();
+		((
+			chainRestore<chain>()
+		//   , Timings::measure::start("EVOLUTION")
+			, chainEvolve<chain>(splits<chain>{})
+		  //   , Timings::measure::stop("EVOLUTION")
+			, chainComplete<chain>()
+			), ...);
+		step++;
+	}
+#pragma endregion Evolution
+
+#pragma region SplitChains
+	template <ind chain> void chainRestore()
+	{
+		if constexpr (chain > 1)
+		{
+			if (step == 4) { logInfo("group %td restore", chain); }
+			time_restore();
+			wf.restore();
+			// HamWF::Coupling::restore();
+		}
+	}
+	template <ind chain> void chainComplete()
+	{
+		if constexpr (ChainCount > 1)
+		{
+			if (step == 4)
+			{
+				logInfo("group %td complete, applying coeff=%g", chain, Chain<chain>::value);
+			}
+			if constexpr (chain == ChainCount - 1)
+				wf.collect(Chain<chain>::value);
+			else wf.accumulate(Chain<chain>::value);
+
+		}
+	}
+	void chainBackup()
+	{
+		if constexpr (ChainCount > 1)
+		{
+			if (step == 4) { logInfo("group backup because ChainCount=%td", ChainCount); }
+			wf.backup();
+			time_backup();
+			// HamWF::Coupling::backup();
+		}
+	}
+#pragma endregion splitChains
+
+#pragma region Runner
 
 	template <class OUTS, class Worker>
 	void run(OUTS&& outputs, Worker&& worker, uind pass = 0)
 	{
 		outputs.initLogger(M, pass, name);
+		worker(step, pass, wf);
 		computeEach(outputs);
 		outputs.template logOrPass<WHEN::AT_START>(step);
-		worker(step, pass, wf);
 		while (stillEvolving())
 		{
 			makeStep(ChainExpander{});
-			wf.post_step();
 			computeEach(outputs);
+			wf.post_step();
 			outputs.template logOrPass<WHEN::DURING>(step);
 			worker(step, pass, wf);
 		   // outputs.template logOrPass<DURING<>>(step);
 		}
 		makeStep(ChainExpander{});
-		wf.post_step();
 		computeEach(outputs);
+		wf.post_step();
 		outputs.template logOrPass<WHEN::AT_END>(step);
 		worker(step, pass, wf);
 		// HACK: This makes sure, the steps are always evenly spaced
@@ -238,56 +297,7 @@ struct SplitPropagator : Config, PropagatorBase
 		run<OUTS>([](ind step, uind pass, const auto& wf) {}, pass);
 	}
 
-
-	template <uind... chain>
-	void makeStep(seq<chain...>)
-	{
-		groupBackup();
-		((
-			groupRestore<chain>()
-		//   , Timings::measure::start("EVOLUTION")
-			, evolve<chain>(reps<chain>{}, splits<chain>{})
-		  //   , Timings::measure::stop("EVOLUTION")
-			, groupComplete<chain>()
-			), ...);
-		step++;
-	}
-
-
-	template <ind chain> void groupRestore()
-	{
-		if constexpr (chain > 1)//changed from 0 14.07
-		{
-			if (step == 4) { logInfo("group %td restore", chain); }
-			time_restore();
-			wf.restore();
-			// HamWF::Coupling::restore();
-		}
-	}
-	template <ind chain> void groupComplete()
-	{
-		if constexpr (ChainCount > 1)
-		{
-			if (step == 4)
-			{
-				logInfo("group %td complete, applying coeff=%g", chain, Chain<chain>::value);
-			}
-			if constexpr (chain == ChainCount - 1)
-				wf.collect(Chain<chain>::value);
-			else wf.accumulate(Chain<chain>::value);
-
-		}
-	}
-	void groupBackup()
-	{
-		if constexpr (ChainCount > 1)
-		{
-			if (step == 4) { logInfo("group backup because ChainCount=%td", ChainCount); }
-			wf.backup();
-			time_backup();
-			// HamWF::Coupling::backup();
-		}
-	}
+#pragma endregion Runner
 
 };
 
