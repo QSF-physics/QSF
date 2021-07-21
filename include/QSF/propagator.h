@@ -2,11 +2,22 @@
 
 struct Step {
 	static constexpr REP rep = REP::NONE;
+	static constexpr bool late = false;
 };
 struct Time {
 	static constexpr REP rep = REP::NONE;
+	static constexpr bool late = false;
 };
-
+struct TotalEnergy
+{
+	static constexpr REP rep = REP::NONE;
+	static constexpr bool late = true;
+};
+struct EnergyDifference
+{
+	static constexpr REP rep = REP::NONE;
+	static constexpr bool late = true;
+};
 
 struct PropagatorBase
 {
@@ -41,7 +52,6 @@ struct PropagatorBase
 };
 
 
-
 template <MODE M, class SpType, class HamWF>
 struct SplitPropagator : Config, PropagatorBase
 {
@@ -56,10 +66,12 @@ struct SplitPropagator : Config, PropagatorBase
 	template <uind chain>
 	using splits = typename Chain<chain>::splits;
 
+
 	static constexpr uind ChainCount = ChainExpander::size;
 	static constexpr REP firstREP = SplitType::firstREP;
 	static constexpr std::string_view name = M == MODE::IM ? "IM" : "RE";
 	static constexpr MODE mode = M;
+
 	// static constexpr std::string_view name = SplitType::name;
 	// static constexpr REP couplesInRep = C::couplesInRep;
 
@@ -79,7 +91,8 @@ struct SplitPropagator : Config, PropagatorBase
 		}
 	}
 
-	SplitPropagator(PropagatorBase pb, HamWF wf) : PropagatorBase(pb), wf(wf) {
+	SplitPropagator(PropagatorBase pb, HamWF wf) : PropagatorBase(pb), wf(wf)
+	{
 		max_steps = 100;//FIXME 
 		state_accuracy = 0;
 	}
@@ -114,39 +127,64 @@ struct SplitPropagator : Config, PropagatorBase
 
 #pragma region Computations
 	// template <typename Op> inline void getOperator(Op);
-	inline double getOperator(Time) { return timer; }
-	inline double getOperator(Step) { return step; }
+	// inline double getOperator(Time&&) { return timer; }
+	// inline double getOperator(Step&&) { return step; }
+	// inline double getOperator(TotalEnergy&&) { return step; }
+	// inline double getOperator(EnergyDifference&&) { return step; }
+	template <class Op>
+	inline double getValue(BO& bo)
+	{
+		if (std::is_same_v<Time, Op>) return timer;
+		if (std::is_same_v<Step, Op>) return step;
+		if (std::is_same_v<TotalEnergy, Op>) return timer;
+		if (std::is_same_v<EnergyDifference, Op>) return timer;
+		else return wf.template getValue<Op>(BO & bo);
+	}
 
-	//If no match here is found pass to the wavefunction
-	template < REP R, class BO, class COMP, uind...Is>
+	//If no match here is found pass to the wavefunction with buffer
+	template < REP R, class BO, class COMP>
 	inline void compute(BO& bo, COMP&& c)
 	{
-		// logInfo("Forwarding %s while in REP %d", typeid(COMP).name(), int(R));
-		wf.template compute<R>(bo, std::forward<COMP>(c));
+		wf.template compute<M, R>(bo, std::forward<COMP>(c));
+	}
+	template < REP R, class BO, class ... Op>
+	inline void compute(BO& bo, AVG<Op...>&& c)
+	{
+		using T = AVG<Op...>;
+		bo.template store <M, T>((wf.template average<R, Op>())...);
+	}
+	template < REP R, class BO, class ... Op>
+	inline void compute(BO& bo, OPERATION<Op...>&& c)
+	{
+		((wf.template operation<M, R, Op>()), ...);
 	}
 	template <REP R, class BO, class... Op>
-	inline void compute(BO& bo, PROPAGATOR_VALUE<Op...>&&)
+	inline void compute(BO& bo, VALUE<Op...>&&)
 	{
-		using T = PROPAGATOR_VALUE<Op...>;
-		bo.template store <T>(getOperator(Op{}) ...);
+		using T = VALUE<Op...>;
+
+		// bo.template store <M, T>(getValue(Op{}) ...);
+		bo.template store <M, T>(getValue<Op>(bo)...);
 	}
 
 	inline void ditch() {}
+
+
 
 	template <bool B, class... COMP>
 	inline void computeEach(BufferedOutputs<B, COMP...>& bo)
 	{
 		using BO = BufferedOutputs<B, COMP...>;
 
-		((COMP::template canRun<firstREP, EARLY>
+		((COMP::template canRun<firstREP, false>
 		  ? compute<firstREP>(bo, COMP{})
 		  : ditch()),
 		 ...);
 
-		if constexpr (BO::template needsFFT<firstREP>())
+		if constexpr (BO::template needsFFT<invREP(firstREP)>())
 		{
 			fourier<invREP(firstREP)>();
-			((COMP::template canRun<invREP(firstREP), LATE>
+			((COMP::template canRun<invREP(firstREP), true>
 			  ? compute<invREP(firstREP)>(bo, COMP{})
 			  : ditch()),
 			 ...);
@@ -189,12 +227,15 @@ struct SplitPropagator : Config, PropagatorBase
 				incrementBy(Chain<chain>::mults[SI] * 0.5);
 			else if constexpr (rep == HamWF::couplesInRep)
 				incrementBy(Chain<chain>::mults[SI] * 1.0);
+
 		 }(), ...);
+
 	}
 
 	template <uind... chain>
 	void makeStep(seq<chain...>)
 	{
+		logInfo("step");
 		chainBackup();
 		((
 			chainRestore<chain>()
@@ -249,23 +290,22 @@ struct SplitPropagator : Config, PropagatorBase
 	template <class OUTS, class Worker>
 	void run(OUTS&& outputs, Worker&& worker, uind pass = 0)
 	{
-		outputs.initLogger(M, pass, name);
+		outputs.template init<M>(pass, name);
 		worker(WHEN::AT_START, step, pass, wf);
 		computeEach(outputs);
-		outputs.template logOrPass<WHEN::AT_START>(step);
+		outputs.template logOrPass<M, WHEN::AT_START>(step);
 		while (stillEvolving())
 		{
 			makeStep(ChainExpander{});
 			computeEach(outputs);
 			wf.post_step();
-			outputs.template logOrPass<WHEN::DURING>(step);
+			outputs.template logOrPass<M, WHEN::DURING>(step);
 			worker(WHEN::DURING, step, pass, wf);
-		  // outputs.template logOrPass<DURING<>>(step);
 		}
 		makeStep(ChainExpander{});
 		computeEach(outputs);
 		wf.post_step();
-		outputs.template logOrPass<WHEN::AT_END>(step);
+		outputs.template logOrPass<M, WHEN::AT_END>(step);
 		worker(WHEN::AT_END, step, pass, wf);
 	   // HACK: This makes sure, the steps are always evenly spaced
 	   // step += (outputs.comp_interval - 1);

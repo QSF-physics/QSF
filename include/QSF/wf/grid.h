@@ -310,7 +310,8 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	inline void fourier()
 	{
 		// Timings::measure::start("FFTW");
-		static_assert(R == REP::X || R == REP::P, "Can only transform to X or P, unambigously.");
+		static_assert(R == REP::X || R == REP::P,
+					  "Can only transform to X or P, unambigously.");
 		// logInfo("FFTW into %d", int(R));
 		constexpr uind back = R == REP::P ? 0 : 1;
 		if (mpiFFTW) fftw_execute(mpi_plans[back]);

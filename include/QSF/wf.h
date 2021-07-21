@@ -1,37 +1,37 @@
 
 struct KineticEnergy {
 	static constexpr REP rep = REP::P;
+	static constexpr bool late = false;
 };
 struct PotentialEnergy {
 	static constexpr REP rep = REP::X;
+	static constexpr bool late = false;
 };
 
 struct Identity {
 	static constexpr REP rep = REP::NONE;
+	static constexpr bool late = false;
 };
-struct TotalEnergy
-{
-	static constexpr REP rep = REP::NONE;
-};
-struct EnergyDifference
-{
-	static constexpr REP rep = REP::NONE;
-};
+
 struct Symmetrize
 {
 	static constexpr REP rep = REP::NONE;
+	static constexpr bool late = false;
 };
 struct AntiSymmetrize
 {
 	static constexpr REP rep = REP::NONE;
+	static constexpr bool late = false;
 };
 struct Orthogonalize
 {
 	static constexpr REP rep = REP::NONE;
+	static constexpr bool late = false;
 };
 struct Normalize
 {
 	static constexpr REP rep = REP::NONE;
+	static constexpr bool late = false;
 };
 
 template <typename ... Args>
@@ -71,14 +71,14 @@ struct WF : Grid <GridBase, Components>
 
 #pragma region Computations
 	//TODO: if no match here pass to derived class
-	template <REP R, class BO, class COMP>
+	template <MODE M, REP R, class BO, class COMP>
 	inline void compute(BO& bo, COMP&& c)
 	{
-		bo.template store <COMP>(1.0);
+		bo.template store <M, COMP>(1.0);
 	}
 
 	template <MODE M, REP R, uind ... Is>
-	void evolve_internal(double delta, seq<Is...>)
+	void evolve_(double delta, seq<Is...>)
 	{
 		ind idxs[DIMC + 1] = { 0 };
 		do {
@@ -127,14 +127,23 @@ struct WF : Grid <GridBase, Components>
 	template <MODE M, REP R>
 	void evolve(double delta)
 	{
-		evolve_internal<M, R>(delta, fftw_aware_indices<R>());
+		evolve_<M, R>(delta, indices<R>());
 	}
+	double kin_energy;
+	double pot_energy;
+	double tot_energy;
+	double dif_energy;
+
+
 
 	template <REP R, class Op, uind ... Is>
-	double average(seq<Is...>)
+	double average_(seq<Is...>)
 	{
 		// logInfo("%td %td %td %td", shape[0], shape[1], shape[2], sizeof...(Is));
 		ind idxs[DIMC + 1]{ 0 };
+		if constexpr (std::is_same_v<Op, Identity>)
+			logInfo("Calc norm");
+
 		double res = 0.0;
 		do {
 			// logInfo("This will get added %s", typeid(Op).name());
@@ -145,57 +154,60 @@ struct WF : Grid <GridBase, Components>
 				// logInfo("%td %g", idxs[DIMC], std::norm(psi[idxs[DIMC]]));
 
 			if constexpr (std::is_same_v<Op, Identity>)
+			{
 				res += std::norm(psi[idxs[DIMC]]);
+			}
 			else
-				res += static_cast<Hamiltonian*>(this)->template call < Op >(InducedGrid::template pos<R>(idxs[Is] + (Is == DIMC - 1 ? local_start : 0))...) * std::norm(psi[idxs[DIMC]]);
+				res += static_cast<Hamiltonian*>(this)->template call < Op >(InducedGrid::template pos<R>(idxs[Is] + (Is == DIMC - 1 - (R == REP::P ? 1 : 0) ? local_start : 0))...) * std::norm(psi[idxs[DIMC]]);
 
 		} while (!((
 			(idxs[Is]++, idxs[Is] < reverse_shape[Is])
 			? (idxs[DIMC]++, false) : (idxs[Is] = 0, true)) && ...));
+
 		return res * InducedGrid::template vol<R>();
 	}
-	/* Due to FFTW flag FFTW_MPI_TRANSPOSED_OUT we need to  switch
-	x<->y for DIM>1 */
-	template <REP R> //FIXME: should respect propagator firstREP!
-	constexpr auto fftw_aware_indices()
+	/* Due to FFTW flag FFTW_MPI_TRANSPOSED_OUT we need to
+	  switch x<->y for DIM>1 if working on opossite rep */
+	template <REP R>
+	constexpr auto indices()
 	{	//FIXME: | !MPI::region
 		if constexpr (R == REP::P && DIM > 1)
 			return switch_seq<n_seq_t<DIMC>>{};
 		else return n_seq<DIMC>;
 	}
 
-	template <REP R, class BO, class... Op>
-	inline void compute(BO& bo, AVG<Op...>&&)
+	template <REP R, class Op>
+	inline double average()
 	{
-		using T = AVG<Op...>;
-		bo.template store<T>(average<R, Op>(fftw_aware_indices<R>())...);
+		return average_<R, Op>(indices<R>());
 	}
 #pragma endregion Computations
-
+	template <class Op, class BO>
+	inline double getValue(BO& bo)
+	{
+		return 1.0;
+	}
 #pragma region Operations
-	template <REP R>
-	inline auto immediate(Normalize)
+	template <MODE M, REP R, class Op>
+	inline auto operation()
 	{
-		auto res = average<R, Identity>(fftw_aware_indices<R>());
-		MPI::reduceImmediataly(&res);
-		InducedGrid::multiplyArray(psi, sqrt(1.0 / res));
-		// return res;
-	}
+		if constexpr (std::is_same_v<Normalize, Op>)
+		{
+			auto res = average<R, Identity>();
+			MPI::reduceImmediataly(&res);
+			InducedGrid::multiplyArray(psi, sqrt(1.0 / res));
+		}
+		if constexpr (std::is_same_v<Symmetrize, Op>)
+		{
 
-	template <REP R>
-	inline auto immediate(Symmetrize)
-	{
+		}
+		if constexpr (std::is_same_v<AntiSymmetrize, Op>)
+		{
 
-	}
+		}
+		if constexpr (std::is_same_v<Orthogonalize, Op>)
+		{
 
-	template <REP R>
-	inline auto immediate(AntiSymmetrize)
-	{
-
-	}
-	template <REP R>
-	inline auto immediate(Orthogonalize)
-	{
 		// if (state > 0)
 		// {
 		// 	int lower = 0;
@@ -213,18 +225,11 @@ struct WF : Grid <GridBase, Components>
 		// 			wf[i] = wf[i] - amplits[lower] * ei[i];
 		// 	}
 		// }
-		// auto res = average<R, Identity>(fftw_aware_indices<R>());
+		// auto res = average<R, Identity>(indices<R>());
 		// MPI::reduceImmediataly(&res);
 		// InducedGrid::multiplyArray(psi, sqrt(1.0 / res));
-	}
-
-	template <REP R, class BO, class... Op>
-	inline void compute(BO& bo, EARLY_OPERATION<Op...>&&)
-	{
-		using T = EARLY_OPERATION<Op...>;
-
-		(immediate<R>(Op{}), ...);
-		// bo.template store<T>(average<R, Op>(fftw_aware_indices<R>())...);
+		}
+		// return res;
 	}
 #pragma endregion
 
@@ -252,12 +257,12 @@ struct WF : Grid <GridBase, Components>
 	template <class F, REP R = REP::X>
 	void addUsingCoordinateFunction(F&& f)
 	{
-		add<F, R, true>(std::forward<F>(f), fftw_aware_indices<R>());
+		add<F, R, true>(std::forward<F>(f), indices<R>());
 	}
 	template <class F, REP R = REP::X>
 	void addUsingNodeFunction(F&& f)
 	{
-		add<F, R, false>(std::forward<F>(f), fftw_aware_indices<R>());
+		add<F, R, false>(std::forward<F>(f), indices<R>());
 	}
 
 	void addFromFile()
