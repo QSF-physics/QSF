@@ -76,7 +76,7 @@ enum class REP
 	BOTH = 3
 };
 
-constexpr REP invREP(REP R) { return REP::BOTH ^ R; };
+// constexpr REP inverse_rep(REP R) { return REP::BOTH ^ R; };
 
 
 enum class AXIS : ind
@@ -167,17 +167,6 @@ struct AT_INTERVAL : _TEMPORAL
 	// using types = tuple<T...>;
 	static constexpr auto name = "_i";
 };
-
-struct EARLY
-{
-
-	template <typename WHEN> constexpr bool canRun()  const noexcept { return std::is_same_v<WHEN, EARLY>; }
-};
-struct LATE
-{
-	template <typename WHEN> constexpr bool canRun()  const noexcept { return std::is_same_v<WHEN, LATE>; }
-};
-
 
 //Return the flag for current DIM
 // constexpr DIMS DIMflag = (DIM == 1 ? D1 : (DIM == 2 ? D2 : D3));

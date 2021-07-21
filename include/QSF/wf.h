@@ -129,10 +129,7 @@ struct WF : Grid <GridBase, Components>
 	{
 		evolve_<M, R>(delta, indices<R>());
 	}
-	double kin_energy;
-	double pot_energy;
-	double tot_energy;
-	double dif_energy;
+
 
 
 
@@ -141,8 +138,6 @@ struct WF : Grid <GridBase, Components>
 	{
 		// logInfo("%td %td %td %td", shape[0], shape[1], shape[2], sizeof...(Is));
 		ind idxs[DIMC + 1]{ 0 };
-		if constexpr (std::is_same_v<Op, Identity>)
-			logInfo("Calc norm");
 
 		double res = 0.0;
 		do {
@@ -182,8 +177,8 @@ struct WF : Grid <GridBase, Components>
 		return average_<R, Op>(indices<R>());
 	}
 #pragma endregion Computations
-	template <class Op, class BO>
-	inline double getValue(BO& bo)
+	template <class Op>
+	inline double getValue()
 	{
 		return 1.0;
 	}

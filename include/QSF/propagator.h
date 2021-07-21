@@ -8,16 +8,18 @@ struct Time {
 	static constexpr REP rep = REP::NONE;
 	static constexpr bool late = false;
 };
-struct TotalEnergy
-{
-	static constexpr REP rep = REP::NONE;
-	static constexpr bool late = true;
-};
-struct EnergyDifference
-{
-	static constexpr REP rep = REP::NONE;
-	static constexpr bool late = true;
-};
+// struct ENERGY_TOTAL
+// {
+// 	static constexpr REP rep = REP::NONE;
+// 	static constexpr bool late = true;
+// };
+// struct ENERGY_DIFFERENCE
+// {
+// 	static constexpr REP rep = REP::NONE;
+// 	static constexpr bool late = true;
+// };
+using ENERGY_TOTAL = SUM<AVG<PotentialEnergy>, AVG<KineticEnergy>>;
+using ENERGY_DIFFERENCE = CHANGE<SUM<AVG<PotentialEnergy>, AVG<KineticEnergy>>>;
 
 struct PropagatorBase
 {
@@ -69,6 +71,7 @@ struct SplitPropagator : Config, PropagatorBase
 
 	static constexpr uind ChainCount = ChainExpander::size;
 	static constexpr REP firstREP = SplitType::firstREP;
+	static constexpr REP invREP = REP::BOTH ^ firstREP;
 	static constexpr std::string_view name = M == MODE::IM ? "IM" : "RE";
 	static constexpr MODE mode = M;
 
@@ -77,9 +80,10 @@ struct SplitPropagator : Config, PropagatorBase
 
 	Section settings;
 	HamWF wf;
-	double energy{ 0 };
-	double dE{ 10.0 };
-
+	double kin_energy;
+	double pot_energy;
+	double tot_energy;
+	double dif_energy;
 #pragma region Initialization
 
 	void autosetTimestep()
@@ -126,19 +130,12 @@ struct SplitPropagator : Config, PropagatorBase
 #pragma endregion Initialization
 
 #pragma region Computations
-	// template <typename Op> inline void getOperator(Op);
-	// inline double getOperator(Time&&) { return timer; }
-	// inline double getOperator(Step&&) { return step; }
-	// inline double getOperator(TotalEnergy&&) { return step; }
-	// inline double getOperator(EnergyDifference&&) { return step; }
 	template <class Op>
-	inline double getValue(BO& bo)
+	inline double getValue()
 	{
 		if (std::is_same_v<Time, Op>) return timer;
 		if (std::is_same_v<Step, Op>) return step;
-		if (std::is_same_v<TotalEnergy, Op>) return timer;
-		if (std::is_same_v<EnergyDifference, Op>) return timer;
-		else return wf.template getValue<Op>(BO & bo);
+		else return wf.template getValue<Op>();
 	}
 
 	//If no match here is found pass to the wavefunction with buffer
@@ -147,11 +144,12 @@ struct SplitPropagator : Config, PropagatorBase
 	{
 		wf.template compute<M, R>(bo, std::forward<COMP>(c));
 	}
+
 	template < REP R, class BO, class ... Op>
 	inline void compute(BO& bo, AVG<Op...>&& c)
 	{
 		using T = AVG<Op...>;
-		bo.template store <M, T>((wf.template average<R, Op>())...);
+		bo.template store < T>((wf.template average<R, Op>())...);
 	}
 	template < REP R, class BO, class ... Op>
 	inline void compute(BO& bo, OPERATION<Op...>&& c)
@@ -162,30 +160,53 @@ struct SplitPropagator : Config, PropagatorBase
 	inline void compute(BO& bo, VALUE<Op...>&&)
 	{
 		using T = VALUE<Op...>;
+		// bo.template store < T>(getValue(Op{}) ...);
+		bo.template store < T>(getValue<Op>()...);
+	}
+	template <REP R, class BO, class... Op>
+	inline void compute(BO& bo, SUM<Op...>&&)
+	{
+		using T = SUM<Op...>;
+		bo.template store<T>((bo.template getLastValue<Op>() + ...));
 
-		// bo.template store <M, T>(getValue(Op{}) ...);
-		bo.template store <M, T>(getValue<Op>(bo)...);
+		if constexpr (std::is_same_v<T, ENERGY_TOTAL>)
+			tot_energy = bo.template getLastValue<T>();
+	}
+	template <REP R, class BO, class Op>
+	inline void compute(BO& bo, CHANGE<Op>&&)
+	{
+		static double last = 0;
+		using T = CHANGE<Op>;
+
+		double curr = bo.template getLastValue<Op>();
+		bo.template store<T>(curr - last);
+		last = curr;
+
+		if constexpr (std::is_same_v<T, ENERGY_DIFFERENCE>)
+			dif_energy = bo.template getLastValue<T>();
 	}
 
 	inline void ditch() {}
 
 
 
-	template <bool B, class... COMP>
+	template <WHEN when, bool B, class... COMP>
 	inline void computeEach(BufferedOutputs<B, COMP...>& bo)
 	{
-		using BO = BufferedOutputs<B, COMP...>;
+		// using BO = BufferedOutputs<B, COMP...>;
 
-		((COMP::template canRun<firstREP, false>
+		//Run only if required REP is firstREP or no preference
+		((!COMP::late && (COMP::rep == REP::NONE || bool(COMP::rep & firstREP))
 		  ? compute<firstREP>(bo, COMP{})
 		  : ditch()),
 		 ...);
 
-		if constexpr (BO::template needsFFT<invREP(firstREP)>())
+		//Check if work in inverse fourier space is needed
+		if constexpr ((false || ... || (bool(COMP::rep & invREP))))
 		{
-			fourier<invREP(firstREP)>();
-			((COMP::template canRun<invREP(firstREP), true>
-			  ? compute<invREP(firstREP)>(bo, COMP{})
+			fourier<invREP>();
+			((bool(COMP::rep & invREP)
+			  ? compute<invREP>(bo, COMP{})
 			  : ditch()),
 			 ...);
 			fourier<firstREP>();
@@ -194,20 +215,32 @@ struct SplitPropagator : Config, PropagatorBase
 		{
 			logWarning("Computations do not require FFT, if you need to output wavefunction in the opposite REP make sure to export the WF explicitly in the desired REP.");
 		}
+
+		//Check if any "late" operations are required
+		if constexpr ((false || ... || (COMP::late)))
+		{
+			((COMP::late
+			  ? compute<invREP>(bo, COMP{})
+			  : ditch()),
+			 ...);
+		}
+
+		bo.template logOrPass<M, when>(step);
 	}
 #pragma endregion Computations
 
 #pragma region Evolution
 	inline bool stillEvolving()
 	{
+		logInfo("%d ", fabs(dif_energy) > state_accuracy && step != max_steps);
 		if constexpr (mode == MODE::RE) return (step <= max_steps);
-		else return fabs(dE) > state_accuracy && step != max_steps;
+		else return fabs(dif_energy) > state_accuracy && step != max_steps;
 	}
 
 	template <REP R>
 	void fourier()
 	{
-		// logInfo("calling FFTW from propagator %d ", int(invREP(firstREP)));
+		// logInfo("calling FFTW from propagator %d ", int(invREP));
 		wf.template fourier<R>();
 	}
 
@@ -227,15 +260,12 @@ struct SplitPropagator : Config, PropagatorBase
 				incrementBy(Chain<chain>::mults[SI] * 0.5);
 			else if constexpr (rep == HamWF::couplesInRep)
 				incrementBy(Chain<chain>::mults[SI] * 1.0);
-
 		 }(), ...);
-
 	}
 
 	template <uind... chain>
 	void makeStep(seq<chain...>)
 	{
-		logInfo("step");
 		chainBackup();
 		((
 			chainRestore<chain>()
@@ -249,6 +279,7 @@ struct SplitPropagator : Config, PropagatorBase
 #pragma endregion Evolution
 
 #pragma region SplitChains
+
 	template <ind chain> void chainRestore()
 	{
 		if constexpr (chain > 1)
@@ -292,21 +323,23 @@ struct SplitPropagator : Config, PropagatorBase
 	{
 		outputs.template init<M>(pass, name);
 		worker(WHEN::AT_START, step, pass, wf);
-		computeEach(outputs);
-		outputs.template logOrPass<M, WHEN::AT_START>(step);
+		computeEach<WHEN::AT_START>(outputs);
 		while (stillEvolving())
 		{
 			makeStep(ChainExpander{});
-			computeEach(outputs);
+			computeEach<WHEN::DURING>(outputs);
 			wf.post_step();
-			outputs.template logOrPass<M, WHEN::DURING>(step);
 			worker(WHEN::DURING, step, pass, wf);
 		}
+		logInfo("Done!");
 		makeStep(ChainExpander{});
-		computeEach(outputs);
+		logInfo("Done!!");
+		computeEach<WHEN::AT_END>(outputs);
+		logInfo("Done!!!");
 		wf.post_step();
-		outputs.template logOrPass<M, WHEN::AT_END>(step);
+		logInfo("Done!!!!");
 		worker(WHEN::AT_END, step, pass, wf);
+		logInfo("Done!!!!!");
 	   // HACK: This makes sure, the steps are always evenly spaced
 	   // step += (outputs.comp_interval - 1);
 	   // Evolution::incrementBy(outputs.comp_interval);

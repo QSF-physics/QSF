@@ -56,7 +56,7 @@ struct CouplingBase;
 
 
 template <class ... Fields>
-struct CouplingBase<DipoleApprox, Fields...> : _XBUFFER
+struct CouplingBase<DipoleApprox, Fields...>
 {
 	static_assert(is_unique<Fields...>, "All Fields need to act on different axes!");
 	static constexpr uind size = sizeof...(Fields);
@@ -76,7 +76,7 @@ struct CouplingBase<DipoleApprox, Fields...> : _XBUFFER
 };
 
 template <class ... Fields>
-struct CouplingBase<NoApprox, Fields...> : _XBUFFER
+struct CouplingBase<NoApprox, Fields...>
 {
 	std::tuple<Fields...> fields;
 	double middle_values[sizeof...(Fields)]{ 0 };

@@ -61,15 +61,6 @@
 
 
 
-// template <typename... Args> struct CO_DIR_AVG : COMPUTATION <double, Args...>, _RBUFFER
-// {
-// 	static constexpr std::string_view name = "AVG_";
-// 	// using type = double;
-// 	// constexpr CO_DIR_AVG() :COMPUTATION<double, Args...>((Args::rep & ...)) {}
-
-// 	template <REP R, typename WHEN>
-// 	static constexpr bool canRun = COMPUTATION<double, Args...>::template goodRep<R>;
-
 // 	template <MODE M, REP R, OPTIMS opts> inline void prepare() const {}
 
 // 	template<REP R, OPTIMS opt, typename Operator> inline double calc() const noexcept

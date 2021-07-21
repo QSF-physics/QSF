@@ -1,6 +1,4 @@
 struct _COMPUTATION {};
-struct _XBUFFER {};
-struct _RBUFFER {};
 struct _ALLOCS_EIGENSTATES {};
 // template <typename SEQ> struct ALLOCS_EIGENSTATES : _ALLOCS_EIGENSTATES
 // {
@@ -17,7 +15,7 @@ struct TypeBox
 	using type = getType<N, T...>;
 };
 
-template <typename RET, typename ... Ops>
+template <typename RET, bool red, typename ... Ops>
 struct COMPUTATION : _COMPUTATION
 {
 	//14.07 this is not necessary any longer
@@ -30,7 +28,7 @@ struct COMPUTATION : _COMPUTATION
 
 	static_assert(std::is_convertible_v<returnType, double> || sizeof(returnType) % sizeof(double) == 0, "The size of returnType is not a multiple of double. Hint: Try casting your type to ");
 
-
+	static constexpr bool reduce = red;
 
 	static constexpr size_t returnTypeSize = std::is_convertible_v<returnType, double> ? 1 : (sizeof(returnType) / sizeof(double));
 
@@ -51,16 +49,13 @@ struct COMPUTATION : _COMPUTATION
 	static constexpr inline std::string_view formatting = FMT_DOUBLE;
 	static constexpr inline std::string_view format = repeat_v<returnCount, formatting>;
 
-	template <REP R, bool lat> static constexpr bool canRun = ((rep == REP::NONE) && lat == late) || bool(R & rep);
 
-		// template <typename WHEN> static constexpr bool canRun = true;
-
-
-		// template <MODE M, REP R, OPTIMS opts> inline static void prepare() {}
-		// template <MODE M, REP R, OPTIMS opts> inline static void forerunner() {}
+	// template <typename WHEN> static constexpr bool canRun = true;
+	// template <MODE M, REP R, OPTIMS opts> inline static void prepare() {}
+	// template <MODE M, REP R, OPTIMS opts> inline static void forerunner() {}
 };
 
-template <class Op> struct AVG : COMPUTATION <double, Op>, _RBUFFER
+template <class Op> struct AVG : COMPUTATION <double, true, Op>
 {
 	static constexpr std::string_view name = "AVG_";
 };
@@ -72,15 +67,37 @@ template <typename ... Args> struct AUXILLARY_VALUES :_AUXILLARY_VALUES
 	std::tuple<Args...> types;
 };
 
-template <typename ... Args> struct VALUE : COMPUTATION<double, Args...>, _XBUFFER
+
+struct Sum
+{
+	static constexpr REP rep = REP::NONE;
+	static constexpr bool late = true;
+};
+struct Change
+{
+	static constexpr REP rep = REP::NONE;
+	static constexpr bool late = true;
+};
+
+
+template <class ... Op> struct SUM :COMPUTATION<std::common_type_t< typename Op::returnType...>, (Op::reduce || ...), Sum >
+{
+	// std::tuple<Op...> types;
+};
+
+template <class Op> struct CHANGE : COMPUTATION<typename Op::returnType, Op::reduce, Change>
+{
+	// std::tuple<Op> types;
+};
+
+template <typename ... Args> struct VALUE : COMPUTATION<double, false, Args...>
 {
 	static constexpr std::string_view name = "";
 };
 
-template <typename ... Args> struct OPERATION : COMPUTATION<double>
+template <typename ... Args> struct OPERATION : COMPUTATION<double, false>
 {
 };
-
 
 struct BufferedOutputsBase
 {
@@ -94,27 +111,27 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 {
 	using TypeBox<Ts...>::size;
 
-	template <MODE M, typename T>
-	static constexpr bool usesReduceBuffer = M != MODE::IM && (std::is_base_of_v<_RBUFFER, T>);
+	template <typename T>
+	static constexpr bool usesReduceBuffer = T::reduce;
 
-	template <MODE M, bool usingReduceBuffer>
-	static constexpr auto sizeInBuffer = (((usesReduceBuffer< M, Ts> == usingReduceBuffer) ? Ts::sizeInBuffer : 0) + ... + 0);
+	template < bool usingReduceBuffer>
+	static constexpr auto sizeInBuffer = (((usesReduceBuffer< Ts> == usingReduceBuffer) ? Ts::sizeInBuffer : 0) + ... + 0);
 
-	template <MODE M, typename T>
+	template < typename T>
 	static constexpr size_t offset()
 	{
 		bool found = false;
 		size_t index = 0;
 		([&] { if (!found) {
 			if constexpr (std::is_same_v<Ts, T>) found = true;
-			else if (usesReduceBuffer<M, Ts> == usesReduceBuffer<M, T>)
+			else if (usesReduceBuffer<Ts> == usesReduceBuffer<T>)
 				index += Ts::sizeInBuffer;
 		}}(), ...);
 		return index;
 	}
 
-	template <MODE M, typename T>
-	using pos = offset_seq_t<offset<M, T>(), typename T::bufferOffsets>;
+	template < typename T>
+	using pos = offset_seq_t<offset<T>(), typename T::bufferOffsets>;
 
 
 	// using all_pos = concat_all_seq<pos<Ts>...>;
@@ -131,10 +148,10 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 	int xbufferCurrentLine;
 	int xbufferLastLine;
 
-	template <MODE M, typename T>
+	template < typename T>
 	double* record()
 	{
-		if constexpr (usesReduceBuffer<M, T>)
+		if constexpr (usesReduceBuffer<T>)
 			return rbuffer + rbufferCurrentLine;
 		else return xbuffer + xbufferCurrentLine;
 	}
@@ -146,14 +163,14 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 
 		// (printf("size in buffers: %d %td %s", Ts::sizeInBuffer, TypeBox<Ts...>::size, typeid(Ts).name()), ...);
 		bufferHeight = log_interval / comp_interval;
-		rbufferSize = sizeInBuffer<M, true> *bufferHeight;
-		xbufferSize = sizeInBuffer<M, false> *bufferHeight;
+		rbufferSize = sizeInBuffer<true> *bufferHeight;
+		xbufferSize = sizeInBuffer<false> *bufferHeight;
 
-		rbufferLastLine = (bufferHeight - 1) * sizeInBuffer<M, true>;
-		xbufferLastLine = (bufferHeight - 1) * sizeInBuffer<M, false>;
+		rbufferLastLine = (bufferHeight - 1) * sizeInBuffer<true>;
+		xbufferLastLine = (bufferHeight - 1) * sizeInBuffer<false>;
 		rbufferCurrentLine = rbufferLastLine;
 		xbufferCurrentLine = xbufferLastLine;
-		logBUFFER("REDUCABLE BUFFER SIZE: %tdx%d, NORMAL BUFFER SIZE: %tdx%d", sizeInBuffer<M, true>, bufferHeight, sizeInBuffer<M, false>, bufferHeight);
+		logBUFFER("REDUCABLE BUFFER SIZE: %tdx%d, NORMAL BUFFER SIZE: %tdx%d", sizeInBuffer<true>, bufferHeight, sizeInBuffer<false>, bufferHeight);
 		if (rbufferSize > 0) rbuffer = new double[rbufferSize];
 		if (!MPI::pID)
 		{
@@ -180,21 +197,27 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 		closeFile(file_dat);
 	}
 
+	template < class COMP>
+	auto getLastValue()
+	{
+		// return 11.0;
+		return usesReduceBuffer<COMP>
+			? rbuffer[rbufferCurrentLine + offset<COMP>()]
+			: xbuffer[xbufferCurrentLine + offset<COMP>()];
+	}
 
 
-	template <MODE M, class COMP, class...Op>
+	template < class COMP, class...Op>
 	void store(Op...val)
 	{
 		using returnType = typename COMP::returnType;
-		constexpr bool usingReduceBuffer = usesReduceBuffer<M, COMP>;
-		//If the computation *WOULD* use reduce buffer in different mode reduce it now
-		if (!usingReduceBuffer && usesReduceBuffer<MODE::UNDEFINED, COMP>)
-		{
-			(MPI::reduceImmediataly(&val), ...);
-		}
+		constexpr bool usingReduceBuffer = usesReduceBuffer<COMP>;
+		//If the computation *WOULD* use reduce buffer in different mode reduce it immediataly
 
-		size_t pos = offset<M, COMP>();
-		// logInfo("About to stack %s  at pos %td using rbuff %d", typeid(COMP).name(), pos, usingReduceBuffer);
+
+		size_t pos = offset<COMP>();
+
+		// logInfo("About to stack %s with val %g at pos %td using %s", typeid(COMP).name(), val..., pos, usingReduceBuffer ? "rbuff" : "xbuff");
 
 		([&] {
 
@@ -234,36 +257,30 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 			pos += COMP::returnTypeSize;
 		 }(), ...);
 	}
-	// template <MODE M, typename WHEN, REP R, class PROP>
+	// template <typename WHEN, REP R, class PROP>
 	// inline void compute(const PROP& propagator)
 	// {
 	// 	((Ts::template canRun<R, WHEN> ?
-	// 	  computeEach<PROP, M, WHEN, R, Ts, typename Ts::returnT>
+	// 	  computeEach<PROP, WHEN, R, Ts, typename Ts::returnT>
 	// 	  (propagator, Ts{}, (typename Ts::types) {}, pos<Ts>{}) : ditch()), ...);
 	// }
 
 
 
 
-	// template <class PROP, MODE M, typename WHEN, REP R, typename T, typename retT, typename... COMP, size_t...Is>
+	// template <class PROP, typename WHEN, REP R, typename T, typename retT, typename... COMP, size_t...Is>
 	// inline void computeEach(const PROP& propagator, T&& comp, COMPUTATION<retT, Op...>&&, seq<	// Is...>&&)
 	// {
-	   // 	// T::template forerunner<M, R, opt>();
+	   // 	// T::template forerunner<R, opt>();
 	   // 	// logInfo("compute:");
 	   // 	// Timings::measure::start(comp.name);
-	   // 	(storeInBuffer < Is, usesReduceBuffer<M, T>, retT>(
+	   // 	(storeInBuffer < Is, usesReduceBuffer<T>, retT>(
 	   // 		propagator->template calc<R, Op>()), ...);
 	   // 		// comp.template calc<R, opt, Op>()), ...);
 	   // 		// Timings::measure::stop(comp.name);
 
 	   // 	// runEach<R, opt, >(T{});
 	   // }
-
-	template <REP R>
-	static constexpr inline bool needsFFT()
-	{
-		return ((Ts::template canRun<R, true>) || ... || false);
-	}
 
 	static inline void setupComputations()
 	{
@@ -337,11 +354,11 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 
 
 
-	template <MODE M, typename T, size_t ... I>
+	template <typename T, size_t ... I>
 	inline void log(seq <I...>)
 	{
-		// logInfo("logging %g from %d",((usesReduceBuffer<M, T> ? rbuffer + rbufferLastLine : xbuffer + xbufferLastLine) + I))
-		LOG_INLINE(T::format.data(), *((usesReduceBuffer<M, T> ? (rbuffer + rbufferLastLine) : xbuffer + xbufferLastLine) + I)...);
+		// logInfo("logging %g from %d",((usesReduceBuffer<T> ? rbuffer + rbufferLastLine : xbuffer + xbufferLastLine) + I))
+		LOG_INLINE(T::format.data(), *((usesReduceBuffer<T> ? (rbuffer + rbufferLastLine) : xbuffer + xbufferLastLine) + I)...);
 	}
 	// template <typename T>
 	// inline void log(seq<I...>)
@@ -355,7 +372,7 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 
 
 	template <typename XBUFF, typename RBUFF>
-	void writeDataBinaryHeader(MODE M, int columns, XBUFF xBuff, RBUFF rBuff)
+	void writeDataBinaryHeader(int columns, XBUFF xBuff, RBUFF rBuff)
 	{
 		// if (file_dat != nullptr)
 		// {
@@ -389,7 +406,7 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 		if constexpr (bool(size))
 		{
 			LOG_INLINE_START(__LOG_NC);
-			(log<M, Ts>(pos<M, Ts>{}), ...);
+			(log<Ts>(pos< Ts>{}), ...);
 
 			LOG_INLINE_END();
 		}
@@ -402,7 +419,7 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 			{
 				// constexpr auto x_comp = getComputations<RI, _XBUFFER>();
 				// constexpr auto r_comp = getComputations<RI, _RBUFFER>();
-				// writeDataBinaryHeader(sizeInBuffer<M, false> +sizeInBuffer<M, true>, x_comp, r_comp);
+				// writeDataBinaryHeader(sizeInBuffer<false> +sizeInBuffer<true>, x_comp, r_comp);
 			}
 			if constexpr (when == WHEN::AT_START)
 			{
@@ -412,7 +429,7 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 			else if constexpr (when == WHEN::AT_END)
 			{
 				i = 0;
-				end = (xbufferCurrentLine / sizeInBuffer<M, false>) + 1;
+				end = (xbufferCurrentLine / sizeInBuffer<false>) + 1;
 			}
 			else
 			{
@@ -423,16 +440,16 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 			{
 				for (; i < end; i++)
 				{
-					fwrite(xbuffer + sizeInBuffer<M, false> *i, sizeof(double), sizeInBuffer<M, false>, file_dat);
-					fwrite(rbuffer + sizeInBuffer<M, true> *i, sizeof(double), sizeInBuffer<M, true>, file_dat);
+					fwrite(xbuffer + sizeInBuffer<false> *i, sizeof(double), sizeInBuffer<false>, file_dat);
+					fwrite(rbuffer + sizeInBuffer<true> *i, sizeof(double), sizeInBuffer<true>, file_dat);
 				}
 			}
 			else for (; i < end; i++)
 			{
-				for (int j = 0; j < sizeInBuffer<M, false>; j++)
-					fprintf(file_dat, "%15.5g ", xbuffer[i * sizeInBuffer<M, false> +j]);
-				for (int j = 0; j < sizeInBuffer<M, true>; j++)
-					fprintf(file_dat, "%15.5g ", rbuffer[i * sizeInBuffer<M, true> +j]);
+				for (int j = 0; j < sizeInBuffer<false>; j++)
+					fprintf(file_dat, "%15.5g ", xbuffer[i * sizeInBuffer<false> +j]);
+				for (int j = 0; j < sizeInBuffer<true>; j++)
+					fprintf(file_dat, "%15.5g ", rbuffer[i * sizeInBuffer<true> +j]);
 				fprintf(file_dat, FMT_END);
 			}
 			fflush(file_dat);
@@ -450,20 +467,33 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 		}
 	}
 
+	inline void reduceLine()
+	{
+		if (rbufferSize > 0)
+		{
+			if (!MPI::pID) MPI_Reduce(MPI_IN_PLACE, rbuffer + rbufferCurrentLine, sizeInBuffer<true>, MPI_DOUBLE, MPI_SUM, 0, MPI::rComm);
+			else MPI_Reduce(rbuffer + rbufferCurrentLine, rbuffer + rbufferCurrentLine, sizeInBuffer<true>, MPI_DOUBLE, MPI_SUM, 0, MPI::rComm);
+		}
+	}
+
 	template <MODE M, WHEN when>
 	inline void logOrPass(ind step)
 	{
+
 		if ((log_interval > 0 && (step % log_interval == 0)) || when == WHEN::AT_END)
 		{
-			reduce();
+			if (M == MODE::IM) reduceLine();
+			if (M == MODE::RE) reduce();
+
 			if (!MPI::pID) logAll<M, when>();
 			rbufferCurrentLine = 0;
 			xbufferCurrentLine = 0;
 		}
 		else if (comp_interval > 0 && step % comp_interval == 0)
 		{
-			rbufferCurrentLine += sizeInBuffer<M, true>;
-			xbufferCurrentLine += sizeInBuffer<M, false>;
+			if (M == MODE::IM) reduceLine();
+			rbufferCurrentLine += sizeInBuffer<true>;
+			xbufferCurrentLine += sizeInBuffer<false>;
 		}
 	}
 
