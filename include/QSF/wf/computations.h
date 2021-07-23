@@ -35,7 +35,7 @@ struct COMPUTATION : _COMPUTATION
 	//Contains custom value in case of ALLOCS_EIGENSTATES base class
 	using type_seq = n_seq_t<sizeof...(Ops)>;
 	static constexpr size_t returnCount = (sizeof...(Ops));
-	static constexpr auto sizeInBuffer = returnCount * returnTypeSize;
+	static constexpr size_t sizeInBuffer = returnCount * returnTypeSize;
 
 	template <typename Op>
 	static constexpr bool holdsOp = (std::is_same_v<Op, Ops> || ... || false);
@@ -115,7 +115,7 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 	static constexpr bool usesReduceBuffer = T::reduce;
 
 	template < bool usingReduceBuffer>
-	static constexpr auto sizeInBuffer = (((usesReduceBuffer< Ts> == usingReduceBuffer) ? Ts::sizeInBuffer : 0) + ... + 0);
+	static constexpr size_t sizeInBuffer = (((usesReduceBuffer< Ts> == usingReduceBuffer) ? Ts::sizeInBuffer : 0) + ... + 0);
 
 	template < typename T>
 	static constexpr size_t offset()
@@ -136,17 +136,17 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 
 	// using all_pos = concat_all_seq<pos<Ts>...>;
 
-	int bufferHeight;
+	uind bufferHeight;
 
 	double* rbuffer;
-	int rbufferSize;
-	int rbufferCurrentLine;
-	int rbufferLastLine;
+	uind rbufferSize;
+	uind rbufferCurrentLine;
+	uind rbufferLastLine;
 
 	double* xbuffer;
-	int xbufferSize;
-	int xbufferCurrentLine;
-	int xbufferLastLine;
+	uind xbufferSize;
+	uind xbufferCurrentLine;
+	uind xbufferLastLine;
 
 	template < typename T>
 	double* record()

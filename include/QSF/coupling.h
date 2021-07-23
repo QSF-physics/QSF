@@ -66,7 +66,7 @@ struct CouplingBase<DipoleApprox, Fields...>
 
 	CouplingBase(Section& settings) : fields(Fields{ settings }...) {}
 	CouplingBase(Fields...fields) :fields(fields...) {}
-	static double maxPulseDuration() { return Max(Fields::maxPulseDuration()...); }
+	static double maxPulseDuration() { return Max(0, Fields::maxPulseDuration()...); }
 
 	// void reset() { last_values{ 0 }; last_values_backup{ 0 }; }
 	double operator[](AXIS ax)

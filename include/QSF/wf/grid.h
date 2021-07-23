@@ -24,7 +24,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	using BaseGrid::dx;
 	using BaseGrid::D;
 	using MPISol = MPIGrid<typename BaseGrid::MPIGrids, BaseGrid::D, MPI::Slices>;
-	static constexpr uind DIMC = DIM + (Components > 1 ? 1 : 0);
+	static constexpr ind DIMC = DIM + (Components > 1 ? 1 : 0);
 
 	MPISol sol;//MPI Solution
 	cxd* psi = nullptr;      			// local ψ(x,t) on local_m grid
@@ -32,6 +32,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	cxd* psi_copy = nullptr;      		// backup ψ(x,t) on local_m grid
 	cxd* psi_acc = nullptr;      		// accumulated ψ(x,t) on local_m grid
 	ind local_n;
+
 	ind local_m;
 	ind local_start;
 	ind local_end;
@@ -47,6 +48,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	int extra_plans_count;
 
 	const int transpose_f[2] = { FFTW_MPI_TRANSPOSED_OUT, FFTW_MPI_TRANSPOSED_IN };
+	// const int transpose_f[2] = { 0, 0 };
 	const int for_back[2] = { FFTW_FORWARD, FFTW_BACKWARD };
 
 
@@ -58,7 +60,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 			logALLOC("Allocating memory for psi_total");
 			psi_total = new cxd[m];
 		}
-		logMPI("Gathering " psi_symbol "...");
+		logMPI("Gathering " psi_symbol "... to address %p", psi_total);
 		MPI_Gather(psi, local_m, MPI_CXX_DOUBLE_COMPLEX, psi_total, local_m, MPI_CXX_DOUBLE_COMPLEX, 0, MPI::rComm);
 	}
 
@@ -105,8 +107,25 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	void init()
 	{
 		logInfo("Grid Base init %td", n);
+
+		if (!(n % MPI::rSize == 0)) logWarning("Grid length n (%td) should be divisible by the number of MPI region processes (%d) (FFTW reg)", n, MPI::rSize);
+
+		if constexpr (DIM == 1)
+		{
+			if (!(m % (MPI::rSize * MPI::rSize) == 0))
+				logWarning("Grid length n (%td) should be divisible by the number of MPI region processes squared (%d) (FFTW req)", n, MPI::pSize * MPI::pSize);
+		}
+		else
+		{
+			if (!((m / n) % (MPI::rSize) == 0))
+				logWarning("Row size (m/n=%td) should be divisible by the number of MPI processes (%d) (FFTW req)", m / n, MPI::rSize);
+		}
+
 		fftw_mpi_init();
 		local_n = n / MPI::rSize; //Expected split
+
+		// logTestFatal(n >= Im::n && n >= Src::n, "Grid length n (%td) should be larger than IM grid length Im::n (%td) and previous mode grid length Src::n (%td)", n, Im::n, Src::n);
+
 		strides[DIM - 1] = 1;
 		shape[DIM - 1] = n;
 		reverse_shape[0] = n;
@@ -116,6 +135,8 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 			reverse_shape[i] = n;
 			strides[i] = shape[i + 1] * strides[i + 1];
 		}
+
+		for (int i = 0; i < DIM; i++) logSETUP("Array shape[%d]=%td", i, shape[i]);
 
 		logSETUP("Setting up " psi_symbol "(x,t) arrays and plans...");
 		logSETUP("Grid size n (%td) will split into local_n (%td) by rSize (%d)", n, local_n, MPI::rSize);
@@ -154,7 +175,11 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 									   reinterpret_cast<fftw_complex*>(psi),
 									   MPI::rComm, for_back[i], MPI::plan_rigor | (canLeaveTransposed ? transpose_f[i] : 0));
 		}
-/* Non-mpi fftw (extra) plans for non-main region (region!=0) transforms are coupled together if involve consecutive directions (case for 1-3D)*/
+		if (mpiFFTW && canLeaveTransposed)
+			logWarning("FFTW will leave wf transposed");
+		if (sol.isMain)
+			logWarning("FFTW will be performed in one step");
+		/* Non-mpi fftw (extra) plans for non-main region (region!=0) transforms are coupled together if involve consecutive directions (case for 1-3D)*/
 		shape[0] = local_n;
 		reverse_shape[DIM - 1] = local_n;
 
@@ -305,21 +330,47 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 		default: break;
 		}
 	}
-
+	int count = 0;
 	template <REP R>
 	inline void fourier()
 	{
+		if (count < 10)
+		{
+			if (!MPI::rID)
+			{
+				gather();
+				sprintf(file_path, "%s%d_cpu%d_%s.txt",
+						target_path, count, MPI::rSize, R == REP::X ? "P" : "X");
+				FILE* f = fopen_with_check<IO_ATTR::WRITE>(file_path);
+				for (ind i = 0;i < n;i++)
+					for (ind j = 0;j < n;j++)
+						fprintf(f, "%td, %td, %g\n", i, j, std::norm(psi_total[i * n + j]));
+				closeFile(f);
+			}
+			count++;
+		}
+
 		// Timings::measure::start("FFTW");
 		static_assert(R == REP::X || R == REP::P,
 					  "Can only transform to X or P, unambigously.");
 		// logInfo("FFTW into %d", int(R));
 		constexpr uind back = R == REP::P ? 0 : 1;
-		if (mpiFFTW) fftw_execute(mpi_plans[back]);
+		if (mpiFFTW)
+		{
+			fftw_execute(mpi_plans[back]);
+			// logWarning("mainFFTW");
+		}
 		for (int i = 0; i < extra_plans_count; i++)
+		{
 			fftw_execute(extra_plans[i + DIM * back]);
+			logWarning("extra_plans");
+		}
 		if constexpr (back) normalizeAfterTwoFFT();
-		// multiplyArray(psi, inv_m * (pow(n, DIM - sol.boundedCoordDim)));
-		// Timings::measure::stop("FFTW");
+
+
+
+	// multiplyArray(psi, inv_m * (pow(n, DIM - sol.boundedCoordDim)));
+	// Timings::measure::stop("FFTW");
 	}
 
 	void post_step()

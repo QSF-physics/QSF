@@ -68,10 +68,14 @@ namespace seq_gen_impl
 	template <size_t O, class> struct seq_offset;
 	template <size_t O, size_t ... I> struct seq_offset<O, seq<I...>> : seq<(O + I)...> {};
 
+	template <size_t O, class> struct seq_flip;
+	template <size_t O, size_t ... I> struct seq_flip<O, seq<I...>> : seq<(O - I)...> {};
+
 	template <size_t M, class> struct seq_mult;
 	template <size_t M, size_t ... I> struct seq_mult<M, seq<I...>> : seq<(M* I)...> {};
 
 	template <size_t S, size_t E, typename = std::enable_if_t<(S <= E)>> struct seq_gen_from : seq_offset<S, typename seq_gen<E - S>::type> { static_assert(S < E, "S<E"); };
+
 }
 
 //FILTER SEQUENCE
@@ -122,6 +126,8 @@ template <size_t S, size_t E> using from_to_t = typename seq_gen_impl::seq_gen_f
 
 template <size_t M, typename SEQ> using mult_seq_t = typename seq_gen_impl::seq_mult<M, SEQ>::type;
 template <size_t O, typename SEQ> using offset_seq_t = typename seq_gen_impl::seq_offset<O, SEQ>::type;
+
+template <size_t F, typename SEQ> using flip_seq_t = typename seq_gen_impl::seq_flip<F, SEQ>::type;
 //OBJS
 template <size_t N> constexpr static auto n_seq = n_seq_t<N>{};
 template <size_t N> constexpr static auto up_to = up_to_t<N>{};
@@ -148,22 +154,22 @@ using accumulate = typename detail::accumulate<seq<>, 0, SEQ>::type;
 namespace detail
 {
 	template <class>
-	struct switch_first_two_indices;
+	struct swap_two_indices;
 
 	template <size_t I>
-	struct switch_first_two_indices < seq<I>>
+	struct swap_two_indices < seq<I>>
 	{
 		using type = seq<I>;
 	};
 
-	template <size_t I, size_t I2, size_t... Is>
-	struct switch_first_two_indices < seq<I, I2, Is...>>
+	template <size_t I1, size_t I2, size_t... Is>
+	struct swap_two_indices < seq<I1, I2, Is...>>
 	{
-		using type = seq<I2, I, Is...>;
+		using type = seq<I2, I1, Is...>;
 	};
 }
 template<typename SEQ>
-using switch_seq = typename detail::switch_first_two_indices<SEQ>::type;
+using swap_seq = typename detail::swap_two_indices<SEQ>::type;
 
 
 namespace detail

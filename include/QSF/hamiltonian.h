@@ -11,6 +11,9 @@ namespace Schrodinger
 		using Base = WF < Spin0<GType, V_Op, C_Op>, GType, 1>;
 		using Base::psi;
 		using Base::post_step;
+		using Base::local_n;
+		using Base::local_start;
+		using Base::DIM;
 		using InducedGrid = typename Base::InducedGrid;
 		static constexpr REP couplesInRep = C_Op::couplesInRep;
 
@@ -30,18 +33,18 @@ namespace Schrodinger
 		template <REP R, typename ... Args>
 		double couple(Args ... args)
 		{
-			if constexpr (C_Op::couplesInRep == R && C_Op::size)
-				return ((args * coupling[AXIS::NO]) + ...);
-			else return 0.0;
+			return 0.0;
+			// if constexpr (C_Op::couplesInRep == R && C_Op::size)
+			// 	return ((args * coupling[AXIS::NO]) + ...);
+			// else return 0.0;
 		}
-		template < REP R, typename ... Args>
-		inline double operator()(Args ... args)
+		template < REP R, typename ... Cooords>
+		inline double operator()(Cooords ... coords)
 		{
 			if constexpr (R == REP::P)
-				return InducedGrid::kin_scale * (Power(args, 2) + ...) - couple<R>(args...);
-			else return potential(args...) + couple<R>(args...);
+				return (InducedGrid::kin_scale * ((coords * coords) + ...)) - couple<R>(coords...);
+			else return potential(coords...) + couple<R>(coords...);
 		}
-
 
 		template <class Op, class...Coords>
 		inline double call(Coords...coords)
@@ -50,11 +53,8 @@ namespace Schrodinger
 			if constexpr (std::is_same_v<Op, KineticEnergy>)
 				return operator() < REP::P > (coords...);
 			else if constexpr (std::is_same_v<Op, PotentialEnergy>)
-			{
 				return operator() < REP::X > (coords...);
-			}
-			else //if constexpr (std::is_same_v<Op, KineticEnergy>)
-				return 3.0;
+			else return 3.0;
 		}
 
 
@@ -66,11 +66,17 @@ namespace Schrodinger
 			else
 				return cos(-val) + I * sin(-val);
 		}
-		using Base::local_n;
-		using Base::local_start;
-		using Base::DIM;
-
-
 
 	};
 }
+
+
+
+
+// template < REP R>
+// inline double operator()(double x, double y)
+// {
+// 	if constexpr (R == REP::P)
+// 		return (InducedGrid::kin_scale * (x * x * x * x + y * y));
+// 	else return potential(x * x * x * x + y * y);
+// }

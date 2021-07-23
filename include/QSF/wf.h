@@ -77,104 +77,120 @@ struct WF : Grid <GridBase, Components>
 		bo.template store <M, COMP>(1.0);
 	}
 
-	template <MODE M, REP R, uind ... Is>
-	void evolve_(double delta, seq<Is...>)
-	{
-		ind idxs[DIMC + 1] = { 0 };
-		do {
-			psi[idxs[DIMC]] *=
-				static_cast<Hamiltonian*>(this)->
-				template expOp < M, R>(
-					delta * static_cast<Hamiltonian*>(this)->template call<std::conditional_t<R == REP::P, KineticEnergy, PotentialEnergy>>(InducedGrid::template pos<R>(idxs[Is] + (Is == DIMC - 1 ? local_start : 0))...));
 
-		} while (!((
-			(idxs[Is]++, idxs[Is] < reverse_shape[Is])
-			? (idxs[DIMC]++, false) : (idxs[Is] = 0, true)) && ...));
-		// for (ind i = 0; i < local_n; i++)
-		// {
-		// 	if constexpr (DIM == 1)
-		// 		psi[i] *= expOp<M>(delta * operator() < R, OPTIMS::NONE > (i + local_start));
-		// 	else
-		// 	{
-		// 		ind readInd1 = i * InducedGrid::n;
-		// 		//Due to FFTW flag FFTW_MPI_TRANSPOSED_OUT we need to switch x<->y for DIM>1
-		// 		for (ind j = 0; j < InducedGrid::n; j++)
-		// 		{
-		// 			ind readInd2 = readInd1 + j;
-		// 			if constexpr (DIM == 2)
-		// 			{
-		// 				if (R == REP::X || MPI::region)
-		// 					psi[readInd2] *= expOp<M>(delta * operator() < R, OPTIMS::NONE > (i + local_start, j));
-		// 				else
-		// 					psi[readInd2] *= expOp<M>(delta * operator() < R, OPTIMS::NONE > (j, i + local_start));
-		// 			}
-		// 			else
-		// 			{
-		// 				ind readInd2 = readInd2 * InducedGrid::n;
-		// 				for (ind k = 0; k < InducedGrid::n; k++)
-		// 				{
-		// 					ind readInd3 = readInd2 + k;
-		// 					if (R == REP::X || MPI::region)
-		// 						psi[readInd3] *= expOp<M>(delta * operator() < R, OPTIMS::NONE > (i + local_start, j, k));
-		// 					else
-		// 						psi[readInd3] *= expOp<M>(delta * operator() < R, OPTIMS::NONE > (j, i + local_start, k));
-		// 				}
-		// 			}
-		// 		}
-		// 	}
-		// }
+
+	// ind constexpr mfix(ind Is)
+	// {
+	// 	return (Is == 0 ? local_start : 0);
+	// }
+	/* Due to FFTW flag FFTW_MPI_TRANSPOSED_OUT we need to
+	switch x<->y for DIM>1 if working on opossite rep */
+	template <ind Is>
+	ind static constexpr swap01 = Is == 0 ? 1 : (Is == 1 ? 0 : Is);
+
+	template <REP R, ind Is>
+	ind static constexpr ofix = DIMC - 1 - ((R == REP::X) ? Is : swap01<Is>);
+	/* When using mpi the first coordinate needs to be shifted
+	NOTE: This is so when passing to functions accepting x,y,z...,
+	internally the condition is different Is==0 for REP::X and Is==1 for REP::P*/
+
+	ind constexpr mfix(ind Is) { return Is == 0 ? local_start : 0; };
+	// {
+	// 	if constexpr (R == REP::X) return DIMC - 1 - Is;
+	// 	else return DIMC - 1 - (Is == 0 ? 1 : (Is == 1 ? 0 : Is));
+	// }
+	// static constexpr auto transposed_indices = swap_seq<n_seq_t<DIMC>>{};
+	// //flip_seq_t<DIMC - 1, n_seq_t<DIMC>>;
+	static constexpr auto indices = n_seq<DIMC>;
+	// //flip_seq_t<DIMC - 1, n_seq_t<DIMC>>;
+	// static constexpr ind rev = DIMC - 1;
+	// // static constexpr n_seq_t<DIMC> indexes = n_seq<DIMC>;
+	// template <REP R>
+	// constexpr auto indices()
+	// {	//FIXME: | !MPI::region
+	// 	if constexpr (std::is_same_v<MPIStrategy, MPI::Single>)
+	// 	{
+	// 		if constexpr (R == REP::P && DIM > 1) return transposed_indices;
+	// 		else return regular_indices;
+	// 	}
+	// 	if constexpr (!(std::is_same_v<MPIStrategy, MPI::Single>))
+	// 	{
+	// 		if ((R == REP::P && DIM > 1) && !MPI::region) return transposed_indices;
+	// 		else return regular_indices;
+	// 	}
+	// 	// else
+	// 	// {
+
+	// 	// }
+	// }
+
+	template <MODE M, REP R, uind ... Is>
+	inline void evolve_(double delta, seq<Is...>)
+	{
+		ind count[DIMC + 1] = { 0 };
+		do {
+			psi[count[DIMC]] *= static_cast<Hamiltonian*>(this)->template expOp < M, R>
+				(delta * static_cast<Hamiltonian*>(this)->template operator() < R > (InducedGrid::template pos<R>(count[Is] + mfix(Is))...));
+
+
+
+			// if (R == REP::P)
+			// {
+			// 	psi[count[DIMC]] = { MPI::rID,
+			// 	   static_cast<Hamiltonian*>(this)->template operator() < R > (InducedGrid::template pos<R>(count[Is] + mfix(Is))...) };
+			// }
+
+			// if (R == REP::P)
+				// _logMPI("%2d %2td [%2td %2td] (%2td %2td) [%2td %2td] %10g %10g %10g", MPI::rID, MPI::pID * local_m + count[DIMC],
+						// (count[Is] + mfix(Is))..., (count[Is])...,
+						// shape[Is]..., std::norm(psi[count[DIMC]]),
+						// static_cast<Hamiltonian*>(this)->template operator() < R > (InducedGrid::template pos<R>(count[Is] + mfix(Is))...), static_cast<Hamiltonian*>(this)->template expOp < M, R>
+						// (delta * static_cast<Hamiltonian*>(this)->template operator() < R > (InducedGrid::template pos<R>(count[Is] + mfix(Is))...)));
+
+			// static_cast<Hamiltonian*>(this)->
+				// template expOp < M, R>(
+					// delta * static_cast<Hamiltonian*>(this)->template call<std::conditional_t<R == REP::P, KineticEnergy, PotentialEnergy>>(InducedGrid::template pos<R>(count[Is] + mfix(Is))...));
+		} while (!(...&& ((count[ofix<R, Is>]++, count[ofix<R, Is>] < shape[ofix<R, Is>])
+						  ? (count[DIMC]++, false) : (count[ofix<R, Is>] = 0, true))));
 	}
 	template <MODE M, REP R>
-	void evolve(double delta)
+	inline void evolve(double delta)
 	{
-		evolve_<M, R>(delta, indices<R>());
+		evolve_<M, R>(delta, indices);
 	}
-
-
 
 
 	template <REP R, class Op, uind ... Is>
 	double average_(seq<Is...>)
 	{
 		// logInfo("%td %td %td %td", shape[0], shape[1], shape[2], sizeof...(Is));
-		ind idxs[DIMC + 1]{ 0 };
-
+		ind count[DIMC + 1]{ 0 };
 		double res = 0.0;
 		do {
 			// logInfo("This will get added %s", typeid(Op).name());
+			// if (R == REP::P)
+				// logInfo("%2td %2td [%2td %2td] [%2td %2td] %td %td", Is..., count[Is]..., shape[Is]..., sizeof...(Is), count[DIMC]);
+				// logInfo("%td/%td", count[DIMC], local_m);
 			// if (R == REP::X)
-				// logInfo("%td/%td", idxs[DIMC], local_m);
-				// logInfo("[%2td %2td %2td] [%2td %2td %2td] %td %td", idxs[Is]..., reverse_shape[0], reverse_shape[1], reverse_shape[2], sizeof...(Is), idxs[DIMC]);
-			// if (R == REP::X)
-				// logInfo("%td %g", idxs[DIMC], std::norm(psi[idxs[DIMC]]));
+				// logInfo("%td %g", count[DIMC], std::norm(psi[count[DIMC]]));
 
-			if constexpr (std::is_same_v<Op, Identity>)
-			{
-				res += std::norm(psi[idxs[DIMC]]);
-			}
-			else
-				res += static_cast<Hamiltonian*>(this)->template call < Op >(InducedGrid::template pos<R>(idxs[Is] + (Is == DIMC - 1 - (R == REP::P ? 1 : 0) ? local_start : 0))...) * std::norm(psi[idxs[DIMC]]);
+			if constexpr (std::is_same_v<Op, Identity>) res += std::norm(psi[count[DIMC]]);
+			else res += static_cast<Hamiltonian*>(this)->template call < Op >(InducedGrid::template pos<R>(count[Is] + mfix(Is))...) * std::norm(psi[count[DIMC]]);
 
-		} while (!((
-			(idxs[Is]++, idxs[Is] < reverse_shape[Is])
-			? (idxs[DIMC]++, false) : (idxs[Is] = 0, true)) && ...));
+		} while (!(...&& ((count[ofix<R, Is>]++, count[ofix<R, Is>] < shape[ofix<R, Is>])
+						  ? (count[DIMC]++, false) : (count[ofix<R, Is>] = 0, true))));
+
+		// if (std::is_same_v<Op, KineticEnergy>)
+			// _logMPI("%d %g %td %g", MPI::pID, res, count[DIMC], test);
 
 		return res * InducedGrid::template vol<R>();
 	}
-	/* Due to FFTW flag FFTW_MPI_TRANSPOSED_OUT we need to
-	  switch x<->y for DIM>1 if working on opossite rep */
-	template <REP R>
-	constexpr auto indices()
-	{	//FIXME: | !MPI::region
-		if constexpr (R == REP::P && DIM > 1)
-			return switch_seq<n_seq_t<DIMC>>{};
-		else return n_seq<DIMC>;
-	}
+
 
 	template <REP R, class Op>
 	inline double average()
 	{
-		return average_<R, Op>(indices<R>());
+		return average_<R, Op>(indices);
 	}
 #pragma endregion Computations
 	template <class Op>
@@ -220,7 +236,7 @@ struct WF : Grid <GridBase, Components>
 		// 			wf[i] = wf[i] - amplits[lower] * ei[i];
 		// 	}
 		// }
-		// auto res = average<R, Identity>(indices<R>());
+		// auto res = average<R, Identity>(indices);
 		// MPI::reduceImmediataly(&res);
 		// InducedGrid::multiplyArray(psi, sqrt(1.0 / res));
 		}
@@ -237,27 +253,35 @@ struct WF : Grid <GridBase, Components>
 	template <class F, REP R, bool coords, uind ... Is>
 	void add(F&& f, seq<Is...>)
 	{
+		ind dym;
 		// _logMPI("my local_start %td", local_start);
-		ind idxs[DIMC + 1] = { 0 };
+		ind count[DIMC + 1] = { 0 };
 		do {
 			if constexpr (coords)
-				psi[idxs[DIMC]] += f(InducedGrid::template pos<R>(idxs[Is] + (Is == DIMC - 1 ? local_start : 0))...);
-			else psi[idxs[DIMC]] += f((idxs[Is] + (Is == DIMC - 1 ? local_start : 0))...);
+				psi[count[DIMC]] += f(InducedGrid::template pos<R>(count[Is] + mfix(Is))...);
+			else psi[count[DIMC]] += f((count[Is] + mfix(Is))...);
+			// logInfo("%s %td %td", REP::X == R ? "X" : "P", count[Is]...);
 
-		} while (!((
-			(idxs[Is]++, idxs[Is] < reverse_shape[Is])
-			? (idxs[DIMC]++, false) : (idxs[Is] = 0, true)) && ...));
+		} while (!(...&& ((count[ofix<R, Is>]++, count[ofix<R, Is>] < shape[ofix<R, Is>])
+						  ? (count[DIMC]++, false) : (count[ofix<R, Is>] = 0, true))));
+		// } while ((... ||
+		// 		  !((count[Is]++, count[Is] < shape[Is]) ? (count[DIMC]++, false) : (count[Is] = 0, true))));
+		// } while (!(... && ((count[rev - Is]++, count[rev - Is] < shape[rev - Is])
+		// 				   ? (count[DIMC]++, false)
+		// 				   : (count[rev - Is] = 0, true))));
+						   // } while (!(
+							   // ((count[Is]++, count[Is] < shape[Is]) ? (count[DIMC]++, false) : (count[Is] = 0, true)) && ... && true));
 	}
 
 	template <class F, REP R = REP::X>
 	void addUsingCoordinateFunction(F&& f)
 	{
-		add<F, R, true>(std::forward<F>(f), indices<R>());
+		add<F, R, true>(std::forward<F>(f), indices);
 	}
 	template <class F, REP R = REP::X>
 	void addUsingNodeFunction(F&& f)
 	{
-		add<F, R, false>(std::forward<F>(f), indices<R>());
+		add<F, R, false>(std::forward<F>(f), indices);
 	}
 
 	void addFromFile()

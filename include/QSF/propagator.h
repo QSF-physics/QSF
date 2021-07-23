@@ -97,7 +97,9 @@ struct SplitPropagator : Config, PropagatorBase
 
 	SplitPropagator(PropagatorBase pb, HamWF wf) : PropagatorBase(pb), wf(wf)
 	{
-		max_steps = 100;//FIXME 
+		logInfo("SplitPropagator init");
+		logSETUP("maxPulseDuration: %g, dt: %g => max_steps: %td", wf.coupling.maxPulseDuration(), dt, max_steps);
+		max_steps = 0;
 		state_accuracy = 0;
 	}
 
@@ -115,7 +117,8 @@ struct SplitPropagator : Config, PropagatorBase
 		}
 		else
 		{
-			//TODO: init RE
+			logSETUP("maxPulseDuration: %g, dt: %g => max_steps: %td", wf.coupling.maxPulseDuration(), dt, max_steps);
+			max_steps = 10;
 		}
 		if constexpr (ChainCount > 1) wf.initHelpers();
 
@@ -232,7 +235,6 @@ struct SplitPropagator : Config, PropagatorBase
 #pragma region Evolution
 	inline bool stillEvolving()
 	{
-		logInfo("%d ", fabs(dif_energy) > state_accuracy && step != max_steps);
 		if constexpr (mode == MODE::RE) return (step <= max_steps);
 		else return fabs(dif_energy) > state_accuracy && step != max_steps;
 	}
@@ -264,7 +266,7 @@ struct SplitPropagator : Config, PropagatorBase
 	}
 
 	template <uind... chain>
-	void makeStep(seq<chain...>)
+	inline void makeStep(seq<chain...>)
 	{
 		chainBackup();
 		((
@@ -331,15 +333,11 @@ struct SplitPropagator : Config, PropagatorBase
 			wf.post_step();
 			worker(WHEN::DURING, step, pass, wf);
 		}
-		logInfo("Done!");
+
 		makeStep(ChainExpander{});
-		logInfo("Done!!");
 		computeEach<WHEN::AT_END>(outputs);
-		logInfo("Done!!!");
 		wf.post_step();
-		logInfo("Done!!!!");
 		worker(WHEN::AT_END, step, pass, wf);
-		logInfo("Done!!!!!");
 	   // HACK: This makes sure, the steps are always evenly spaced
 	   // step += (outputs.comp_interval - 1);
 	   // Evolution::incrementBy(outputs.comp_interval);

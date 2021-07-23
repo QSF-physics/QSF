@@ -13,7 +13,7 @@
 #define FMT_TIME "%15.4g"
 #define FMTS_TIME "%15s"
 #define FMT_D "%.15g"
-#define FMT_DOUBLE "|%13.5g "
+#define FMT_DOUBLE "|%13.13g "
 #define FMTS_DOUBLE "%15s"
 #define FMT_STEPS "%7td/%7td"
 #define FMT_STEPS_IM "%15td"
