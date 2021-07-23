@@ -1,6 +1,6 @@
 struct CoordinateSystem {
-	ind n;
 	double dx;
+	ind n;
 };
 
 template <DIMS Dflag, class AT, class MG = MPI::Single, class MS = MPI::Slices>

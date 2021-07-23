@@ -12,15 +12,15 @@
 		// 			  || is_same_v<Operator, IdentityOperator<REP::P>>
 		// 			  || is_same_v<Operator, IdentityOperator<REP::X | REP::P>>)
 		// {
-		// 	for (i = 0; i < local_m; i++) result += norm(WF::psi[i]);
+		// 	for (i = 0; i < m_l; i++) result += norm(WF::psi[i]);
 		// }
 		// else
 		// {
-		// 	for (ind i = 0; i < local_n; i++)
+		// 	for (ind i = 0; i < n0_l; i++)
 		// 	{
 		// 		if constexpr (DIM == 1)
 		// 			result += norm(WF::psi[i])
-		// 			* op.template operator() < R, opt > (local_start + i);
+		// 			* op.template operator() < R, opt > (n0_o + i);
 
 		// 		else
 		// 		{
@@ -32,10 +32,10 @@
 		// 				{
 		// 					if constexpr (R == REP::X)
 		// 						result += norm(WF::psi[readInd1])
-		// 						* op.template operator() < R, opt > (local_start + i, j);
+		// 						* op.template operator() < R, opt > (n0_o + i, j);
 		// 					else
 		// 						result += norm(WF::psi[readInd1])
-		// 						* op.template operator() < R, opt > (j, local_start + i);
+		// 						* op.template operator() < R, opt > (j, n0_o + i);
 		// 				}
 		// 				else
 		// 				{
@@ -44,10 +44,10 @@
 		// 					{
 		// 						if constexpr (R == REP::X)
 		// 							result += norm(WF::psi[readInd1 + k])
-		// 							* op.template operator() < R, opt > (local_start + i, j, k);
+		// 							* op.template operator() < R, opt > (n0_o + i, j, k);
 		// 						else
 		// 							result += norm(WF::psi[readInd1 + k])
-		// 							* op.template operator() < R, opt > (j, local_start + i, k);
+		// 							* op.template operator() < R, opt > (j, n0_o + i, k);
 		// 					}
 		// 				}
 		// 			}
@@ -68,9 +68,9 @@
 // 		constexpr Operator op;
 // 	// auto op = COMPUTATION <double, false, Args...>::template getOperator<Operator>();
 // 		double result = 0.0;
-// 		// for (i = 0; i < local_n; i++)
+// 		// for (i = 0; i < n0_l; i++)
 // 		// {
-// 		// 	if constexpr (DIM == 1) result += norm(WF::psi[i]) * op. template operator() < R, opt > (i + local_start);
+// 		// 	if constexpr (DIM == 1) result += norm(WF::psi[i]) * op. template operator() < R, opt > (i + n0_o);
 // 		// 	else
 // 		// 	{
 // 		// 		readInd0 = i * n;
@@ -81,9 +81,9 @@
 // 		// 			{
 // 		// 				if constexpr (R == REP::X)
 // 		// 					result += norm(WF::psi[readInd1])
-// 		// 					* op. template operator() < R, opt > (i + local_start, j);
+// 		// 					* op. template operator() < R, opt > (i + n0_o, j);
 // 		// 				else result += norm(WF::psi[readInd1])
-// 		// 					* op. template operator() < R, opt > (j, i + local_start);
+// 		// 					* op. template operator() < R, opt > (j, i + n0_o);
 // 		// 			}
 // 		// 			else
 // 		// 			{
@@ -92,9 +92,9 @@
 // 		// 				{
 // 		// 					if constexpr (R == REP::X)
 // 		// 						result += norm(WF::psi[readInd1 + k])
-// 		// 						* op. template operator() < R, opt > (i + local_start, j, k);
+// 		// 						* op. template operator() < R, opt > (i + n0_o, j, k);
 // 		// 					else result += norm(WF::psi[readInd1 + k])
-// 		// 						* op. template operator() < R, opt > (j, i + local_start, k);
+// 		// 						* op. template operator() < R, opt > (j, i + n0_o, k);
 // 		// 				}
 // 		// 			}
 // 		// 		}

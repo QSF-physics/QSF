@@ -133,10 +133,10 @@ namespace Schrodinger
 		template <MODE M, REP R>
 		void evolve(double delta)
 		{
-			for (i = 0; i < local_n; i++)
+			for (i = 0; i < n0_l; i++)
 			{
 				if constexpr (DIM == 1)
-					psi[i] *= expOp(delta * operator() < R, NO_OPTIMIZATIONS > (i + local_start));
+					psi[i] *= expOp(delta * operator() < R, NO_OPTIMIZATIONS > (i + n0_o));
 				else
 				{
 					readInd1 = i * grid::n;
@@ -147,9 +147,9 @@ namespace Schrodinger
 						if constexpr (DIM == 2)
 						{
 							if (R == REP::X || MPI::region)
-								psi[readInd2] *= te(delta * operator() < R, NO_OPTIMIZATIONS > (i + local_start, j));
+								psi[readInd2] *= te(delta * operator() < R, NO_OPTIMIZATIONS > (i + n0_o, j));
 							else
-								psi[readInd2] *= te(delta * operator() < R, NO_OPTIMIZATIONS > (j, i + local_start));
+								psi[readInd2] *= te(delta * operator() < R, NO_OPTIMIZATIONS > (j, i + n0_o));
 						}
 						else
 						{
@@ -158,9 +158,9 @@ namespace Schrodinger
 							{
 								readInd3 = readInd2 + k;
 								if (R == REP::X || MPI::region)
-									psi[readInd3] *= te(delta * operator() < R, NO_OPTIMIZATIONS > (i + local_start, j, k));
+									psi[readInd3] *= te(delta * operator() < R, NO_OPTIMIZATIONS > (i + n0_o, j, k));
 								else
-									psi[readInd3] *= te(delta * operator() < R, NO_OPTIMIZATIONS > (j, i + local_start, k));
+									psi[readInd3] *= te(delta * operator() < R, NO_OPTIMIZATIONS > (j, i + n0_o, k));
 							}
 						}
 					}

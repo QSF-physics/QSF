@@ -27,21 +27,32 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	static constexpr ind DIMC = DIM + (Components > 1 ? 1 : 0);
 
 	MPISol sol;//MPI Solution
-	cxd* psi = nullptr;      			// local ψ(x,t) on local_m grid
-	cxd* psi_total = nullptr; // total ψ on m grid (used for X and P)
-	cxd* psi_copy = nullptr;      		// backup ψ(x,t) on local_m grid
-	cxd* psi_acc = nullptr;      		// accumulated ψ(x,t) on local_m grid
-	ind local_n;
+	cxd* psi_total = nullptr; 	// total ψ on m grid (used for saving)
+	cxd* psi = nullptr;      	// local ψ(x,t) on m_l grid
+	cxd* psi_copy = nullptr;    // backup ψ(x,t) on m_l grid
+	cxd* psi_acc = nullptr;     // accumulated ψ(x,t) on m_l grid
 
-	ind local_m;
-	ind local_start;
-	ind local_end;
-	ind shape[DIMC];
-	ind reverse_shape[DIMC];
+	ind m_l; //m local - total number of nodes per process
+
+	ind n0_l; //n0 local - number of n0 nodes attributed to the process
+	ind n0_o; //n0 offset - position of first local node in full array
+	ind n0_e; //n0 end - position of last local node in full array
+
+	ind n1_l; //n1 local - number of n1 nodes attributed to the process
+	ind n1_o; //n1 offset - position of first local node in full array
+	ind n1_e; //n1 end - position of last local node in full array
+
+	ind shape[DIMC];/* Shape as given by input, n0*n1*n2*...*/
+	ind shape_l[DIMC];/* MPI local shape: local_n0*n1*n2*...*/
+	ind shape_t[DIMC]; /*P-space local MPI shape: local_n1*n0*n2*...
+	Different from shape_l[] if n0!=n1 and if FFTW_MPI_TRANSPOSED_OUT is used: */
+
 	ind strides[DIMC];
-	ind full_shape[DIMC];
-	ind full_strides[DIMC];
+	ind strides_l[DIMC];
+	ind strides_t[DIMC];
 
+
+	ind reverse_shape[DIMC];
 	bool mpiFFTW;
 	fftw_plan mpi_plans[2];
 	fftw_plan extra_plans[2 * DIM];
@@ -55,13 +66,14 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 
 	void gather()
 	{
+		_logMPI("my %d", MPI::rID);
 		if (!MPI::rID && psi_total == nullptr)
 		{
 			logALLOC("Allocating memory for psi_total");
 			psi_total = new cxd[m];
 		}
 		logMPI("Gathering " psi_symbol "... to address %p", psi_total);
-		MPI_Gather(psi, local_m, MPI_CXX_DOUBLE_COMPLEX, psi_total, local_m, MPI_CXX_DOUBLE_COMPLEX, 0, MPI::rComm);
+		MPI_Gather(psi, m_l, MPI_CXX_DOUBLE_COMPLEX, psi_total, m_l, MPI_CXX_DOUBLE_COMPLEX, 0, MPI::rComm);
 	}
 
 
@@ -77,8 +89,8 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	template <uind dim = 0, class I, class... Args>
 	constexpr inline auto data_offset(I i, Args... args) noexcept
 	{
-		if constexpr (DIM - 1 == dim) return i * strides[dim];
-		else return i * strides[dim] + data_offset<dim + 1>(args...);
+		if constexpr (DIM - 1 == dim) return i * strides_l[dim];
+		else return i * strides_l[dim] + data_offset<dim + 1>(args...);
 	}
 	template <class... I> cxd& operator()(I... i)
 	{
@@ -101,8 +113,8 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	void initHelpers()
 	{
 		logInfo("Using Operator Split Groups (Multiproduct splitting)");
-		psi_copy = (cxd*)fftw_malloc(sizeof(cxd) * local_m);
-		psi_acc = (cxd*)fftw_malloc(sizeof(cxd) * local_m);
+		psi_copy = (cxd*)fftw_malloc(sizeof(cxd) * m_l);
+		psi_acc = (cxd*)fftw_malloc(sizeof(cxd) * m_l);
 	}
 	void init()
 	{
@@ -122,36 +134,36 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 		}
 
 		fftw_mpi_init();
-		local_n = n / MPI::rSize; //Expected split
-
+		n0_l = n / MPI::rSize; //Expected split
+		n1_l = n0_l; //TODO: Change this to n1/rSize
 		// logTestFatal(n >= Im::n && n >= Src::n, "Grid length n (%td) should be larger than IM grid length Im::n (%td) and previous mode grid length Src::n (%td)", n, Im::n, Src::n);
 
-		strides[DIM - 1] = 1;
+		strides_l[DIM - 1] = 1;
 		shape[DIM - 1] = n;
 		reverse_shape[0] = n;
 		for (int i = DIM - 2; i >= 0; i--)
 		{
 			shape[i] = n; //Size of each dimension
 			reverse_shape[i] = n;
-			strides[i] = shape[i + 1] * strides[i + 1];
+			strides_l[i] = shape[i + 1] * strides_l[i + 1];
 		}
 
 		for (int i = 0; i < DIM; i++) logSETUP("Array shape[%d]=%td", i, shape[i]);
 
 		logSETUP("Setting up " psi_symbol "(x,t) arrays and plans...");
-		logSETUP("Grid size n (%td) will split into local_n (%td) by rSize (%d)", n, local_n, MPI::rSize);
+		logSETUP("Grid size n (%td) will split into n0_l (%td) by rSize (%d)", n, n0_l, MPI::rSize);
 
 		if constexpr (DIM == 1)
 		{
 			/* We need to deal with 1D case seperately, see:
 			http://fftw.org/doc/Basic-and-advanced-distribution-interfaces.html#Basic-and-advanced-distribution-interfaces */
 			ind local_n2, local_start2; //Used in 1D only
-			local_n2 = local_n;
-			local_m = fftw_mpi_local_size_1d(n, MPI::rComm, FFTW_FORWARD, MPI::plan_rigor, &local_n, &local_start, &local_n2, &local_start2);
-			// local_m = fftw_mpi_local_size_1d(n, MPI::rComm, FFTW_BACKWARD, plan_rigor, &local_n, &local_start, &local_n2, &local_start2);
+			local_n2 = n0_l;
+			m_l = fftw_mpi_local_size_1d(n, MPI::rComm, FFTW_FORWARD, MPI::plan_rigor, &n0_l, &n0_o, &local_n2, &local_start2);
+			// m_l = fftw_mpi_local_size_1d(n, MPI::rComm, FFTW_BACKWARD, plan_rigor, &n0_l, &n0_o, &local_n2, &local_start2);
 		}
-		else local_m = fftw_mpi_local_size(DIM, shape, MPI::rComm, &local_n, &local_start);
-		psi = (cxd*)fftw_malloc(sizeof(cxd) * local_m);
+		else m_l = fftw_mpi_local_size(DIM, shape, MPI::rComm, &n0_l, &n0_o);
+		psi = (cxd*)fftw_malloc(sizeof(cxd) * m_l);
 		// We should use non-MPI FFTW routines when transform doesn't involve X (is a free coord)
 
 		// Transposing the first two dimensions in not all-dim cases would lead to problems
@@ -176,12 +188,22 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 									   MPI::rComm, for_back[i], MPI::plan_rigor | (canLeaveTransposed ? transpose_f[i] : 0));
 		}
 		if (mpiFFTW && canLeaveTransposed)
-			logWarning("FFTW will leave wf transposed");
+			logWarning("FFTW will leave wf transposed %d %d", transpose_f[0], transpose_f[1]);
 		if (sol.isMain)
 			logWarning("FFTW will be performed in one step");
 		/* Non-mpi fftw (extra) plans for non-main region (region!=0) transforms are coupled together if involve consecutive directions (case for 1-3D)*/
-		shape[0] = local_n;
-		reverse_shape[DIM - 1] = local_n;
+		for (size_t i = 0; i < DIM; i++)
+		{
+			shape_l[i] = shape[i];
+			shape_t[i] = shape[i];
+		}
+		shape_l[0] = n0_l;
+		shape_t[0] = n1_l;
+		n1_o = n0_o; ///TODO: change
+
+		n0_e = n0_o + n0_l - 1;
+		n1_e = n1_o + n1_l - 1;
+		reverse_shape[DIM - 1] = n0_l;
 
 		int fftw_rank = 0;
 		int start_dim = -1;
@@ -195,8 +217,8 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 					fftw_iodim64* dims = new fftw_iodim64[fftw_rank];
 					for (int j = 0; j < fftw_rank; j++)
 					{
-						dims[j] = { shape[start_dim + j], strides[start_dim + j],strides[start_dim + j] };
-						__logMPI("region %d start_dim %d j %d shape[start_dim+j]=%td strides[start_dim+j]=%td\n", MPI::region, start_dim, j, shape[start_dim + j], strides[start_dim + j]);
+						dims[j] = { shape_l[start_dim + j], strides_l[start_dim + j],strides_l[start_dim + j] };
+						__logMPI("region %d start_dim %d j %d shape_l[start_dim+j]=%td strides_l[start_dim+j]=%td\n", MPI::region, start_dim, j, shape_l[start_dim + j], strides_l[start_dim + j]);
 					}
 
 					//define a loop over all howmany_dims (free) dimensions
@@ -207,9 +229,9 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 					{
 						if (j < start_dim || (j >= start_dim + fftw_rank && j < DIM))
 						{
-							howmany_dims[index] = { shape[j], strides[j], strides[j] };
+							howmany_dims[index] = { shape_l[j], strides_l[j], strides_l[j] };
 							index++;
-							__logMPI("region %d start_dim %d index %d j %d shape[j]=%td dist[j]=%td\n", MPI::region, start_dim, index, j, shape[j], strides[j]);
+							__logMPI("region %d start_dim %d index %d j %d shape_l[j]=%td dist[j]=%td\n", MPI::region, start_dim, index, j, shape_l[j], strides_l[j]);
 						}
 					};
 					for (int k = 0; k < 2; k++)
@@ -237,9 +259,9 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 		_logMPI("region %d mpiFFTW %d extra_plans_count %d", MPI::region, mpiFFTW, extra_plans_count);
 
 
-		local_end = local_start + local_n - 1;
 
-		_logMPI("Region %d MPI::pID: %d got %td nodes or %td rows [start row: %td end row: %td]", MPI::region, MPI::pID, local_m, local_n, local_start, local_end);
+
+		_logMPI("Region %d MPI::pID: %d got %td nodes or %td rows [start row: %td end row: %td]", MPI::region, MPI::pID, m_l, n0_l, n0_o, n0_e);
 		logSETUP(psi_symbol " and forward/backward plans initialized");
 
 		reset();
@@ -251,28 +273,28 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	void add(const cxd* psi_source, ind inp_n, double weight)
 	{
 		if (n == inp_n)
-			for (ind i = 0; i < local_m; i++) psi[i] += weight * psi_source[i];
+			for (ind i = 0; i < m_l; i++) psi[i] += weight * psi_source[i];
 		else
 		{
 			ind m_down = (n / 2 - inp_n / 2);
 			ind m_up = m_down + inp_n - 1;
 			for (ind i = m_down; i <= m_up; i++)
 			{
-				if (local_start <= i && i <= local_end)
+				if (n0_o <= i && i <= n0_e)
 				{
 					if constexpr (DIM == 1)
-						psi[i - local_start] += weight * psi_source[i - m_down];
+						psi[i - n0_o] += weight * psi_source[i - m_down];
 					else
 					{
 						for (ind j = m_down; j <= m_up; j++)
 						{
 							if constexpr (DIM == 2)
-								psi[(i - local_start) * n + j] += weight * psi_source[(i - m_down) * inp_n + (j - m_down)];
+								psi[(i - n0_o) * n + j] += weight * psi_source[(i - m_down) * inp_n + (j - m_down)];
 							else
 							{
 								for (ind k = m_down; k <= m_up; k++)
 								{
-									psi[(i - local_start) * nn + j * n + k] += weight * psi_source[((i - m_down) * inp_n + (j - m_down)) * inp_n + (k - m_down)];
+									psi[(i - n0_o) * nn + j * n + k] += weight * psi_source[((i - m_down) * inp_n + (j - m_down)) * inp_n + (k - m_down)];
 								}
 							}
 						}
@@ -289,7 +311,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 
 	inline void backup()
 	{
-		for (ind i = 0; i < local_m; i++)
+		for (ind i = 0; i < m_l; i++)
 		{
 			psi_copy[i] = psi[i];
 			psi_acc[i] = 0.0;
@@ -299,17 +321,17 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	inline void restore()
 	{
 		copyArray(psi, psi_copy);
-		// for (ind i = 0; i < local_m; i++) psi[i] = psi_copy[i];
+		// for (ind i = 0; i < m_l; i++) psi[i] = psi_copy[i];
 	}
 
 	void accumulate(double coeff)
 	{
-		for (ind i = 0; i < local_m; i++) psi_acc[i] += coeff * psi[i];
+		for (ind i = 0; i < m_l; i++) psi_acc[i] += coeff * psi[i];
 	}
 
 	void collect(double coeff)
 	{
-		for (ind i = 0; i < local_m; i++)
+		for (ind i = 0; i < m_l; i++)
 			psi[i] = coeff * psi[i] + psi_acc[i];
 	}
 
@@ -334,23 +356,72 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	template <REP R>
 	inline void fourier()
 	{
-		if (count < 10)
+		if (count < 2)
 		{
-			if (!MPI::rID)
-			{
-				gather();
-				sprintf(file_path, "%s%d_cpu%d_%s.txt",
-						target_path, count, MPI::rSize, R == REP::X ? "P" : "X");
-				FILE* f = fopen_with_check<IO_ATTR::WRITE>(file_path);
-				for (ind i = 0;i < n;i++)
-					for (ind j = 0;j < n;j++)
-						fprintf(f, "%td, %td, %g\n", i, j, std::norm(psi_total[i * n + j]));
-				closeFile(f);
-			}
-			count++;
-		}
+			MPI_Barrier(MPI_COMM_WORLD);
+			// fprintf(stderr, "REP %s\n\n", R == REP::X ? "P" : "X");
+			MPI_Barrier(MPI_COMM_WORLD);
+			MPI_Barrier(MPI_COMM_WORLD);
+			MPI_Barrier(MPI_COMM_WORLD);
+			MPI_Barrier(MPI_COMM_WORLD);
+			MPI_Barrier(MPI_COMM_WORLD);
+				// if (!MPI::rID)
+				// {
+				// 	gather();
+				// 	sprintf(file_path, "%s%d_cpu%d_%s.txt",
+				// 			target_path, count, MPI::rSize, R == REP::X ? "P" : "X");
+				// 	FILE* f = fopen_with_check<IO_ATTR::WRITE>(file_path);
+				// 	for (ind i = 0;i < n;i++)
+				// 		for (ind j = 0;j < n;j++)
+				// 			fprintf(f, "%td, %td, %g\n", i, j, std::norm(psi_total[i * n + j]));
+				// 			// printf("%td, %td, %g\n", i, j, std::norm(psi_total[i * n + j]));
+				// 	closeFile(f);
+				// }
 
-		// Timings::measure::start("FFTW");
+
+				// fprintf(stderr, "REP %s\n\n", R == REP::X ? "P" : "X");
+			MPI_Barrier(MPI_COMM_WORLD);
+			// if (REP::P == R)
+			for (int p = 0; p < MPI::rSize;p++)
+			{
+				MPI_Barrier(MPI_COMM_WORLD);
+				MPI_Barrier(MPI_COMM_WORLD);
+				MPI_Barrier(MPI_COMM_WORLD);
+				MPI_Barrier(MPI_COMM_WORLD);
+				MPI_Barrier(MPI_COMM_WORLD);
+				if (p == MPI::rID)
+				{
+					if (REP::P == R)
+						for (ind i = 0;i < n0_l;i++)
+						{
+							for (ind j = 0;j < n;j++)
+								fprintf(stderr, "%14.2g", 100.0 * std::norm(psi[i * n + j]));
+							fprintf(stderr, " <--- %d %s %td\n", MPI::rID, R == REP::X ? "P" : "X", i);
+						}
+
+					if (REP::X == R)
+						for (ind j = 0;j < n0_l;j++)
+						{
+							for (ind i = 0;i < n;i++)
+								fprintf(stderr, "%14.2d", int(10000.0 * std::norm(psi[j * n + i])));
+							fprintf(stderr, " <--- %d %s %td\n", MPI::rID, R == REP::X ? "P" : "X", j);
+						}
+						// for (ind j = 0;j < n0_l;j++)
+						// {
+						// 	for (ind i = 0;i < n;i++)
+						// 		fprintf(stderr, "%14.2d", int(10000.0 * std::norm(psi[j * n + i])));
+						// 	fprintf(stderr, " <--- %d %s %td\n", MPI::rID, R == REP::X ? "P" : "X", j);
+						// }
+				}
+				MPI_Barrier(MPI_COMM_WORLD);
+				MPI_Barrier(MPI_COMM_WORLD);
+			}
+
+		}
+		count++;
+
+
+	// Timings::measure::start("FFTW");
 		static_assert(R == REP::X || R == REP::P,
 					  "Can only transform to X or P, unambigously.");
 		// logInfo("FFTW into %d", int(R));
@@ -395,7 +466,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	//BUNCH OF HELPFUL FUNCTIONS
 	inline void resetArray(cxd* array)
 	{
-		for (ind i = 0; i < local_m; i++)
+		for (ind i = 0; i < m_l; i++)
 		{
 			array[i] = 0.0;
 		}
@@ -403,17 +474,17 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	inline void multiplyArray(cxd* array, const double mult)
 	{
 		// logInfo("Multiplying array by %g", mult);
-		for (ind i = 0; i < local_m; i++)
+		for (ind i = 0; i < m_l; i++)
 			array[i] *= mult;
 	}
 	inline void multiplyArray(cxd* array, const double* mult)
 	{
-		for (ind i = 0; i < local_m; i++)
+		for (ind i = 0; i < m_l; i++)
 			array[i] *= mult[i];
 	}
 	inline void copyArray(cxd* to, cxd* from)
 	{
-		for (ind i = 0; i < local_m; i++)
+		for (ind i = 0; i < m_l; i++)
 			to[i] = from[i];
 	}
 
@@ -432,7 +503,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	inline cxd scalarProduct(cxd* to, cxd* from)
 	{
 		cxd over = 0.;
-		for (ind i = 0; i < local_m; i++)
+		for (ind i = 0; i < m_l; i++)
 			over += conj(to[i]) * from[i];
 		return over;
 	}
@@ -440,7 +511,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Single> : BaseGrid
 	inline cxd scalarProduct(double* to, cxd* from)
 	{
 		cxd over = 0.;
-		for (ind i = 0; i < local_m; i++)
+		for (ind i = 0; i < m_l; i++)
 			over += to[i] * from[i];
 		return over;
 	}
@@ -472,10 +543,10 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 	using Base::xmin;
 	using Base::dx;
 	using Base::nn;
-	using Base::local_n;
+	using Base::n0_l;
 	using Base::absorber;
-	using Base::local_start;
-	using Base::local_end;
+	using Base::n0_o;
+	using Base::n0_e;
 	static inline constexpr cxd zero = { 0.0, 0.0 };
 	ind slice_n;
 	ind slice_start;
@@ -505,7 +576,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 		// absorber.correct(n, L);
 		// nCAP = absorber.nCAP;
 		// boxesCount = DIM < 3 ? 1 : n / nCAP;
-		// CAPnodesPerP = local_n / nCAP;
+		// CAPnodesPerP = n0_l / nCAP;
 		initSlice();
 		initWindow();
 	}
@@ -559,9 +630,9 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 		if (transf_slice[0] == NULL) logInfo("fftw_mpi_plan... (slice) returned NULL");
 
 		ind shape[DIM];
-		shape[0] = local_n;
-		ind strides[DIM];
-		strides[DIM - 1] = 1;
+		shape[0] = n0_l;
+		ind strides_l[DIM];
+		strides_l[DIM - 1] = 1;
 		for (int i = 1; i < DIM; i++)
 		{
 			//HACK: very dirty
@@ -573,20 +644,20 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 			}
 
 			for (int j = DIM - 2; j >= 0; j--)
-				strides[j] = shape[j + 1] * strides[j + 1];
+				strides_l[j] = shape[j + 1] * strides_l[j + 1];
 
-			fftw_iodim64 dims[1] = { n , strides[i], strides[i] };
+			fftw_iodim64 dims[1] = { n , strides_l[i], strides_l[i] };
 			fftw_iodim64 howmany_dims[DIM - 1];
 			int index = 0;
 			for (int j = 0; j < DIM; j++)
 			{
 				if (j != i)
 				{
-					howmany_dims[index] = { shape[j], strides[j],strides[j] };
+					howmany_dims[index] = { shape[j], strides_l[j],strides_l[j] };
 					index++;
 				}
 			}
-			printf("i=%d shape[i]=%td %td\n", i, shape[i], strides[i]);
+			printf("i=%d shape[i]=%td %td\n", i, shape[i], strides_l[i]);
 			transf_slice[i] = fftw_plan_guru64_dft(
 				1, dims, DIM - 1, howmany_dims, //rank, dims, howmany_rank, howmany_dims
 				reinterpret_cast<fftw_complex*>(slice),
@@ -607,50 +678,50 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 	{
 		if constexpr (DIM == 1)
 		{
-			if (local_start < nCAP) //bottom
+			if (n0_o < nCAP) //bottom
 			{
-				int size = Min(int(local_n), int(nCAP) - int(local_start));
+				int size = Min(int(n0_l), int(nCAP) - int(n0_o));
 				MPI_Get(&slice[0], size, MPI_CXX_DOUBLE_COMPLEX, rank,
 						0, size, MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
 			}
-			if (local_end > n - 1 - nCAP) //top
+			if (n0_e > n - 1 - nCAP) //top
 			{
-				int start = Max(0, int(n) - int(nCAP) - int(local_start));
-				MPI_Get(&slice[start], local_n - start, MPI_CXX_DOUBLE_COMPLEX, rank,
-						start, local_n - start, MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
+				int start = Max(0, int(n) - int(nCAP) - int(n0_o));
+				MPI_Get(&slice[start], n0_l - start, MPI_CXX_DOUBLE_COMPLEX, rank,
+						start, n0_l - start, MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
 			}
 		}
 		if constexpr (DIM == 2)
 		{
-			if (local_start < nCAP) //bottom
+			if (n0_o < nCAP) //bottom
 			{
-				int size = Min(int(local_n), int(nCAP) - int(local_start));
+				int size = Min(int(n0_l), int(nCAP) - int(n0_o));
 				for (int i = 0; i < size; i++)
 					MPI_Get(&slice[i * n], n, MPI_CXX_DOUBLE_COMPLEX, rank,
 							i * n, n, MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
 			}
-			if (local_end > n - 1 - nCAP) //top
+			if (n0_e > n - 1 - nCAP) //top
 			{
-				int start = Max(0, (int(n) - int(nCAP)) - int(local_start));
-				for (int i = start; i < local_n; i++)
+				int start = Max(0, (int(n) - int(nCAP)) - int(n0_o));
+				for (int i = start; i < n0_l; i++)
 					MPI_Get(&slice[i * n], n, MPI_CXX_DOUBLE_COMPLEX, rank,
 							i * n, n, MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
 			}
 		}
 		if constexpr (DIM == 3)
 		{
-			if (local_start < nCAP) //bottom
+			if (n0_o < nCAP) //bottom
 			{
-				int size = Min(int(local_n), int(nCAP) - int(local_start));
+				int size = Min(int(n0_l), int(nCAP) - int(n0_o));
 				for (int i = 0; i < size; i++)
 					for (int j = 0; j < nCAP; j++)
 						MPI_Get(&slice[(i * nCAP + j) * n], n, MPI_CXX_DOUBLE_COMPLEX, rank,
 								(i * n + (j + boxIndex * nCAP)) * n, n, MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
 			}
-			if (local_end > n - 1 - nCAP) //top
+			if (n0_e > n - 1 - nCAP) //top
 			{
-				int start = Max(0, (int(n) - int(nCAP)) - int(local_start));
-				for (int i = start; i < local_n; i++)
+				int start = Max(0, (int(n) - int(nCAP)) - int(n0_o));
+				for (int i = start; i < n0_l; i++)
 					for (int j = 0; j < nCAP; j++)
 						MPI_Get(&slice[(i * nCAP + j) * n], n, MPI_CXX_DOUBLE_COMPLEX, rank,
 								(i * n + (j + boxIndex * nCAP)) * n, n, MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
@@ -661,7 +732,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 	{
 		if constexpr (DIM == 2)
 		{
-			for (int i = 0; i < local_n; i++)
+			for (int i = 0; i < n0_l; i++)
 			{
 				MPI_Get(&slice[i * n], nCAP, MPI_CXX_DOUBLE_COMPLEX, rank,
 						i * n, nCAP, MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
@@ -672,14 +743,14 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 		}
 		if constexpr (DIM == 3)
 		{
-			for (int i = 0; i < local_n; i++) //left
+			for (int i = 0; i < n0_l; i++) //left
 				for (int j = 0; j < nCAP; j++)
 					MPI_Get(&slice[(i * n + j) * nCAP], nCAP, MPI_CXX_DOUBLE_COMPLEX, rank,
 							(i * n + j) * n + boxIndex * nCAP, nCAP, MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
 					// disp, count
 
 
-			for (int i = 0; i < local_n; i++) //right
+			for (int i = 0; i < n0_l; i++) //right
 				for (int j = n - nCAP; j < n; j++)
 					MPI_Get(&slice[(i * n + j) * nCAP], nCAP, MPI_CXX_DOUBLE_COMPLEX, rank,
 							(i * n + j) * n + boxIndex * nCAP, nCAP, MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
@@ -689,7 +760,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 	inline void getZBox(int rank, int boxIndex)
 	{
 		int z_start;
-		for (int i = 0; i < local_n; i++)
+		for (int i = 0; i < n0_l; i++)
 			for (int j = 0; j < nCAP; j++)
 			{
 				//front
@@ -739,10 +810,10 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 		// constexpr auto op = PosOperator();
 		// double x;
 		ind x, y, z;
-		for (ind i = 0; i < local_n; i++)
+		for (ind i = 0; i < n0_l; i++)
 		{
 			if ((sol.freeCoord & FREE_COORD::X) == FREE_COORD::X) x = 0;
-			else x = xmin + dx * (i + local_start);
+			else x = xmin + dx * (i + n0_o);
 			if constexpr (DIM == 1)
 			{
 				psi[i] *= absorber.CAP(x);
@@ -772,25 +843,25 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 	{
 		if constexpr (DIM == 1)
 		{
-			for (int i = 0; i < local_n; i++)
-				slice[i] *= invCAP1(local_start + i);
+			for (int i = 0; i < n0_l; i++)
+				slice[i] *= invCAP1(n0_o + i);
 		}
 		if constexpr (DIM == 2)
 		{
 
-			for (int i = 0; i < local_n; i++)
+			for (int i = 0; i < n0_l; i++)
 				for (int j = 0; j < n; j++)
 				{
-					slice[(i * n + j)] *= invCAP1(local_start + i);
+					slice[(i * n + j)] *= invCAP1(n0_o + i);
 				}
 		}
 		if constexpr (DIM == 3)
 		{
-			for (int i = 0; i < local_n; i++)
+			for (int i = 0; i < n0_l; i++)
 				for (int j = 0; j < nCAP; j++)
 					for (int k = 0; k < n; k++)
 					{
-						slice[(i * nCAP + j) * n + k] *= invCAP1(local_start + i);
+						slice[(i * nCAP + j) * n + k] *= invCAP1(n0_o + i);
 						if (MPI::group == 1 && corrections)
 							slice[(i * nCAP + j) * n + k] *=
 							(onesixth * (invCAP2(j + boxIndex * nCAP, k))
@@ -803,35 +874,35 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 	{
 		if constexpr (DIM == 2)
 		{
-			for (int i = 0; i < local_n; i++)
+			for (int i = 0; i < n0_l; i++)
 				for (int j = 0; j < n; j++)
 					slice[(i * n + j)] *= invCAP1(j);
 		}
 		if constexpr (DIM == 3)
 		{
-			for (int i = 0; i < local_n; i++)
+			for (int i = 0; i < n0_l; i++)
 				for (int j = 0; j < n; j++)
 					for (int k = 0; k < nCAP; k++)
 					{
 						slice[(i * n + j) * nCAP + k] *= invCAP1(j);
 						if (MPI::group == 1 && corrections)
 							slice[(i * n + j) * nCAP + k] *=
-							(onesixth * (invCAP2(local_start + i, boxIndex * nCAP + k))
-							 + onehalf * (CAP1(local_start + i) + CAP1(boxIndex * nCAP + k)));
+							(onesixth * (invCAP2(n0_o + i, boxIndex * nCAP + k))
+							 + onehalf * (CAP1(n0_o + i) + CAP1(boxIndex * nCAP + k)));
 					}
 		}
 	}
 	inline void maskSliceZ(int boxIndex)
 	{
-		for (int i = 0; i < local_n; i++)
+		for (int i = 0; i < n0_l; i++)
 			for (int j = 0; j < nCAP; j++)
 				for (int k = 0; k < n; k++)
 				{
 					slice[(i * nCAP + j) * n + k] *= invCAP1(k);
 					if (MPI::group == 1 && corrections)
 						slice[(i * nCAP + j) * n + k] *=
-						(onesixth * (invCAP2(local_start + i, boxIndex * nCAP + j))
-						 + onehalf * (CAP1(local_start + i) + CAP1(boxIndex * nCAP + j)));
+						(onesixth * (invCAP2(n0_o + i, boxIndex * nCAP + j))
+						 + onehalf * (CAP1(n0_o + i) + CAP1(boxIndex * nCAP + j)));
 				}
 
 	}
@@ -845,18 +916,18 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 			fftw_execute(transf_slice[0]);
 			if constexpr (DIM == 1)
 			{
-				for (int i = 0; i < local_n; i++)
+				for (int i = 0; i < n0_l; i++)
 					psi[i] += slice[i];
 			}
 			if constexpr (DIM == 2)
 			{
-				for (int i = 0; i < local_n; i++)
+				for (int i = 0; i < n0_l; i++)
 					for (int j = 0; j < n; j++)
 						psi[i * n + j] += slice[i * n + j];
 			}
 			if constexpr (DIM == 3)
 			{
-				for (int i = 0; i < local_n; i++)
+				for (int i = 0; i < n0_l; i++)
 					for (int j = 0; j < nCAP; j++)
 						for (int k = 0; k < n; k++)
 							psi[(i * n + (j + boxIndex * nCAP)) * n + k] += slice[(i * nCAP + j) * n + k];
@@ -870,13 +941,13 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 				fftw_execute(transf_slice[1]);
 				if constexpr (DIM == 2)
 				{
-					for (int i = 0; i < local_n; i++)
+					for (int i = 0; i < n0_l; i++)
 						for (int j = 0; j < n; j++)
 							psi[i * n + j] += slice[i * n + j];
 				}
 				if constexpr (DIM == 3)
 				{
-					for (int i = 0; i < local_n; i++)
+					for (int i = 0; i < n0_l; i++)
 						for (int j = 0; j < n; j++)
 							for (int k = 0; k < nCAP; k++)
 								psi[(i * n + j) * n + boxIndex * nCAP + k] += slice[(i * n + j) * nCAP + k];
@@ -890,7 +961,7 @@ struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> : Grid<BaseGrid, Comp
 			{
 				maskSliceZ(boxIndex);
 				fftw_execute(transf_slice[2]);
-				for (int i = 0; i < local_n; i++)
+				for (int i = 0; i < n0_l; i++)
 					for (int j = 0; j < nCAP; j++)
 						for (int k = 0; k < n; k++)
 							psi[(i * n + (boxIndex * nCAP + j)) * n + k] += slice[(i * nCAP + j) * n + k];

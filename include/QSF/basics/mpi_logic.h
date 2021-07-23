@@ -277,9 +277,9 @@ void buildAndScatter(F& fun, T*& local_v)
 	// if (local_v) delete[] local_v;
 	// local_v = new T[m];
 
-	// MPI_Scatter(mask, local_m,
+	// MPI_Scatter(mask, m_l,
 	// 			is_same<T, double>() ? MPI_DOUBLE : MPI_CXX_DOUBLE_COMPLEX,
-	// 			local_v, local_m,
+	// 			local_v, m_l,
 	// 			is_same<T, double>() ? MPI_DOUBLE : MPI_CXX_DOUBLE_COMPLEX,
 	// 			0, MPI::rComm);
 	// if (!MPI::rID) delete[] mask;

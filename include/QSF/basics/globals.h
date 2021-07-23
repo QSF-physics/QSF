@@ -38,10 +38,10 @@
 // //OMP/MPI (local == current thread)
 
 
-// ind local_m; 				// # of fftw_complex numbers to allocate for WF::psi
-// ind local_n;				// local # of rows
-// ind local_start;			// row # start
-// ind local_end;				// row # end, local_end = local_start + local_n - 1;
+// ind m_l; 				// # of fftw_complex numbers to allocate for WF::psi
+// ind n0_l;				// local # of rows
+// ind n0_o;			// row # start
+// ind n0_e;				// row # end, n0_e = n0_o + n0_l - 1;
 
 // ind m_down, m_up;   		// locating min/max of initial state (psi0[])
 // // double L;					// size of RE grid

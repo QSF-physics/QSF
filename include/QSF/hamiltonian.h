@@ -11,8 +11,8 @@ namespace Schrodinger
 		using Base = WF < Spin0<GType, V_Op, C_Op>, GType, 1>;
 		using Base::psi;
 		using Base::post_step;
-		using Base::local_n;
-		using Base::local_start;
+		using Base::n0_l;
+		using Base::n0_o;
 		using Base::DIM;
 		using InducedGrid = typename Base::InducedGrid;
 		static constexpr REP couplesInRep = C_Op::couplesInRep;

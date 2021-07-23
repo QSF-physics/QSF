@@ -170,7 +170,7 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 		xbufferLastLine = (bufferHeight - 1) * sizeInBuffer<false>;
 		rbufferCurrentLine = rbufferLastLine;
 		xbufferCurrentLine = xbufferLastLine;
-		logBUFFER("REDUCABLE BUFFER SIZE: %tdx%d, NORMAL BUFFER SIZE: %tdx%d", sizeInBuffer<true>, bufferHeight, sizeInBuffer<false>, bufferHeight);
+		logBUFFER("REDUCABLE BUFFER SIZE: %tdx%td, NORMAL BUFFER SIZE: %tdx%td", sizeInBuffer<true>, bufferHeight, sizeInBuffer<false>, bufferHeight);
 		if (rbufferSize > 0) rbuffer = new double[rbufferSize];
 		if (!MPI::pID)
 		{
