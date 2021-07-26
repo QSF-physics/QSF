@@ -173,8 +173,8 @@ struct GaussianEnvelope : Pulse
 	inline double operator()(double time) const
 	{
 		if constexpr (std::is_same_v<Pulse, EmptyPulse>)
-			return exp(gauss_pow * POW2(time - 0.5 * Pulse::pulse_time));
+			return exp(gauss_pow * Power(time - 0.5 * Pulse::pulse_time, 2));
 		else
-			return Pulse::operator()(time) * exp(gauss_pow * POW2(time - 0.5 * Pulse::pulse_time));
+			return Pulse::operator()(time) * exp(gauss_pow * Power(time - 0.5 * Pulse::pulse_time, 2));
 	}
 };

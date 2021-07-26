@@ -56,7 +56,7 @@ struct CouplingBase;
 
 
 template <class ... Fields>
-struct CouplingBase<DipoleApprox, Fields...>
+struct CouplingBase<DipoleApprox, Fields...> //: COMPUTATION<double, false, Fields...>
 {
 	static_assert(is_unique<Fields...>, "All Fields need to act on different axes!");
 	static constexpr uind size = sizeof...(Fields);
@@ -66,12 +66,24 @@ struct CouplingBase<DipoleApprox, Fields...>
 
 	CouplingBase(Section& settings) : fields(Fields{ settings }...) {}
 	CouplingBase(Fields...fields) :fields(fields...) {}
-	double maxPulseDuration() { return Max(0, std::get<Fields>(fields).maxPulseDuration()...); }
+	double maxPulseDuration() { return Max(0.0, std::get<Fields>(fields).maxPulseDuration()...); }
 
+	template <class F> double getValue()
+	{
+		if constexpr ((std::is_same_v<F, Fields> || ...))
+		{
+			return std::get<F>(fields).lastVal;
+		}
+		else return -1;
+	}
+	inline void precalc(double time)
+	{
+		(std::get < Fields>(fields)(time), ...);
+	}
 	// void reset() { last_values{ 0 }; last_values_backup{ 0 }; }
 	double operator[](AXIS ax)
 	{
-		return last_values[int(ax)];
+		return ((bool(Fields::axis & ax) ? std::get<Fields>(fields).lastVal : 0) + ...);
 	}
 };
 
@@ -95,9 +107,11 @@ template <class GaugeType, class ... Fields>
 struct DipoleCoupling;
 
 template <class ... Fields>
-struct DipoleCoupling<VelocityGauge, Fields...> : CouplingBase<DipoleApprox, Fields...>
+struct DipoleCoupling<VelocityGauge, Fields...> :
+	CouplingBase<DipoleApprox, Fields...>
 {
 	using base = CouplingBase<DipoleApprox, Fields...>;
+	using base::precalc;
 	static constexpr REP couplesInRep = REP::P;
 
 	double lastTime;

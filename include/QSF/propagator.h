@@ -89,8 +89,8 @@ struct SplitPropagator : Config, PropagatorBase
 	SplitPropagator(PropagatorBase pb, HamWF wf) : PropagatorBase(pb), wf(wf)
 	{
 		logInfo("SplitPropagator init");
+		max_steps = wf.coupling.maxPulseDuration() / dt + 1;
 		logSETUP("maxPulseDuration: %g, dt: %g => max_steps: %td", wf.coupling.maxPulseDuration(), dt, max_steps);
-		max_steps = 0;
 		state_accuracy = 0;
 	}
 
@@ -108,8 +108,8 @@ struct SplitPropagator : Config, PropagatorBase
 		}
 		else
 		{
+			max_steps = wf.coupling.maxPulseDuration() / dt + 1;
 			logSETUP("maxPulseDuration: %g, dt: %g => max_steps: %td", wf.coupling.maxPulseDuration(), dt, max_steps);
-			max_steps = 10;
 		}
 		if constexpr (ChainCount > 1) wf.initHelpers();
 
@@ -127,8 +127,8 @@ struct SplitPropagator : Config, PropagatorBase
 	template <class Op>
 	inline double getValue()
 	{
-		if (std::is_same_v<Time, Op>) return timer;
-		if (std::is_same_v<Step, Op>) return step;
+		if constexpr (std::is_same_v<Time, Op>) return timer;
+		if constexpr (std::is_same_v<Step, Op>) return step;
 		else return wf.template getValue<Op>();
 	}
 
@@ -157,6 +157,7 @@ struct SplitPropagator : Config, PropagatorBase
 		// bo.template store < T>(getValue(Op{}) ...);
 		bo.template store < T>(getValue<Op>()...);
 	}
+
 	template <REP R, class BO, class... Op>
 	inline void compute(BO& bo, SUM<Op...>&&)
 	{
@@ -166,6 +167,7 @@ struct SplitPropagator : Config, PropagatorBase
 		if constexpr (std::is_same_v<T, ENERGY_TOTAL>)
 			tot_energy = bo.template getLastValue<T>();
 	}
+
 	template <REP R, class BO, class Op>
 	inline void compute(BO& bo, CHANGE<Op>&&)
 	{
@@ -243,7 +245,8 @@ struct SplitPropagator : Config, PropagatorBase
 		([&] {
 			constexpr REP rep = Chain<chain>::template rep<SI>;
 			if (SI > 0) fourier<rep>();
-			   //  wf.template precalc<rep, NO_OPTIMIZATIONS>();
+
+			wf.template precalc<rep, OPTIMS::NONE>(timer);
 			   //  Timings::measure::start(op.name);
 			wf.template evolve<M, rep>(dt * Chain<chain>::mults[SI]);
 		   //  Timings::measure::stop(op.name);

@@ -431,49 +431,6 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices> : BaseG
 	template <REP R>
 	inline void fourier()
 	{
-		// if (count < 2)
-		// {
-		// 	MPI_Barrier(MPI_COMM_WORLD);
-		// 	// fprintf(stderr, "REP %s\n\n", R == REP::X ? "P" : "X");
-		// 	MPI_Barrier(MPI_COMM_WORLD);
-		// 	MPI_Barrier(MPI_COMM_WORLD);
-		// 	MPI_Barrier(MPI_COMM_WORLD);
-		// 	MPI_Barrier(MPI_COMM_WORLD);
-		// 	MPI_Barrier(MPI_COMM_WORLD);
-		// 	// if (REP::P == R)
-		// 	for (int p = 0; p < MPI::rSize;p++)
-		// 	{
-		// 		MPI_Barrier(MPI_COMM_WORLD);
-		// 		MPI_Barrier(MPI_COMM_WORLD);
-		// 		MPI_Barrier(MPI_COMM_WORLD);
-		// 		MPI_Barrier(MPI_COMM_WORLD);
-		// 		MPI_Barrier(MPI_COMM_WORLD);
-		// 		if (p == MPI::rID)
-		// 		{
-		// 			if (REP::P == R)
-		// 				for (ind i = 0;i < n0_l;i++)
-		// 				{
-		// 					for (ind j = 0;j < n;j++)
-		// 						fprintf(stderr, "%14.2g", 100.0 * std::norm(psi[i * n + j]));
-		// 					fprintf(stderr, " <--- %d %s %td\n", MPI::rID, R == REP::X ? "P" : "X", i);
-		// 				}
-
-		// 			if (REP::X == R)
-		// 				for (ind j = 0;j < n0_l;j++)
-		// 				{
-		// 					for (ind i = 0;i < n;i++)
-		// 						fprintf(stderr, "%14.2d", int(10000.0 * std::norm(psi[j * n + i])));
-		// 					fprintf(stderr, " <--- %d %s %td\n", MPI::rID, R == REP::X ? "P" : "X", j);
-		// 				}
-		// 		}
-		// 		MPI_Barrier(MPI_COMM_WORLD);
-		// 		MPI_Barrier(MPI_COMM_WORLD);
-		// 	}
-
-		// }
-		// count++;
-
-
 	// Timings::measure::start("FFTW");
 		static_assert(R == REP::X || R == REP::P,
 					  "Can only transform to X or P, unambigously.");
@@ -491,10 +448,14 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices> : BaseG
 		}
 		if constexpr (back) normalizeAfterTwoFFT();
 
-	// multiplyArray(psi, inv_m * (pow(n, DIM - mcomm.boundedCoordDim)));
-	// Timings::measure::stop("FFTW");
+		// multiplyArray(psi, inv_m * (pow(n, DIM - mcomm.boundedCoordDim)));
+		// Timings::measure::stop("FFTW");
 	}
-
+	template <REP R, OPTIMS O>
+	void precalc(double time)
+	{
+		static_cast<Hamiltonian*>(this)->coupling.precalc(time);
+	}
 	void post_step()
 	{
 
@@ -504,11 +465,11 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices> : BaseG
 		gather();
 		if (!MPI::rID)
 		{
-
 			logDUMPS("Dumping " psi_symbol " in X rep");
 
 			FILE* file = openPsi< AFTER<>, REP::X, DIM, IO_ATTR::WRITE>("name", 0, 0, true);
 			//HACK: change second false to true after done with Dmitry!
+
 			writePsiBinaryHeader<DIM>(file, xmin, -xmin, dx, DUMP_FORMAT{ true, true, true, true, false });
 			fwrite(psi_total, sizeof(cxd), m, file);
 			fclose(file);
@@ -662,7 +623,10 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices> : BaseG
 	template <class Op>
 	inline double getValue()
 	{
-		return 1.0;
+
+		// if (std::is_same_v<Step, Op>) return step;
+		// else 
+		return static_cast<Hamiltonian*>(this)->coupling.template getValue<Op>();
 	}
 #pragma endregion Computations
 

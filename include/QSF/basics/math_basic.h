@@ -26,14 +26,14 @@ T constexpr Power(T base, const ind& exponent)
 template<typename T, typename ...Ts>
 T constexpr Max(T t, Ts... ts)
 {
-    if constexpr (sizeof...(Ts)) return std::max(t, T(Max(ts...)));
+    if constexpr (bool(sizeof...(Ts))) return std::max(t, T(Max(ts...)));
     else return t;
 }
 
 template<typename T, typename ...Ts>
 T constexpr Min(T t, Ts... ts)
 {
-    if constexpr (sizeof...(Ts)) return std::min(t, T(Min(ts...)));
+    if constexpr (bool(sizeof...(Ts))) return std::min(t, T(Min(ts...)));
     else return t;
 }
 

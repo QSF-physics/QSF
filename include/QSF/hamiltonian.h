@@ -1,9 +1,7 @@
 
 namespace Schrodinger
 {
-	/* Define named operators that can be used in computations */
 
-	struct Couplings { };
 
 	template <class GType, class V_Op, class C_Op = DipoleCoupling<VelocityGauge> >
 	struct Spin0 : LocalGrid < Spin0<GType, V_Op, C_Op>, GType, 1>
@@ -31,10 +29,9 @@ namespace Schrodinger
 		template <REP R, typename ... Args>
 		double couple(Args ... args)
 		{
-			return 0.0;
-			// if constexpr (C_Op::couplesInRep == R && C_Op::size)
-			// 	return ((args * coupling[AXIS::NO]) + ...);
-			// else return 0.0;
+			if constexpr (C_Op::couplesInRep == R && C_Op::size)
+				return ((args * coupling[AXIS::NO]) + ...);
+			else return 0.0;
 		}
 		template < REP R, typename ... Cooords>
 		inline double operator()(Cooords ... coords)

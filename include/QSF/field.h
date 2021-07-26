@@ -6,27 +6,29 @@ template <AXIS Ax, typename ... Pulses>
 struct Field : _Operator
 {
 	using type = Field;
-	static constexpr REP rep = REP::BOTH;
+	static constexpr REP rep = REP::NONE;
+	static constexpr bool late = false;
+
 	static constexpr auto axis = Ax;
 	static constexpr std::string_view name = join_v<Pulses::name...>;
 	static constexpr uind count = sizeof...(Pulses);
 	std::tuple<Pulses...> pulses;
 	double delays[sizeof...(Pulses)]{};
 	double endtimes[sizeof...(Pulses)]{};
-
+	double lastVal = 0;
 	inline double operator()(double time)
 	{
 		size_t i = 0;
-		double val = 0;
+		lastVal = 0;
 		std::apply
 		(
 			[&](auto const&... pulse)
 			{
-				((val += (!(time > endtimes[i] || time < delays[i++]) ?
-						  pulse(time - delays[i]) : 0.0)), ...);
-						  // if (time <= endtimes[i] && time >= delays[i])
-						  // 	val += field.operator()(time - delays[i]);
-						  // i++;
+				((lastVal += (!(time > endtimes[i] || time < delays[i++]) ?
+							  pulse(time - delays[i]) : 0.0)), ...);
+							  // if (time <= endtimes[i] && time >= delays[i])
+							  // 	val += field.operator()(time - delays[i]);
+							  // i++;
 			}, pulses
 		);
 
@@ -37,7 +39,7 @@ struct Field : _Operator
 		//  }(), ...);
 		// val = 0.0; i = -1;
 		// ((val += ((time <= endtimes[++i] && time >= delays[i]) ? static_cast<Pulses*>(pulses[i])->operator()(time - delays[i]) : 0.0)), ...);
-		return val;
+		return lastVal;
 	}
 	double maxPulseDuration()
 	{

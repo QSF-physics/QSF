@@ -15,7 +15,7 @@ struct TypeBox
 	using type = getType<N, T...>;
 };
 
-template <typename RET, bool red, typename ... Ops>
+template <typename RET, bool REDUCE, typename ... Ops>
 struct COMPUTATION : _COMPUTATION
 {
 	//14.07 this is not necessary any longer
@@ -28,7 +28,7 @@ struct COMPUTATION : _COMPUTATION
 
 	static_assert(std::is_convertible_v<returnType, double> || sizeof(returnType) % sizeof(double) == 0, "The size of returnType is not a multiple of double. Hint: Try casting your type to ");
 
-	static constexpr bool reduce = red;
+	static constexpr bool reduce = REDUCE;
 
 	static constexpr size_t returnTypeSize = std::is_convertible_v<returnType, double> ? 1 : (sizeof(returnType) / sizeof(double));
 
@@ -357,8 +357,7 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 	template <typename T, size_t ... I>
 	inline void log(seq <I...>)
 	{
-		// logInfo("logging %g from %d",((usesReduceBuffer<T> ? rbuffer + rbufferLastLine : xbuffer + xbufferLastLine) + I))
-		LOG_INLINE(T::format.data(), *((usesReduceBuffer<T> ? (rbuffer + rbufferLastLine) : xbuffer + xbufferLastLine) + I)...);
+		LOG_INLINE(T::format.data(), *(record<T>() + I)...);
 	}
 	// template <typename T>
 	// inline void log(seq<I...>)

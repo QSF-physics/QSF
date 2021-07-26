@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.8)
 
 # :::::::::::::::::::::::::::::::::: Project ::::::::::::::::::::::::::::::::::
 # CMake 3.16 or higher provides native support for precompiled headers
+# CMake 3.11 or higher provides FetchContent for downloading libraries from git
 project(QSF VERSION 0.9.0 
         DESCRIPTION "Quantum Strong Field computations under one common framework"
         LANGUAGES C CXX)
@@ -20,10 +21,12 @@ else()
 endif()
 if(MPI_FOUND)
   include(CMakePrintHelpers)
-  cmake_print_properties(TARGETS MPI::MPI_CXX PROPERTIES INTERFACE_LINK_LIBRARIES)
+  cmake_print_properties(TARGETS MPI::MPI_C PROPERTIES INTERFACE_LINK_LIBRARIES)
 endif()
 find_package(FFTW REQUIRED DOUBLE_MPI_LIB DOUBLE_LIB)
 # find_package(fmt)
+
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/extern/HighFive")
 
 add_library(${PROJECT_NAME} INTERFACE)
 # add_library(QSF::QSF ALIAS ${PROJECT_NAME})
@@ -49,7 +52,7 @@ message(STATUS "FFTW_DOUBLE_MPI_LIB_FOUND: ${FFTW_DOUBLE_MPI_LIB_FOUND}")
 target_link_libraries(${PROJECT_NAME} INTERFACE FFTW::Double)
 target_link_libraries(${PROJECT_NAME} INTERFACE FFTW::DoubleMPI)
 # target_link_libraries(${PROJECT_NAME} INTERFACE fmt::fmt-header-only)
-
+target_link_libraries(${PROJECT_NAME} INTERFACE HighFive)
 
 
 

@@ -12,7 +12,7 @@
 #include "basics/superpos.h"
 #include "basics/io.h"
 #include "basics/timings.h"
-#include "basics/inipp.h"
+#include "extern/inipp.h"
 using Section = inipp::Ini<char>::Section;
 
 
