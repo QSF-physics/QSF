@@ -37,23 +37,29 @@ enum class MODE
 #define ONLY_MODE MODE::ALL
 #endif
 
-enum class DIMS
-{
-	D0 = 0,
-	D1 = 1,
-	D2 = 2,
-	D3 = 4,
-	D4 = 8,
-	D5 = 16,
-	D6 = 32,
-	D7 = 64,
-	ALL = D1 + D2 + D3
-};
+// enum class DIMS
+// {
+// 	D0 = 0,
+// 	D1 = 1,
+// 	D2 = 2,
+// 	D3 = 3,
+// 	D4 = 4,
+// 	D5 = 5,
+// 	D6 = 6,
+// 	D7 = 7,
+// 	D8 = 8,
+// 	D9 = 9,
+// 	ALL = D1 + D2 + D3
+// };
 
+constexpr DIMS operator""_D(unsigned long long val)
+{
+	return static_cast<DIMS>(val);
+}
 /* This allows for filtering  */
-#ifndef ONLY_DIM
-#define ONLY_DIM DIMS::ALL
-#endif
+// #ifndef ONLY_DIM
+// #define ONLY_DIM DIMS::ALL
+// #endif
 
 // enum class ELEC
 // {
@@ -168,20 +174,6 @@ struct AT_INTERVAL : _TEMPORAL
 	static constexpr auto name = "_i";
 };
 
-//Return the flag for current DIM
-// constexpr DIMS DIMflag = (DIM == 1 ? D1 : (DIM == 2 ? D2 : D3));
-constexpr int intDIMS(DIMS D)
-{
-	int v = int(D);
-	int MultiplyDeBruijnBitPosition[32] =
-	{
-	  0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
-	  31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
-	};
-	return 1 + MultiplyDeBruijnBitPosition[((uint32_t)((v & -v) * 0x077CB531U)) >> 27];
-	   // return D == DIMS::D1 ? 1 : (D == DIMS::D2 ? 2 : D == DIMS::D3 ? 3 : 0);
-}
-
 
 enum class OPTIMS
 {
@@ -201,3 +193,18 @@ enum class OPTIMS
 	VDYN_SUMXYZ_CONST = BIT(11),
 	UNTRANSPOSED_P_DIM = BIT(12),
 };
+
+
+// //Return the flag for current DIM
+// // constexpr DIMS DIMflag = (DIM == 1 ? D1 : (DIM == 2 ? D2 : D3));
+// constexpr int intDIMS(DIMS D)
+// {
+// 	int v = int(D);
+// 	int MultiplyDeBruijnBitPosition[32] =
+// 	{
+// 	  0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
+// 	  31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
+// 	};
+// 	return 1 + MultiplyDeBruijnBitPosition[((uint32_t)((v & -v) * 0x077CB531U)) >> 27];
+// 	   // return D == DIMS::D1 ? 1 : (D == DIMS::D2 ? 2 : D == DIMS::D3 ? 3 : 0);
+// }

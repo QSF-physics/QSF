@@ -66,7 +66,7 @@ struct CouplingBase<DipoleApprox, Fields...>
 
 	CouplingBase(Section& settings) : fields(Fields{ settings }...) {}
 	CouplingBase(Fields...fields) :fields(fields...) {}
-	static double maxPulseDuration() { return Max(0, Fields::maxPulseDuration()...); }
+	double maxPulseDuration() { return Max(0, std::get<Fields>(fields).maxPulseDuration()...); }
 
 	// void reset() { last_values{ 0 }; last_values_backup{ 0 }; }
 	double operator[](AXIS ax)
@@ -122,7 +122,7 @@ struct DipoleCoupling<VelocityGauge, Fields...> : CouplingBase<DipoleApprox, Fie
 	}
 	inline double operator()()
 	{
-
+		return 1.0;
 	}
 	// using base::fields;
 };

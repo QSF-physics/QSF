@@ -65,7 +65,7 @@ void set_file_path(std::string_view name, char const* ext, bool binary)
 			common_prefix,
 			SEP,
 			WHEN::name,
-			io_d[intDIMS(D)],
+			io_d[D],
 			ext,
 			binary ? "b" : "",
 			MPI::region);

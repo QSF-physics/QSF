@@ -407,7 +407,6 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 		{
 			LOG_INLINE_START(__LOG_NC);
 			(log<Ts>(pos< Ts>{}), ...);
-
 			LOG_INLINE_END();
 		}
 

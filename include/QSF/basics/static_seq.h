@@ -128,10 +128,16 @@ template <size_t M, typename SEQ> using mult_seq_t = typename seq_gen_impl::seq_
 template <size_t O, typename SEQ> using offset_seq_t = typename seq_gen_impl::seq_offset<O, SEQ>::type;
 
 template <size_t F, typename SEQ> using flip_seq_t = typename seq_gen_impl::seq_flip<F, SEQ>::type;
+
+
+template <size_t N> using rev_seq_t = typename seq_gen_impl::seq_flip<N - 1, n_seq_t<N>>::type;
+
+
 //OBJS
 template <size_t N> constexpr static auto n_seq = n_seq_t<N>{};
 template <size_t N> constexpr static auto up_to = up_to_t<N>{};
 template <size_t S, size_t E> constexpr static auto from_to = from_to_t<S, E>{};
+template <size_t N> constexpr static auto rev_seq = rev_seq_t<N>{};
 
 
 namespace detail

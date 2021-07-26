@@ -7,28 +7,28 @@
 
 namespace MPI
 {
+	/* Global MPI communicator */
+	int pID;			// Process id
+	int pSize;			// # of processes
+	MPI_Comm pComm = MPI_COMM_WORLD;
+	MPI_Group pGroup;
+	MPI_Status status;
+
+
 	/* Current */
 	int group;
 	int region;
-
 	int groupCount;
 	int regionCount;
-	MPI_Status status;
 	/* Process id in MPI execution */
-	int pID;	// Globally
 	int gID;	// In group
 	int rID;	// In region
 	/* Total number of MPI processes */
-	int pSize;	// Globally
 	int gSize;	// In group
 	int rSize;	// In region
-
 	/* Communicate between */
-	// MPI_COMM_WORLD;
 	MPI_Comm gComm;
 	MPI_Comm rComm;
-	/* Groups of */
-	MPI_Group pGroup;
 	MPI_Group gGroup;
 	MPI_Group rGroup;
 
@@ -75,12 +75,9 @@ namespace MPI
 
 namespace MPI
 {
-	struct Strategy {};
-	struct Slices :Strategy {};
-	struct Rods :Strategy {};
-
-	struct Single {};
-	struct Multi {};
+	struct Division {};
+	struct Slices :Division {};
+	struct Rods :Division {};
 
 	struct SrcRegion
 	{
@@ -90,17 +87,17 @@ namespace MPI
 
 	std::vector<SrcRegion> sourceRegions;
 
-	template <typename, DIMS D, FREE_COORD ...>
+	template <typename, DIMS DIM, FREE_COORD ...>
 	struct Regions;
 
-	template <DIMS D, FREE_COORD ... free_coord>
-	struct Regions<Slices, D, free_coord...>
+	template <DIMS DIM, FREE_COORD ... free_coord>
+	struct Regions<Slices, DIM, free_coord...>
 	{
 		// static_assert(Power(2, DIM) >= sizeof...(free_coord), "Number of regions must be less than 2^DIM");
-		using MPIStrategy = Slices;
+		using MPIDivision = Slices;
 		//Whether the current wf interacts in all spatial directions
 		bool isMain;
-		bool bounded[intDIMS(D)];
+		bool bounded[DIM];
 		FREE_COORD freeCoord;
 		int boundedCoordDim;
 		static constexpr inline bool many = (sizeof...(free_coord) > 1);
@@ -133,11 +130,11 @@ namespace MPI
 			rID = pID - region * rSize;
 			group = freeCoordsCount[region];
 			freeCoord = freeCoords[region];
-			boundedCoordDim = intDIMS(D) - freeCoordsCount[region];
+			boundedCoordDim = DIM - freeCoordsCount[region];
 			// int boundedCoord = int(AXIS::ALL) - int(freeCoord);
-			int boundedCoord = int(maxFreeCoord<D>) - int(freeCoord);
-			isMain = (boundedCoordDim == intDIMS(D));
-			for (int i = 0; i < intDIMS(D); i++)
+			int boundedCoord = int(maxFreeCoord<DIM>) - int(freeCoord);
+			isMain = (boundedCoordDim == DIM);
+			for (int i = 0; i < DIM; i++)
 			{
 				//Determines whether X,Y,Z,... coords are bounded (for ease of use)
 				bounded[i] = bool(boundedCoord & (1 << i));
@@ -243,27 +240,32 @@ namespace MPI
 			return true;//region == 4;
 		}
 	};
-}
 
-template <DIMS D, class MPIStrategy>
+
+}
+template <DIMS D, class MPIDivision>
 struct MultiMPIGrid;
 
-template <class MPIStrategy>
-struct MultiMPIGrid<DIMS::D3, MPIStrategy> : MPI::Regions<MPIStrategy, DIMS::D3,
+
+
+template <class MPIDivision>
+struct MultiMPIGrid<3_D, MPIDivision> : MPI::Regions<MPIDivision, 3_D,
 	FREE_COORD::NO, FREE_COORD::X, FREE_COORD::Y, FREE_COORD::Z, FREE_COORD::XY, FREE_COORD::XZ, FREE_COORD::YZ, FREE_COORD::XYZ>
 {};
 
-template <class MPIStrategy>
-struct MultiMPIGrid<DIMS::D2, MPIStrategy> : MPI::Regions<MPIStrategy, DIMS::D2, FREE_COORD::NO, FREE_COORD::X, FREE_COORD::Y, FREE_COORD::XY> {};
+template <class MPIDivision>
+struct MultiMPIGrid<2_D, MPIDivision> : MPI::Regions<MPIDivision, 2_D, FREE_COORD::NO, FREE_COORD::X, FREE_COORD::Y, FREE_COORD::XY> {};
 
-template <class MPIStrategy>
-struct MultiMPIGrid<DIMS::D1, MPIStrategy> :MPI::Regions<MPIStrategy, DIMS::D1, FREE_COORD::NO, FREE_COORD::X> {};
+template <class MPIDivision>
+struct MultiMPIGrid<1_D, MPIDivision> : MPI::Regions<MPIDivision, 1_D, FREE_COORD::NO, FREE_COORD::X> {};
 
-template <DIMS D, class MPIStrategy>
-using SingleMPIGrid = MPI::Regions<MPIStrategy, D, FREE_COORD::NO>;
-
-template <typename M, DIMS D, class MPIStrategy>
-using MPIGrid = std::conditional_t < std::is_same_v<M, MPI::Single>, SingleMPIGrid<D, MPIStrategy>, MultiMPIGrid<D, MPIStrategy>>;
+template <DIMS D, class MPIDivision>
+using SingleMPIGrid = MPI::Regions<MPIDivision, D, FREE_COORD::NO>;
+// uind size;
+// uind first;
+// uind last;
+// template <typename M, class MPIDivision, DIMS D>
+// using MPIGrid = std::conditional_t < std::is_same_v<M, MPI::Single>, SingleMPIGrid<D, MPIDivision>, MultiMPIGrid<D, MPIDivision>>;
 
 template <typename T, typename F>
 void buildAndScatter(F& fun, T*& local_v)

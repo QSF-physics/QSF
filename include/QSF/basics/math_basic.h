@@ -1,14 +1,14 @@
 #include "math_cheap.h"
 
-double hermite(int nn, double x)
+double hermite(int order, double x)
 {
     double hrm;
-    if (nn == 0)
+    if (order == 0)
         hrm = 1;
-    else if (nn == 1)
+    else if (order == 1)
         hrm = 2 * x;
     else
-        hrm = 2 * x * hermite(nn - 1, x) - 2 * (nn - 1) * hermite(nn - 2, x);
+        hrm = 2 * x * hermite(order - 1, x) - 2 * (order - 1) * hermite(order - 2, x);
     return hrm;
 }
 

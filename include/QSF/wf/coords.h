@@ -1,86 +1,101 @@
+template <DIMS size>
 struct CoordinateSystem {
-	double dx;
-	ind n;
+	double dx[size];
+	ind n[size];
+	static constexpr DIMS DIM = size;
 };
 
-template <DIMS Dflag, class AT, class MG = MPI::Single, class MS = MPI::Slices>
-struct CartesianGrid :CoordinateSystem
+template <DIMS size, class AT, class MPI_GC>
+struct CartesianGrid_ :CoordinateSystem<size>
 {
 	static_assert(std::is_base_of_v< AbsorberType, AT>,
 				  "Second CartesianGrid template argument must be type derived from AbsorberType");
-	static_assert(std::is_base_of_v<MPI::Strategy, MS>,
-				  "Forth CartesianGrid template argument must be type derived from MPI::Strategy");
-	using MPIGrids = MG;
-	using MPIStrategy = MS;
-	AT absorber;
-	ind n2;
-	ind nn;
-	ind m;
-	double inv_m;
-	double inv_nn;
-	double inv_n;
 
+	using MPIGridComm = MPI_GC;
+	using MPIDivision = typename MPI_GC::MPIDivision;
+	/* Init of the above part is postponed to the wf */
+
+	using CoordinateSystem<size>::n;
+	using CoordinateSystem<size>::dx;
+	using CoordinateSystem<size>::DIM;
+
+	AT absorber;
+	ind n2[size];
+	ind nn[size];
+	ind m;
+	// double inv_nn;
+
+	double inv_m;
 	double dV;
 	double dVm;
-	double L;
-	double xmin;
-	double inv_dx;
-	double inv_2dx;
+	double L[size];
+	double xmin[size];
+	double inv_dx[size];
+	double inv_2dx[size];
+	double inv_n[size];
 
-	double dp;
-	double pmin;
-	double pmax;
+	double dp[size];
+	double pmin[size];
+	double pmax[size];
+	double kin_scale[size];
 	double dVP;
-	double kin_scale;
 
 	template <REP R>
-	double vol() {
+	double vol()
+	{
 		if constexpr (R == REP::X) return dV;
 		else return dVm;
 	}
 
-	static constexpr int DIM = intDIMS(Dflag);
-	static constexpr DIMS D = Dflag;
-	void init()
+	template <uind ...Is>
+	void init(seq<Is...>)
 	{
-		n2 = n / 2;
-		nn = n * n;
-		m = Power(n, DIM);
+		m = 1;
+		([&] {
+			n2[Is] = n[Is] / 2;
+			nn[Is] = n[Is] * n[Is];
+			inv_n[Is] = 1.0 / n[Is];
+			m *= n[Is];
+		 }(), ...);
 		inv_m = 1.0 / m;
-		inv_nn = 1.0 / nn;
-		inv_n = 1.0 / n;
-		dV = Power(dx, DIM);
+
+		dV = 1.0;
+		dVP = 1.0;
+		([&] {
+			dV *= dx[Is];
+			L[Is] = (dx[Is] * (n[Is] - 1));
+			xmin[Is] = -0.5 * L[Is];
+			inv_dx[Is] = 1.0 / dx[Is];
+			inv_2dx[Is] = inv_dx[Is] / 2.0;
+			dp[Is] = 2.0 * pi / double(n[Is]) / dx[Is];
+			pmin[Is] = -pi / dx[Is];
+			pmax[Is] = -pmin[Is] - dp[Is];
+			kin_scale[Is] = dp[Is] * dp[Is] * 0.5;
+			dVP *= dp[Is];
+		 }(), ...);
 		dVm = dV * inv_m;
-		L = (dx * (n - 1));
-		xmin = -0.5 * L;
-		inv_dx = 1.0 / dx;
-		inv_2dx = inv_dx / 2.0;
 
-		dp = 2.0 * pi / double(n) / dx;
-		pmin = -pi / dx;
-		pmax = -pmin - dp;
-		dVP = Power(dp, DIM);
-		kin_scale = Power(dp, 2) * 0.5;
-
-
-		logSETUP("CartesianGrid init");
-		logSETUP("Total number of nodes m: %td, n: %td, grid size L: %g", m, m, L);
-		logSETUP("Grid spacing dx: %g, dp: %g", dx, dp);
-		logSETUP("pmin:%g kin_scale: %g", pmin, kin_scale);
-		logSETUP("inv_m:%g inv_nn: %g", inv_m, inv_nn);
+		// logSETUP("CartesianGrid init");
+		// logSETUP("Total number of nodes m: %td, n: %td, grid size L: %g", m, m, L);
+		// logSETUP("Grid spacing dx: %g, dp: %g", dx, dp);
+		// logSETUP("pmin:%g kin_scale: %g", pmin, kin_scale);
+		// logSETUP("inv_m:%g inv_nn: %g", inv_m, inv_nn);
 	}
 
-	CartesianGrid(Section& settings)
+	CartesianGrid_(Section& settings)
 	{
-
-		inipp::get_value(settings, "n", n);
-		inipp::get_value(settings, "dx", dx);
-		init();
+		double def_dx;
+		inipp::get_value(settings, "dx", def_dx);
+		std::fill_n(dx, size, def_dx);
+		ind def_n;
+		inipp::get_value(settings, "n", def_n);
+		std::fill_n(n, size, def_n);
+		init(n_seq<size>);
 	}
 
-	CartesianGrid(CoordinateSystem cs) : CoordinateSystem(cs)
+	CartesianGrid_(CoordinateSystem<size> cs) : CoordinateSystem<size>(cs)
 	{
-		init();
+		init(n_seq<size>);
 	}
 
 
@@ -92,10 +107,16 @@ struct CartesianGrid :CoordinateSystem
 		return over;
 	}
 
-	template <REP R>
-	double pos(ind index)
+	template <REP R, uind dir>
+	constexpr double pos(ind index)
 	{
-		if constexpr (R == REP::X) return xmin + index * dx;
-		else return dp * (index >= n2 ? index - n : index); //after FFTW 0 freq is at 0 index
+		if constexpr (R == REP::X) return xmin[dir] + index * dx[dir];
+		else return dp[dir] * (index >= n2[dir] ? index - n[dir] : index); //after FFTW 0 freq is at 0 index
 	}
 };
+
+template <DIMS size, class AT, class MS = MPI::Slices>
+using CartesianGrid = CartesianGrid_<size, AT, SingleMPIGrid<size, MS>>;
+
+template <DIMS size, class AT, class MS = MPI::Slices>
+using MultiCartesianGrid = CartesianGrid_<size, AT, MultiMPIGrid<size, MS>>;

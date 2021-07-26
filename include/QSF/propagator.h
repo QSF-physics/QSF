@@ -8,16 +8,7 @@ struct Time {
 	static constexpr REP rep = REP::NONE;
 	static constexpr bool late = false;
 };
-// struct ENERGY_TOTAL
-// {
-// 	static constexpr REP rep = REP::NONE;
-// 	static constexpr bool late = true;
-// };
-// struct ENERGY_DIFFERENCE
-// {
-// 	static constexpr REP rep = REP::NONE;
-// 	static constexpr bool late = true;
-// };
+
 using ENERGY_TOTAL = SUM<AVG<PotentialEnergy>, AVG<KineticEnergy>>;
 using ENERGY_DIFFERENCE = CHANGE<SUM<AVG<PotentialEnergy>, AVG<KineticEnergy>>>;
 

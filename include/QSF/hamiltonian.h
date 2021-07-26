@@ -6,15 +6,13 @@ namespace Schrodinger
 	struct Couplings { };
 
 	template <class GType, class V_Op, class C_Op = DipoleCoupling<VelocityGauge> >
-	struct Spin0 : WF < Spin0<GType, V_Op, C_Op>, GType, 1>
+	struct Spin0 : LocalGrid < Spin0<GType, V_Op, C_Op>, GType, 1>
 	{
-		using Base = WF < Spin0<GType, V_Op, C_Op>, GType, 1>;
+		using Base = LocalGrid< Spin0<GType, V_Op, C_Op>, GType, 1>;
 		using Base::psi;
 		using Base::post_step;
-		using Base::n0_l;
-		using Base::n0_o;
 		using Base::DIM;
-		using InducedGrid = typename Base::InducedGrid;
+		using Base::kin_scale;
 		static constexpr REP couplesInRep = C_Op::couplesInRep;
 
 		V_Op potential;
@@ -42,7 +40,7 @@ namespace Schrodinger
 		inline double operator()(Cooords ... coords)
 		{
 			if constexpr (R == REP::P)
-				return (InducedGrid::kin_scale * ((coords * coords) + ...)) - couple<R>(coords...);
+				return (kin_scale[0] * ((coords * coords) + ...)) - couple<R>(coords...);
 			else return potential(coords...) + couple<R>(coords...);
 		}
 
