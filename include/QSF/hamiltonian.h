@@ -1,8 +1,7 @@
 
 namespace Schrodinger
 {
-
-
+	//CRTP 
 	template <class GType, class V_Op, class C_Op = DipoleCoupling<VelocityGauge> >
 	struct Spin0 : LocalGrid < Spin0<GType, V_Op, C_Op>, GType, 1>
 	{
@@ -13,55 +12,69 @@ namespace Schrodinger
 		using Base::kin_scale;
 		static constexpr REP couplesInRep = C_Op::couplesInRep;
 
-		V_Op potential;
-		C_Op coupling;
+		V_Op _potential;
+		C_Op _coupling;
 
-		Spin0(Section& settings) : Base(settings), potential(settings), coupling(settings)
+		Spin0(Section& settings) : Base(settings), _potential(settings), _coupling(settings)
 		{
 			logInfo("Spin0 init");
 		}
 
-		Spin0(GType gtype, V_Op potential, C_Op coupling) :Base(gtype), potential(potential), coupling(coupling) {}
+		Spin0(GType gtype, V_Op potential, C_Op coupling) :Base(gtype), _potential(potential), _coupling(coupling) {}
 
-		// V pot;
 		// static constexpr REP rep = REP::BOTH;
 		// static constexpr string_view name = "Schrodinger";
-		template <REP R, typename ... Args>
-		double couple(Args ... args)
+
+		template <REP R, uind ... dirs, typename ... Cooords>
+		double coupling(Cooords ... coords)
 		{
 			if constexpr (C_Op::couplesInRep == R && C_Op::size)
-				return ((args * coupling[AXIS::NO]) + ...);
+				return ((coords * _coupling[Axis<dirs>]) + ...);
 			else return 0.0;
 		}
-		template < REP R, typename ... Cooords>
+
+		template <REP R, uind ... dirs, typename ... Cooords>
+		double kinetic(Cooords ... coords)
+		{
+			if constexpr (R == REP::P) return ((kin_scale[dirs] * coords * coords) + ...);
+			else return 0;
+		}
+
+		template <REP R, uind ... dirs, typename ... Cooords>
+		double potential(Cooords ... coords)
+		{
+			if constexpr (R == REP::X) return _potential(coords...);
+			else return 0;
+		}
+
+		template < REP R, uind ... dirs, typename ... Cooords>
 		inline double operator()(Cooords ... coords)
 		{
 			if constexpr (R == REP::P)
-				return (kin_scale[0] * ((coords * coords) + ...)) - couple<R>(coords...);
-			else return potential(coords...) + couple<R>(coords...);
+				return kinetic<R, dirs...>(coords...) - coupling<R, dirs...>(coords...);
+			else return potential<R, dirs...>(coords...) + coupling<R, dirs...>(coords...);
 		}
 
-		template <class Op, class...Coords>
+		template <class Op, uind ... dirs, class...Coords>
 		inline double call(Coords...coords)
 		{
-			// logInfo("call");
-			if constexpr (std::is_same_v<Op, KineticEnergy>)
-				return operator() < REP::P > (coords...);
+			if constexpr (std::is_same_v<Op, Identity>)
+				return 1.0;
+			else if constexpr (std::is_same_v<Op, KineticEnergy>)
+				return kinetic<REP::P, dirs...>(coords...);
 			else if constexpr (std::is_same_v<Op, PotentialEnergy>)
-				return operator() < REP::X > (coords...);
-			else return 3.0;
+				return potential<REP::X, dirs...>(coords...);
+			// else 
+			return 3.0;
 		}
 
 
 		template <MODE M, REP R>
 		auto expOp(double val)
 		{
-			if constexpr (M == MODE::IM)
-				return exp(-val);
-			else
-				return cos(-val) + I * sin(-val);
+			if constexpr (M == MODE::IM) return exp(-val);
+			else return cos(-val) + I * sin(-val);
 		}
-
 	};
 }
 

@@ -24,10 +24,10 @@ FILE* file_log;
 int qdd;
 #define qd() {MPI_Barrier(MPI_COMM_WORLD); if (!MPI::pID) { fprintf(stdout, "%35s:%-5i| ", GOBACK __FILE__, __LINE__);  fprintf(stdout, "------------------------------------------------------------------------------ >QD: %d\n", qdd); qdd++; }}
 // use __func__
-
 #else
 #define qd() {}
 #endif
+
 
 #if defined _WIN32 || defined _LOG_NO_COLOR
 #define __LOG_RED ""

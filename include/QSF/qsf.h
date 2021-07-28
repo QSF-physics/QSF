@@ -12,14 +12,16 @@
 #include "basics/superpos.h"
 #include "basics/io.h"
 #include "basics/timings.h"
-#include "extern/inipp/inipp/inipp.h"
-using Section = inipp::Ini<char>::Section;
+#include "basics/inipp.h"
+#include "basics/config.h"
 
 
-#include "config.h"
 #include "wf/absorbers.h"
+#include "fluxes/borders.h"
+#include "wf/preset.h"
 #include "wf/coords.h"
 #include "wf/computations.h"
+#include "wf/buffer.h"
 #include "wf/grid.h"
 #include "wf.h"
 // #include "dumps.h"
@@ -36,6 +38,8 @@ namespace QSF
 {
 	void init(int argc, char* argv[])
 	{
+		// We forward argc, argv arguments, but this is NOT part of the MPI standard!
+		// See W. Gropp et al. - Using MPI Portable Parallel Programming with the Message-Passing Interface (2014, The MIT Press), p.60
 		MPI::init(argc, argv);
 		logImportant("PROJECT: [%s] MPI PROCESSES: [%d]", STRINGIFY(PROJNAME), MPI::pSize);
 		createDir(project_dir, results_dir);

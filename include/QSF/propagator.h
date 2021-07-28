@@ -63,18 +63,18 @@ struct SplitPropagator : Config, PropagatorBase
 	static constexpr uind ChainCount = ChainExpander::size;
 	static constexpr REP firstREP = SplitType::firstREP;
 	static constexpr REP invREP = REP::BOTH ^ firstREP;
-	static constexpr std::string_view name = M == MODE::IM ? "IM" : "RE";
 	static constexpr MODE mode = M;
+	static constexpr std::string_view name = M == MODE::IM ? "IM" : "RE";
 
 	// static constexpr std::string_view name = SplitType::name;
 	// static constexpr REP couplesInRep = C::couplesInRep;
 
 	Section settings;
 	HamWF wf;
-	double kin_energy;
-	double pot_energy;
 	double tot_energy;
 	double dif_energy;
+	cxd* psi_copy = nullptr;    // backup ψ(x,t) on m_l grid
+	cxd* psi_acc = nullptr;     // accumulated ψ(x,t) on m_l grid
 #pragma region Initialization
 
 	void autosetTimestep()
@@ -89,9 +89,10 @@ struct SplitPropagator : Config, PropagatorBase
 	SplitPropagator(PropagatorBase pb, HamWF wf) : PropagatorBase(pb), wf(wf)
 	{
 		logInfo("SplitPropagator init");
-		max_steps = wf.coupling.maxPulseDuration() / dt + 1;
-		logSETUP("maxPulseDuration: %g, dt: %g => max_steps: %td", wf.coupling.maxPulseDuration(), dt, max_steps);
+		max_steps = wf._coupling.maxPulseDuration() / dt + 1;
+		logSETUP("maxPulseDuration: %g, dt: %g => max_steps: %td", wf._coupling.maxPulseDuration(), dt, max_steps);
 		state_accuracy = 0;
+		init();
 	}
 
 	SplitPropagator() :
@@ -111,12 +112,20 @@ struct SplitPropagator : Config, PropagatorBase
 			max_steps = wf.coupling.maxPulseDuration() / dt + 1;
 			logSETUP("maxPulseDuration: %g, dt: %g => max_steps: %td", wf.coupling.maxPulseDuration(), dt, max_steps);
 		}
-		if constexpr (ChainCount > 1) wf.initHelpers();
+		init();
+	}
+	void init()
+	{
+		if constexpr (ChainCount > 1)
+		{
+			logInfo("Using Operator Split Groups (Multiproduct splitting)");
+			psi_copy = (cxd*)fftw_malloc(sizeof(cxd) * wf.localSize());
+			psi_acc = (cxd*)fftw_malloc(sizeof(cxd) * wf.localSize());
+		}
 
 		file_log = openLog(name);
 		logInfo("dt %g", dt);
 	}
-
 	~SplitPropagator()
 	{
 		logInfo("SplitPropagation done!\n");
@@ -131,31 +140,12 @@ struct SplitPropagator : Config, PropagatorBase
 		if constexpr (std::is_same_v<Step, Op>) return step;
 		else return wf.template getValue<Op>();
 	}
-
-	//If no match here is found pass to the wavefunction with buffer
-	template < REP R, class BO, class COMP>
-	inline void compute(BO& bo, COMP&& c)
-	{
-		wf.template compute<M, R>(bo, std::forward<COMP>(c));
-	}
-
-	template < REP R, class BO, class ... Op>
-	inline void compute(BO& bo, AVG<Op...>&& c)
-	{
-		using T = AVG<Op...>;
-		bo.template store < T>((wf.template average<R, Op>())...);
-	}
-	template < REP R, class BO, class ... Op>
-	inline void compute(BO& bo, OPERATION<Op...>&& c)
-	{
-		((wf.template operation<M, R, Op>()), ...);
-	}
 	template <REP R, class BO, class... Op>
 	inline void compute(BO& bo, VALUE<Op...>&&)
 	{
 		using T = VALUE<Op...>;
-		// bo.template store < T>(getValue(Op{}) ...);
-		bo.template store < T>(getValue<Op>()...);
+		// bo.template store <T>(getValue(Op{}) ...);
+		bo.template store <T>(getValue<Op>()...);
 	}
 
 	template <REP R, class BO, class... Op>
@@ -167,7 +157,6 @@ struct SplitPropagator : Config, PropagatorBase
 		if constexpr (std::is_same_v<T, ENERGY_TOTAL>)
 			tot_energy = bo.template getLastValue<T>();
 	}
-
 	template <REP R, class BO, class Op>
 	inline void compute(BO& bo, CHANGE<Op>&&)
 	{
@@ -182,9 +171,41 @@ struct SplitPropagator : Config, PropagatorBase
 			dif_energy = bo.template getLastValue<T>();
 	}
 
+	template < REP R, class BO, class ... Op>
+	inline void compute(BO& bo, OPERATION<Op...>&& c)
+	{
+		((wf.template operation<M, R, Op>()), ...);
+	}
+
+	template < REP R, class BO, class ... Op>
+	inline void compute(BO& bo, AVG<Op...>&& c)
+	{
+		using T = AVG<Op...>;
+		bo.template store <T>((wf.template average<R, Op>())...);
+	}
+
+	template < REP R, class BO, uind dir, class Op>
+	inline void compute(BO& bo, AVG<DERIVATIVE<dir, Op>>&& c)
+	{
+		using T = AVG<DERIVATIVE<dir, Op>>;
+		bo.template store <T>((wf.template average_der<R, dir, Op>()));
+	}
+	template <REP R, class BO, class ... Op>
+	inline void compute(BO& bo, FLUX<Op...>&& c)
+	{
+		using T = FLUX<Op...>;
+		wf.template current_map<R>();
+		bo.template store <T>((wf.template flux<R, Op>())...);
+	}
+
+	//If no match here is found pass to the wavefunction with buffer
+	template <REP R, class BO, class COMP>
+	inline void compute(BO& bo, COMP&& c)
+	{
+		wf.template compute<M, R>(bo, std::forward<COMP>(c));
+	}
+
 	inline void ditch() {}
-
-
 
 	template <WHEN when, bool B, class... COMP>
 	inline void computeEach(BufferedOutputs<B, COMP...>& bo)
@@ -282,7 +303,7 @@ struct SplitPropagator : Config, PropagatorBase
 		{
 			if (step == 4) { logInfo("group %td restore", chain); }
 			time_restore();
-			wf.restore();
+			for (ind i = 0; i < wf.localSize(); i++) wf[i] = psi_copy[i];
 			// HamWF::Coupling::restore();
 		}
 	}
@@ -295,8 +316,11 @@ struct SplitPropagator : Config, PropagatorBase
 				logInfo("group %td complete, applying coeff=%g", chain, Chain<chain>::value);
 			}
 			if constexpr (chain == ChainCount - 1)
-				wf.collect(Chain<chain>::value);
-			else wf.accumulate(Chain<chain>::value);
+				for (ind i = 0; i < wf.localSize(); i++)
+					wf[i] = Chain<chain>::value * wf[i] + psi_acc[i];
+
+			else for (ind i = 0; i < wf.localSize(); i++)
+				psi_acc[i] += Chain<chain>::value * wf[i];
 
 		}
 	}
@@ -305,7 +329,11 @@ struct SplitPropagator : Config, PropagatorBase
 		if constexpr (ChainCount > 1)
 		{
 			if (step == 4) { logInfo("group backup because ChainCount=%td", ChainCount); }
-			wf.backup();
+			for (ind i = 0; i < wf.localSize(); i++)
+			{
+				psi_copy[i] = wf[i];
+				psi_acc[i] = 0.0;
+			}
 			time_backup();
 			// HamWF::Coupling::backup();
 		}
@@ -386,7 +414,7 @@ struct ImagTime
 	}
 	inline bool exitCondition()
 	{
-		return !((fabs(dE) < state_accuracy || dE / energy == 0.) || step == max_imaginary_steps);
+		return !((fabs(dE) <state_accuracy || dE / energy == 0.) || step == max_imaginary_steps);
 	}
 	void config(Section& settings)
 	{
@@ -413,7 +441,7 @@ struct RealTime
 	}
 	inline bool exitCondition()
 	{
-		return (step < ntsteps);
+		return (step <ntsteps);
 	}
 };
 */

@@ -119,26 +119,25 @@ struct DipoleCoupling<VelocityGauge, Fields...> :
 
 	DipoleCoupling(Fields...fields) :base(fields...) {}
 
-	DipoleCoupling(const DipoleCoupling&) = default;
+	// DipoleCoupling(const DipoleCoupling&) = default;
 	// A(t) = -int_0^t E(t) dt
-	template <REP R, OPTIMS opt>
-	inline void precalc() const
-	{
-		if constexpr (R == REP::P)
-		{
-			// int i = 0;
-			// ([&]
-			//  {
-			// 	 base::last_values[i++] -= (timer - lastTime) * (std::get <Fields>(base::fields).operator()(timer));
-			//  }(), ...);
-			// lastTime = timer;
-		}
-	}
-	inline double operator()()
-	{
-		return 1.0;
-	}
-	// using base::fields;
+	// template <REP R, OPTIMS opt>
+	// inline void precalc() const
+	// {
+	// 	if constexpr (R == REP::P)
+	// 	{
+	// 		// int i = 0;
+	// 		// ([&]
+	// 		//  {
+	// 		// 	 base::last_values[i++] -= (timer - lastTime) * (std::get <Fields>(base::fields).operator()(timer));
+	// 		//  }(), ...);
+	// 		// lastTime = timer;
+	// 	}
+	// }
+	// inline double operator()()
+	// {
+	// 	return 1.0;
+	// }
 };
 
 

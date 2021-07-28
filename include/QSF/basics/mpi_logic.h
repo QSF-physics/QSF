@@ -100,6 +100,7 @@ namespace MPI
 		bool bounded[DIM];
 		FREE_COORD freeCoord;
 		int boundedCoordDim;
+
 		static constexpr inline bool many = (sizeof...(free_coord) > 1);
 		static constexpr inline FREE_COORD freeCoords[sizeof...(free_coord)]
 		{ free_coord... };

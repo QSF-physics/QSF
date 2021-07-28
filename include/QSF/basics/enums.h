@@ -37,42 +37,12 @@ enum class MODE
 #define ONLY_MODE MODE::ALL
 #endif
 
-// enum class DIMS
-// {
-// 	D0 = 0,
-// 	D1 = 1,
-// 	D2 = 2,
-// 	D3 = 3,
-// 	D4 = 4,
-// 	D5 = 5,
-// 	D6 = 6,
-// 	D7 = 7,
-// 	D8 = 8,
-// 	D9 = 9,
-// 	ALL = D1 + D2 + D3
-// };
 
 constexpr DIMS operator""_D(unsigned long long val)
 {
 	return static_cast<DIMS>(val);
 }
-/* This allows for filtering  */
-// #ifndef ONLY_DIM
-// #define ONLY_DIM DIMS::ALL
-// #endif
 
-// enum class ELEC
-// {
-// }
-
-
-// template <MODE M> constexpr string_view modeName()
-// {
-// 	if constexpr (M == IM) return "IM";
-// 	if constexpr (M == RE) return "RE";
-// 	if constexpr (M == EX) return "EX";
-// 	return "";
-// }
 static constexpr auto modeName(MODE M) { return M == MODE::IM ? "IM" : "RE"; }
 enum class REP
 {
@@ -85,7 +55,7 @@ enum class REP
 // constexpr REP inverse_rep(REP R) { return REP::BOTH ^ R; };
 
 
-enum class AXIS : ind
+enum class AXIS : uind
 {
 	NO = 0,
 	X = 1,
@@ -95,17 +65,11 @@ enum class AXIS : ind
 	XZ = X | Z,
 	YZ = Y | Z,
 	XYZ = X | Y | Z,
-// #if DIM ==1
-// 	ALL = X,
-// 	LAST = X
-// #elif DIM == 2
-// 	ALL = XY,
-// 	LAST = Y
-// #elif DIM == 3
-// 	ALL = XYZ,
-// 	LAST = Z
-// #endif
 };
+
+template <uind dir>
+constexpr AXIS Axis = AXIS(1 << dir);
+
 
 enum class WHEN : ind
 {
@@ -118,6 +82,8 @@ using FREE_COORD = AXIS;
 
 template <DIMS D>
 constexpr FREE_COORD maxFreeCoord = FREE_COORD((ind(1) << ind(D)) - 1);
+
+
 
 // Returns number of dimensions used by direction (size_t)
 template <FREE_COORD fc>
@@ -207,4 +173,35 @@ enum class OPTIMS
 // 	};
 // 	return 1 + MultiplyDeBruijnBitPosition[((uint32_t)((v & -v) * 0x077CB531U)) >> 27];
 // 	   // return D == DIMS::D1 ? 1 : (D == DIMS::D2 ? 2 : D == DIMS::D3 ? 3 : 0);
+// }
+// enum class DIMS
+// {
+// 	D0 = 0,
+// 	D1 = 1,
+// 	D2 = 2,
+// 	D3 = 3,
+// 	D4 = 4,
+// 	D5 = 5,
+// 	D6 = 6,
+// 	D7 = 7,
+// 	D8 = 8,
+// 	D9 = 9,
+// 	ALL = D1 + D2 + D3
+// };
+/* This allows for filtering  */
+// #ifndef ONLY_DIM
+// #define ONLY_DIM DIMS::ALL
+// #endif
+
+// enum class ELEC
+// {
+// }
+
+
+// template <MODE M> constexpr string_view modeName()
+// {
+// 	if constexpr (M == IM) return "IM";
+// 	if constexpr (M == RE) return "RE";
+// 	if constexpr (M == EX) return "EX";
+// 	return "";
 // }

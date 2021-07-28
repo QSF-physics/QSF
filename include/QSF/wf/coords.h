@@ -85,11 +85,14 @@ struct CartesianGrid_ :CoordinateSystem<size>
 	CartesianGrid_(Section& settings)
 	{
 		double def_dx;
-		inipp::get_value(settings, "dx", def_dx);
-		std::fill_n(dx, size, def_dx);
 		ind def_n;
+		inipp::get_value(settings, "dx", def_dx);
 		inipp::get_value(settings, "n", def_n);
-		std::fill_n(n, size, def_n);
+		for (DIMS i = 0; i < size; i++)
+		{
+			(CoordinateSystem<size>::dx)[i] = def_dx;
+			(CoordinateSystem<size>::n)[i] = def_n;
+		}
 		init(n_seq<size>);
 	}
 
@@ -97,7 +100,15 @@ struct CartesianGrid_ :CoordinateSystem<size>
 	{
 		init(n_seq<size>);
 	}
-
+	CartesianGrid_(double dx, ind n)
+	{
+		for (DIMS i = 0; i < size; i++)
+		{
+			(CoordinateSystem<size>::dx)[i] = dx;
+			(CoordinateSystem<size>::n)[i] = n;
+		}
+		init(n_seq<size>);
+	}
 
 	inline cxd scalarProductAll(cxd* from, cxd* to)
 	{

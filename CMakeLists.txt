@@ -8,7 +8,7 @@ project(QSF VERSION 0.9.0
         LANGUAGES C CXX)
 
 set(QSF_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
-
+# message(STATUS "CMAKE_INSTALL_PREFIX: ${CMAKE_INSTALL_PREFIX}")
 # ::::::::::::::::::::::::::::: Define imports ::::::::::::::::::::::::::::::::
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/findFFTW")
 message(STATUS "CMAKE_MODULE_PATH= ${CMAKE_MODULE_PATH}")
@@ -24,10 +24,21 @@ if(MPI_FOUND)
   cmake_print_properties(TARGETS MPI::MPI_C PROPERTIES INTERFACE_LINK_LIBRARIES)
 endif()
 find_package(FFTW REQUIRED DOUBLE_MPI_LIB DOUBLE_LIB)
+# find_package(HDF5 REQUIRED)
 
 
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/extern/inipp")
+# Replace install() to do-nothing macro.
+# macro(install)
+# endmacro()
+# set(USE_BOOST OFF CACHE BOOL "Enable Boost Support")
+# option(HIGHFIVE_UNIT_TESTS "Enable unit tests" OFF)
+# option(HIGHFIVE_EXAMPLES "Compile examples" OFF)
+# option(HIGHFIVE_BUILD_DOCS "Enable documentation building" OFF)
 # add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/extern/HighFive")
+# macro(install)
+#     _install(${ARGN})
+# endmacro()
+#
 
 add_library(${PROJECT_NAME} INTERFACE)
 # add_library(QSF::QSF ALIAS ${PROJECT_NAME})
@@ -53,7 +64,7 @@ message(STATUS "FFTW_DOUBLE_MPI_LIB_FOUND: ${FFTW_DOUBLE_MPI_LIB_FOUND}")
 target_link_libraries(${PROJECT_NAME} INTERFACE FFTW::Double)
 target_link_libraries(${PROJECT_NAME} INTERFACE FFTW::DoubleMPI)
 # target_link_libraries(${PROJECT_NAME} INTERFACE fmt::fmt-header-only)
-target_link_libraries(${PROJECT_NAME} INTERFACE inipp)
+# target_link_libraries(${PROJECT_NAME} INTERFACE inipp)
 # target_link_libraries(${PROJECT_NAME} INTERFACE HighFive)
 
 

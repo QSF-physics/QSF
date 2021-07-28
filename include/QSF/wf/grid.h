@@ -35,13 +35,6 @@ struct Normalize
 };
 #pragma endregion AvailableOperations
 
-template <typename ... Args>
-inline double gaussian(double at, double delta, Args...args)
-{
-	double delta_inv = 1.0 / delta;
-	double norm = Power(sqrt(delta_inv * sqrt(inv_pi)), sizeof...(Args));
-	return exp(-0.5 * (((args - at) * (args - at) * delta_inv * delta_inv) + ...)) * norm;
-}
 
 template <class Hamiltonian, class BaseGrid, uind Components, class MPI_GC = typename BaseGrid::MPIGridComm, class MPIDiv = typename MPI_GC::MPIDivision>
 struct LocalGrid;
@@ -61,14 +54,14 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices> : BaseG
 	using BaseGrid::DIM;
 	using BaseGrid::absorber;
 	using BaseGrid::n;
-	// using BaseGrid::m;
-	// using BaseGrid::inv_m;
 	// using BaseGrid::inv_nn;
 	using BaseGrid::inv_n;
+	using BaseGrid::inv_2dx;
 	using BaseGrid::nn;
+	using BaseGrid::n2;
 	using BaseGrid::xmin;
 	using BaseGrid::dx;
-	using MPIGridComm = MPI_GC; //MPIGrids<typename BaseGrid::MPIStrategy, DIM, MPI::Slices>;
+	using MPIGridComm = MPI_GC;
 
 	static constexpr uind DIMC = DIM + (Components > 1 ? 1 : 0);
 	static constexpr auto indices = n_seq<DIMC>;
@@ -88,8 +81,11 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices> : BaseG
 
 	cxd* psi_total = nullptr; 	// total ψ on m grid (used for saving)
 	cxd* psi = nullptr;      	// local ψ(x,t) on m_l grid
-	cxd* psi_copy = nullptr;    // backup ψ(x,t) on m_l grid
-	cxd* psi_acc = nullptr;     // accumulated ψ(x,t) on m_l grid
+
+	// Used in MPI calculations of currents
+	cxd* row_before;
+	cxd* row_after;
+	borVec<DIM>* curr;
 
 	const ind m = BaseGrid::m * Components;
 	const double inv_m = BaseGrid::inv_m / Components;
@@ -98,11 +94,11 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices> : BaseG
 
 	GridPos<MPI::Slices> pos_lx;
 	ind strides_lx[DIMC];
-	ind n_lx[DIMC];/* MPI local n_l: local_n0*n1*n2*...*/
+	ind n_lx[DIMC]; //MPI local n[]: local_n0,n1,n2,...
 
 	// Different from shape_l[] if n0!=n1 and if FFTW_MPI_TRANSPOSED_OUT is used:
 	GridPos<MPI::Slices> pos_lp;
-	ind n_lp[DIMC]; /*P-space local MPI n_l: local_n1*n0*n2*...*/
+	ind n_lp[DIMC]; //P-space local MPI n[]: local_n1,n0,n2,...
 	ind strides_lp[DIMC];
 
 	// const int transpose_f[2] = { 0, 0 };
@@ -150,7 +146,10 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices> : BaseG
 		}
 		else return index;
 	}
-
+	template <REP R, ind Is> uind constexpr abs_centered_index(ind index) const noexcept
+	{
+		return abs_index<R, Is>(index) - n2[Is];
+	}
 
 	template <REP R, uind dir> double abs_pos(ind index) noexcept
 	{
@@ -164,50 +163,25 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices> : BaseG
 		return R == REP::X ? n_lx[dir] : n_lp[dir];
 	}
 
+	template <REP R, uind dir, uind dir_avg> inline auto bulk_shape() const noexcept
+	{
+		if constexpr (dir_avg != dir) return shape<R, dir>();
+		else return shape<R, dir>() + ((dir_avg != 0 || MPI::rID == MPI::rSize - 1) ? -1 : 0);
+	}
+
+	template <uind dir, uind dir_avg> inline auto bulk_start() const noexcept
+	{
+		if constexpr (dir_avg != dir) return 0;
+		else return ((dir_avg != 0 || MPI::rID == 0) ? 1 : 0);
+	}
+
 	template <REP R, ind dir> inline auto stride() const noexcept
 	{
 		return R == REP::X ? strides_lx[dir] : strides_lp[dir];
 	}
-
-#pragma region AccessOperators
-	cxd& operator[](ind index) noexcept
+	template <REP R> inline auto rowSize() const noexcept
 	{
-		return psi[index];
-	}
-	const cxd& operator[](ind index) const noexcept
-	{
-		return psi[index];
-	}
-
-	template <REP R, uind dim = 0, class I, class... Args>
-	constexpr inline auto data_offset(I i, Args... args) const noexcept
-	{
-		if constexpr (R == REP::X)
-		{
-			if constexpr (DIM - 1 == dim) return i * strides_lx[dim];
-			else return i * strides_lx[dim] + data_offset<dim + 1>(args...);
-		}
-		else if constexpr (R == REP::P)
-		{
-			if constexpr (DIM - 1 == dim) return i * strides_lp[dim];
-			else return i * strides_lp[dim] + data_offset<dim + 1>(args...);
-		}
-	}
-	template <REP R, class... I> cxd& operator()(I... i)
-	{
-		return psi[data_offset<R>(i...)];
-	}
-	template <REP R, class... I> const cxd& operator()(I... i) const
-	{
-		return psi[data_offset<R>(i...)];
-	}
-#pragma endregion AccessOperators
-
-	void initHelpers()
-	{
-		logInfo("Using Operator Split Groups (Multiproduct splitting)");
-		psi_copy = (cxd*)fftw_malloc(sizeof(cxd) * m_l);
-		psi_acc = (cxd*)fftw_malloc(sizeof(cxd) * m_l);
+		return stride<R, 0>();
 	}
 
 	void initPositions()
@@ -343,6 +317,37 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices> : BaseG
 		// fftw_print_plan(transf_x2p);
 		// fftw_print_plan(transf_p2x);
 	}
+
+
+#pragma region AccessOperators
+	cxd& operator[](ind index) noexcept
+	{
+		return psi[index];
+	}
+	const cxd& operator[](ind index) const noexcept
+	{
+		return psi[index];
+	}
+
+	template <REP R, uind dim = 0, class I, class... Args>
+	constexpr inline auto data_offset(I i, Args... args) const// noexcept
+	{
+
+		if constexpr (DIM - 1 == dim) return i * stride<R, dim>();
+		else return i * stride<R, dim>() + data_offset<R, dim + 1>(args...);
+
+	}
+	template <REP R, class... I> cxd& operator()(I... i)
+	{
+		return psi[data_offset<R>(i...)];
+	}
+	template <REP R, class... I> const cxd& operator()(I... i) const
+	{
+		return psi[data_offset<R>(i...)];
+	}
+
+#pragma endregion AccessOperators
+
 	//NOTE: Designed to work in X rep, FFTW_MPI_TRANSPOSED_OUT not taken into account
 	template <REP R>
 	void add(const cxd* psi_source, ind inp_n, double weight)
@@ -379,36 +384,10 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices> : BaseG
 		}
 	}
 
-	inline void reset()
-	{
-		resetArray(psi);
-	}
+	ind localSize() { return m_l; }
 
-	inline void backup()
-	{
-		for (ind i = 0; i < m_l; i++)
-		{
-			psi_copy[i] = psi[i];
-			psi_acc[i] = 0.0;
-		}
-	}
+	inline void reset() { resetArray(psi); }
 
-	inline void restore()
-	{
-		copyArray(psi, psi_copy);
-		// for (ind i = 0; i < m_l; i++) psi[i] = psi_copy[i];
-	}
-
-	void accumulate(double coeff)
-	{
-		for (ind i = 0; i < m_l; i++) psi_acc[i] += coeff * psi[i];
-	}
-
-	void collect(double coeff)
-	{
-		for (ind i = 0; i < m_l; i++)
-			psi[i] = coeff * psi[i] + psi_acc[i];
-	}
 
 	inline void normalizeAfterTwoFFT()
 	{
@@ -432,9 +411,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices> : BaseG
 	inline void fourier()
 	{
 	// Timings::measure::start("FFTW");
-		static_assert(R == REP::X || R == REP::P,
-					  "Can only transform to X or P, unambigously.");
-		// logInfo("FFTW into %d", int(R));
+		static_assert(R == REP::X || R == REP::P, "Can only transform to X or P, unambigously.");
 		constexpr uind back = R == REP::P ? 0 : 1;
 		if (mpiFFTW)
 		{
@@ -454,7 +431,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices> : BaseG
 	template <REP R, OPTIMS O>
 	void precalc(double time)
 	{
-		static_cast<Hamiltonian*>(this)->coupling.precalc(time);
+		static_cast<Hamiltonian*>(this)->_coupling.precalc(time);
 	}
 	void post_step()
 	{
@@ -475,6 +452,275 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices> : BaseG
 			fclose(file);
 		}
 	}
+
+#pragma region Computations
+	//TODO: if no match here pass to derived class
+	template <MODE M, REP R, class BO, class COMP>
+	inline void compute(BO& bo, COMP&& c)
+	{
+		bo.template store <M, COMP>(1.0);
+	}
+
+
+	/* When using mpi the first coordinate needs to be shifted
+	NOTE: This is so when passing to functions accepting x,y,z...*/
+	template <MODE M, REP R, uind ... Is>
+	inline void evolve_(double delta, seq<Is...>)
+	{
+		ind counters[DIMC + 1] = { 0 };
+		do {
+			psi[counters[DIMC]] *= static_cast<Hamiltonian*>(this)->template expOp < M, R>(delta * static_cast<Hamiltonian*>(this)->template operator() < R, Is... > (abs_pos<R, Is>(counters[Is])...));
+
+		} while (!(...&&
+				   ((counters[rev<Is>]++, counters[rev<Is>] < shape<R, rev<Is>>())
+					? (counters[DIMC]++, false)
+					: (counters[rev<Is>] = 0, true))
+				   ));
+	}
+	template <MODE M, REP R>
+	inline void evolve(double delta)
+	{
+		evolve_<M, R>(delta, indices);
+	}
+
+	template <REP R, class Op, uind ... Is>
+	double average_(seq<Is...>)
+	{
+		// logInfo("%td %td %td %td", shape_l[0], shape_l[1], shape_l[2], sizeof...(Is));
+		ind counters[DIMC + 1]{ 0 };
+		double res = 0.0;
+		do {
+			res += abs2(counters[DIMC]) * static_cast<Hamiltonian*>(this)->template
+				call < Op, Is... >(abs_pos<R, Is>(counters[Is])...);
+
+		} while (!(...&&
+				   ((counters[rev<Is>]++, counters[rev<Is>] < shape<R, rev<Is>>())
+					? (counters[DIMC]++, false)
+					: (counters[rev<Is>] = 0, true))
+				   ));
+
+		return res * BaseGrid::template vol<R>();
+	}
+	template <REP R, class Op>
+	inline double average()
+	{
+		return average_<R, Op>(indices);
+	}
+
+	template <REP R, uind dir_avg, class Op, uind ... Is>
+	double average_der_(seq<Is...>)
+	{
+		// logInfo("%td %td %td %td", shape_l[0], shape_l[1], shape_l[2], sizeof...(Is));
+		ind counters[DIMC + 1]{ 0 };
+		counters[dir_avg] = 0;
+		double res = 0.0;
+		do {
+			res += abs2(counters[DIMC]) *
+				(static_cast<Hamiltonian*>(this)->template
+				 call < Op, Is... >(abs_pos<R, Is>(counters[Is] + (Is == dir_avg ? 1 : 0))...)
+				 - static_cast<Hamiltonian*>(this)->template
+				 call < Op, Is... >(abs_pos<R, Is>(counters[Is] + (Is == dir_avg ? -1 : 0))...));
+
+		} while (!(...&&
+				   ((counters[rev<Is>]++, counters[rev<Is>] < shape<R, rev<Is>>())
+					? (counters[DIMC]++, false)
+					: (counters[rev<Is>] = 0, true))
+				   ));
+
+		return res * BaseGrid::template vol<R>() * inv_2dx[dir_avg];
+	}
+	template <REP R, uind dir, class Op>
+	inline double average_der()
+	{
+		return average_der_<R, dir, Op>(indices);
+	}
+
+
+	template <REP R, uind dir>
+	inline void update_curr(ind counter) //imag(conj(psi))*∂psi
+	{
+		if (counter - stride<R, dir>() < 0 || counter + stride<R, dir>() > m_l)
+			curr[counter][dir] = 0.0;
+		else
+			curr[counter][dir] = inv_2dx[dir]
+			* imag(conj(psi[counter]) * (psi[counter + stride<R, dir>()] - psi[counter - stride<R, dir>()]));
+
+		// logWarning("%g", curr[counter][dir]);
+	}
+	template <REP R, uind ... Is>
+	inline void current_map_(seq<Is...>)
+	{
+		ind counter = 0;
+		while (counter < m_l)
+		{
+			(update_curr<R, Is>(counter), ...);
+			counter++;
+		}
+
+		if (MPI::rSize > 1) //edge cases for MPI
+		{
+			if (MPI::pID < MPI::rSize - 1) // Recieve from higher MPI::rID
+			{
+				for (ind j = 0; j < rowSize<R>(); j++)
+					curr[j][0] = inv_2dx[0]
+					* imag(conj(psi[j]) * (row_after[j] - psi[j - rowSize<R>()]));
+			}
+			if (MPI::pID > 0) // Recieved from lower MPI::rID
+			{
+				for (ind j = 0; j < rowSize<R>(); j++)
+					curr[j][0] = inv_2dx[0]
+					* imag(conj(psi[j]) * (psi[j + rowSize<R>()] - row_before[j]));
+			}
+		}
+	}
+	template <REP R>
+	inline void current_map()
+	{
+		if (curr == nullptr) //TODO: move to prepare
+		{
+			curr = (borVec<DIM>*)malloc(sizeof(borVec<DIM>) * m_l);
+			if (MPI::rSize > 1)
+			{
+				row_after = new cxd[rowSize<R>()];
+				row_before = new cxd[rowSize<R>()];
+			}
+		}
+		getNeighbouringNodes<R>();
+		current_map_<R>(indices);
+	}
+
+	template <REP R>
+	void getNeighbouringNodes()
+	{
+		if (MPI::rSize > 1)
+		{
+			int tag = 1;
+			if (MPI::rID > 0) // Send up
+				MPI_Send(psi, int(rowSize<R>()), MPI_CXX_DOUBLE_COMPLEX, MPI::rID - 1, tag, MPI::rComm);
+			if (MPI::rID < MPI::rSize - 1)	// Recieve
+				MPI_Recv(row_after, int(rowSize<R>()), MPI_CXX_DOUBLE_COMPLEX, MPI::rID + 1, tag, MPI::rComm, &MPI::status);
+			tag = 2;
+			if (MPI::rID < MPI::rSize - 1)	// Send down
+				MPI_Send(&(psi[(shape<R, 0>() - 1) * rowSize<R>()]), int(rowSize<R>()), MPI_CXX_DOUBLE_COMPLEX, MPI::rID + 1, tag, MPI::rComm);
+			if (MPI::rID > 0)			// Recieve 
+				MPI_Recv(row_before, int(rowSize<R>()), MPI_CXX_DOUBLE_COMPLEX, MPI::rID - 1, tag, MPI::rComm, &MPI::status);
+		}
+	}
+	template <REP R, class FLUX_TYPE, uind ... Is>
+	inline double flux_(seq<Is...>)
+	{
+		ind counters[DIMC + 1]{ 0 };
+		double res = 0.0;
+		do {
+			// logWarning("%g", FLUX_TYPE::border((counters[Is] - n2[Is])...)[0]);
+			// logWarning("%g %g %g", curr[counters[DIMC]][Is]..., FLUX_TYPE::border((counters[Is] - n2[Is])...)[0], res);
+			res += curr[counters[DIMC]]
+				* FLUX_TYPE::border((abs_centered_index<R, Is>(counters[Is]))...);
+
+		} while (!(...&&
+				   ((counters[rev<Is>]++, counters[rev<Is>] < shape<R, rev<Is>>())
+					? (counters[DIMC]++, false)
+					: (counters[rev<Is>] = 0, true))
+				   ));
+		// return res * BaseGrid::template vol<R>();
+		return res * BaseGrid::template vol<R>() / dx[0];
+	}
+	template <REP R, class FLUX_TYPE, uind ... Is>
+	inline double flux()
+	{
+		return flux_<R, FLUX_TYPE>(indices);
+	}
+
+	template <class Op>
+	inline double getValue()
+	{
+		return static_cast<Hamiltonian*>(this)->_coupling.template getValue<Op>();
+	}
+#pragma endregion Computations
+
+#pragma region Operations
+	template <MODE M, REP R, class Op>
+	inline auto operation()
+	{
+		if constexpr (std::is_same_v<Normalize, Op>)
+		{
+			auto res = average<R, Identity>();
+			MPI::reduceImmediataly(&res);
+			multiplyArray(psi, sqrt(1.0 / res));
+		}
+		if constexpr (std::is_same_v<Symmetrize, Op>)
+		{
+
+		}
+		if constexpr (std::is_same_v<AntiSymmetrize, Op>)
+		{
+
+		}
+		if constexpr (std::is_same_v<Orthogonalize, Op>)
+		{
+
+		// if (state > 0)
+		// {
+		// 	int lower = 0;
+		// 	([&] {
+		// 		if (lower < state)
+		// 			amplits[lower] = _CO_PROJ<IdentityOperator<REP::X | REP::P>>::template calc<R, opt, integral_constant<size_t, Args>>();
+		// 		lower++;
+		// 	 }(), ...);
+
+		// 	MPI::reduceImmediataly(amplits, amplits_size);
+		// 	for (lower = 0; lower < state; lower++)
+		// 	{
+		// 		cplxd* ei = wf->states[lower];
+		// 		for (i = 0; i < m_l; i++)
+		// 			wf[i] = wf[i] - amplits[lower] * ei[i];
+		// 	}
+		// }
+		// auto res = average<R, Identity>(indices);
+		// MPI::reduceImmediataly(&res);
+		// multiplyArray(this->psi, sqrt(1.0 / res));
+		}
+		// return res;
+	}
+#pragma endregion
+
+#pragma region InitialConditions
+	void setConstantValue(cxd val)
+	{
+		for (ind i = 0;i < m_l; i++) psi[i] = val;
+	}
+
+	template <class F, REP R, bool coords, uind ... Is>
+	void add(F&& f, seq<Is...>)
+	{
+		ind counters[DIMC + 1] = { 0 };
+		do {
+			if constexpr (coords) psi[counters[DIMC]] += f(abs_pos<R, Is>(counters[Is])...);
+			else psi[counters[DIMC]] += f((abs_index<R, Is>(counters[Is]))...);
+
+		} while (!(...&&
+				   ((counters[rev<Is>]++, counters[rev<Is>] < shape<R, rev<Is>>())
+					? (counters[DIMC]++, false)
+					: (counters[rev<Is>] = 0, true))
+				   ));
+	}
+
+	template <class F, REP R = REP::X>
+	void addUsingCoordinateFunction(F&& f)
+	{
+		add<F, R, true>(std::forward<F>(f), indices);
+	}
+	template <class F, REP R = REP::X>
+	void addUsingNodeFunction(F&& f)
+	{
+		add<F, R, false>(std::forward<F>(f), indices);
+	}
+
+	void addFromFile()
+	{
+
+	}
+
 
 #pragma region ArrayOperations
 	//BUNCH OF HELPFUL FUNCTIONS
@@ -538,180 +784,6 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices> : BaseG
 
 #pragma endregion ArrayOperations
 
-#pragma region Computations
-	//TODO: if no match here pass to derived class
-	template <MODE M, REP R, class BO, class COMP>
-	inline void compute(BO& bo, COMP&& c)
-	{
-		bo.template store <M, COMP>(1.0);
-	}
-
-
-	/* When using mpi the first coordinate needs to be shifted
-	NOTE: This is so when passing to functions accepting x,y,z...,
-	internally the condition is different Is==0 for REP::X and Is==1 for REP::P*/
-
-
-	template <MODE M, REP R, uind ... Is>
-	inline void evolve_(double delta, seq<Is...>)
-	{
-		ind counters[DIMC + 1] = { 0 };
-		do {
-			psi[counters[DIMC]] *= static_cast<Hamiltonian*>(this)->template expOp < M, R>(delta * static_cast<Hamiltonian*>(this)->template operator() < R > (abs_pos<R, Is>(counters[Is])...));
-
-			// if (R == REP::P)
-			// {
-			// 	psi[counters[DIMC]] = { MPI::rID,
-			// 	   static_cast<Hamiltonian*>(this)->template operator() < R > (template pos<R>(counters[Is] + offset<R>(Is))...) };
-			// }
-
-			// if (R == REP::P)
-			// 	_logMPI("%2d %2td [%2td %2td] (%2td %2td) [%2td %2td] %10g %10g %10g", MPI::rID, MPI::pID * m_l + counters[DIMC],
-			// 			(counters[Is] + offset<R>(Is))..., (counters[Is])...,
-			// 			shape_l[Is]..., std::norm(psi[counters[DIMC]]),
-			// 			static_cast<Hamiltonian*>(this)->template operator() < R > (template pos<R>(counters[Is] + offset<R>(Is))...), static_cast<Hamiltonian*>(this)->template expOp < M, R>
-			// 			(delta * static_cast<Hamiltonian*>(this)->template operator() < R > (template pos<R>(counters[Is] + offset<R>(Is))...)));
-
-			// static_cast<Hamiltonian*>(this)->
-				// template expOp < M, R>(
-					// delta * static_cast<Hamiltonian*>(this)->template call<std::conditional_t<R == REP::P, KineticEnergy, PotentialEnergy>>(template pos<R>(counters[Is] + offset<R>(Is))...));
-		} while (
-			!(...&&
-			  ((counters[rev<Is>]++, counters[rev<Is>] < shape<R, rev<Is>>()
-				? (counters[DIMC]++, false)
-				: (counters[rev<Is>] = 0, true)))));
-	}
-	template <MODE M, REP R>
-	inline void evolve(double delta)
-	{
-		evolve_<M, R>(delta, indices);
-	}
-
-	template <REP R, class Op, uind ... Is>
-	double average_(seq<Is...>)
-	{
-		// logInfo("%td %td %td %td", shape_l[0], shape_l[1], shape_l[2], sizeof...(Is));
-		ind counters[DIMC + 1]{ 0 };
-		double res = 0.0;
-		do {
-			// logInfo("This will get added %s", typeid(Op).name());
-			// if (R == REP::P)
-				// logInfo("%2td %2td [%2td %2td] [%2td %2td] %td %td", Is..., counters[Is]..., shape_l[Is]..., sizeof...(Is), counters[DIMC]);
-				// logInfo("%td/%td", counters[DIMC], m_l);
-			// if (R == REP::X)
-				// logInfo("%td %g", counters[DIMC], std::norm(psi[counters[DIMC]]));
-
-			if constexpr (std::is_same_v<Op, Identity>)
-				res += abs2(counters[DIMC]);
-			else res += static_cast<Hamiltonian*>(this)->template call < Op >(abs_pos<R, Is>(counters[Is])...) * abs2(counters[DIMC]);
-
-		} while (!(...&& ((counters[rev<Is>]++, counters[rev<Is>] < shape<R, rev<Is>>()) ? (counters[DIMC]++, false) : (counters[rev<Is>] = 0, true))));
-
-		// if (std::is_same_v<Op, KineticEnergy>)
-			// _logMPI("%d %g %td %g", MPI::pID, res, counters[DIMC], test);
-
-		return res * BaseGrid::template vol<R>();
-	}
-
-
-	template <REP R, class Op>
-	inline double average()
-	{
-		return average_<R, Op>(indices);
-	}
-
-	template <class Op>
-	inline double getValue()
-	{
-
-		// if (std::is_same_v<Step, Op>) return step;
-		// else 
-		return static_cast<Hamiltonian*>(this)->coupling.template getValue<Op>();
-	}
-#pragma endregion Computations
-
-#pragma region Operations
-	template <MODE M, REP R, class Op>
-	inline auto operation()
-	{
-		if constexpr (std::is_same_v<Normalize, Op>)
-		{
-			auto res = average<R, Identity>();
-			MPI::reduceImmediataly(&res);
-			multiplyArray(psi, sqrt(1.0 / res));
-		}
-		if constexpr (std::is_same_v<Symmetrize, Op>)
-		{
-
-		}
-		if constexpr (std::is_same_v<AntiSymmetrize, Op>)
-		{
-
-		}
-		if constexpr (std::is_same_v<Orthogonalize, Op>)
-		{
-
-		// if (state > 0)
-		// {
-		// 	int lower = 0;
-		// 	([&] {
-		// 		if (lower < state)
-		// 			amplits[lower] = _CO_PROJ<IdentityOperator<REP::X | REP::P>>::template calc<R, opt, integral_constant<size_t, Args>>();
-		// 		lower++;
-		// 	 }(), ...);
-
-		// 	MPI::reduceImmediataly(amplits, amplits_size);
-		// 	for (lower = 0; lower < state; lower++)
-		// 	{
-		// 		cplxd* ei = wf->states[lower];
-		// 		for (i = 0; i < m_l; i++)
-		// 			wf[i] = wf[i] - amplits[lower] * ei[i];
-		// 	}
-		// }
-		// auto res = average<R, Identity>(indices);
-		// MPI::reduceImmediataly(&res);
-		// multiplyArray(this->psi, sqrt(1.0 / res));
-		}
-		// return res;
-	}
-#pragma endregion
-
-#pragma region InitialConditions
-	void setConstantValue(cxd val)
-	{
-		for (ind i = 0;i < m_l; i++) psi[i] = val;
-	}
-
-	template <class F, REP R, bool coords, uind ... Is>
-	void add(F&& f, seq<Is...>)
-	{
-		ind counters[DIMC + 1] = { 0 };
-		do {
-			if constexpr (coords) psi[counters[DIMC]] += f(abs_pos<R, Is>(counters[Is])...);
-			else psi[counters[DIMC]] += f((abs_index<R, Is>(counters[Is]))...);
-		} while (!(...&&
-				   ((counters[rev<Is>]++, counters[rev<Is>] < shape<R, rev<Is>>())
-					? (counters[DIMC]++, false)
-					: (counters[rev<Is>] = 0, true))
-				   ));
-	}
-
-	template <class F, REP R = REP::X>
-	void addUsingCoordinateFunction(F&& f)
-	{
-		add<F, R, true>(std::forward<F>(f), indices);
-	}
-	template <class F, REP R = REP::X>
-	void addUsingNodeFunction(F&& f)
-	{
-		add<F, R, false>(std::forward<F>(f), indices);
-	}
-
-	void addFromFile()
-	{
-
-	}
-
 #pragma endregion InitialConditions
 
 #pragma region Tests
@@ -767,6 +839,41 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices> : BaseG
 };
 
 
+
+
+	// template <REP R, uind dir_avg, class Op, uind ... Is>
+	// double average_der_(seq<Is...>)
+	// {
+	// 	// logInfo("%td %td %td %td", shape_l[0], shape_l[1], shape_l[2], sizeof...(Is));
+	// 	ind counters[DIMC]{ 0 };
+	// 	counters[dir_avg] = 0;
+	// 	double res = 0.0;
+	// 	do {
+	// 		res += abs2(data_offset<R>(counters[Is]...)) * //abs2(counters[DIMC]) *
+	// 			(static_cast<Hamiltonian*>(this)->template
+	// 			 call < Op, Is... >(abs_pos<R, Is>(counters[Is] + (Is == dir_avg ? 1 : 0))...)
+	// 			 - static_cast<Hamiltonian*>(this)->template
+	// 			 call < Op, Is... >(abs_pos<R, Is>(counters[Is] + (Is == dir_avg ? -1 : 0))...));
+
+	// 	} while (!(...&&
+	// 			   ((counters[rev<Is>]++,
+	// 				 counters[rev<Is>] < bulk_shape<R, rev<Is>, dir_avg>())
+	// 				? (false)
+	// 				: (counters[rev<Is>] = bulk_start<rev<Is>, dir_avg>(), true))
+	// 			   ));
+
+	// 	return res * BaseGrid::template vol<R>() * inv_2dx[dir_avg];
+	// }
+			// if constexpr (std::is_same_v<Op, Identity>)
+			// 	res += abs2(counters[DIMC]);
+
+			// else if constexpr (std::is_same_v<Op, KineticEnergy>)
+			// 	res += abs2(counters[DIMC]) * static_cast<Hamiltonian*>(this)->template kinetic< REP::P, Is... >(abs_pos<R, Is>(counters[Is])...);
+
+			// else if constexpr (std::is_same_v<Op, PotentialEnergy>)
+			// 	res += abs2(counters[DIMC]) * static_cast<Hamiltonian*>(this)->template potential< REP::X, Is... >(abs_pos<R, Is>(counters[Is])...);
+
+			// else 
 
 
 // template <class BaseGrid, uind Components>

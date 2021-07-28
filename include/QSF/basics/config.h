@@ -1,4 +1,5 @@
 #include <fstream>
+using Section = inipp::Ini<char>::Section;
 struct Config
 {
 	inipp::Ini<char> ini;
