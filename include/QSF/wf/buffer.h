@@ -346,9 +346,9 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 			else for (; i < end; i++)
 			{
 				for (int j = 0; j < sizeInBuffer<false>; j++)
-					fprintf(file_dat, "%15.5g ", xbuffer[i * sizeInBuffer<false> +j]);
+					fprintf(file_dat, FMT_DOUBLE, xbuffer[i * sizeInBuffer<false> +j]);
 				for (int j = 0; j < sizeInBuffer<true>; j++)
-					fprintf(file_dat, "%15.5g ", rbuffer[i * sizeInBuffer<true> +j]);
+					fprintf(file_dat, FMT_DOUBLE, rbuffer[i * sizeInBuffer<true> +j]);
 				fprintf(file_dat, FMT_END);
 			}
 			fflush(file_dat);

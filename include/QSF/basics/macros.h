@@ -1,4 +1,6 @@
 #pragma once
+#include <cassert>
+
 #define BIT(n) 1 << (n)
 #define SET(x,y) x |= (BIT(y))
 #define CLEAR(x,y) x &= ~(BIT(y))
@@ -15,3 +17,5 @@
 #else
 #define FORCE_INLINE __attribute__((always_inline))
 #endif
+
+#define assertm(exp, msg) assert(((void)msg, exp))

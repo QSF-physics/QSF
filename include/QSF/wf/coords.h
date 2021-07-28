@@ -5,21 +5,21 @@ struct CoordinateSystem {
 	static constexpr DIMS DIM = size;
 };
 
-template <DIMS size, class AT, class MPI_GC>
+
+template <DIMS size, class MPIRegions>
 struct CartesianGrid_ :CoordinateSystem<size>
 {
-	static_assert(std::is_base_of_v< AbsorberType, AT>,
-				  "Second CartesianGrid template argument must be type derived from AbsorberType");
+	// static_assert(std::is_base_of_v< AbsorberType, AT>,
+	// "Second CartesianGrid template argument must be type derived from AbsorberType");
 
-	using MPIGridComm = MPI_GC;
-	using MPIDivision = typename MPI_GC::MPIDivision;
+	using MPIGridComm = MPIRegions;
+	using MPIDivision = typename MPIRegions::MPIDivision;
 	/* Init of the above part is postponed to the wf */
 
 	using CoordinateSystem<size>::n;
 	using CoordinateSystem<size>::dx;
 	using CoordinateSystem<size>::DIM;
 
-	AT absorber;
 	ind n2[size];
 	ind nn[size];
 	ind m;
@@ -94,6 +94,7 @@ struct CartesianGrid_ :CoordinateSystem<size>
 			(CoordinateSystem<size>::n)[i] = def_n;
 		}
 		init(n_seq<size>);
+
 	}
 
 	CartesianGrid_(CoordinateSystem<size> cs) : CoordinateSystem<size>(cs)
@@ -108,6 +109,7 @@ struct CartesianGrid_ :CoordinateSystem<size>
 			(CoordinateSystem<size>::n)[i] = n;
 		}
 		init(n_seq<size>);
+		// absorber = AT(this);
 	}
 
 	inline cxd scalarProductAll(cxd* from, cxd* to)
@@ -126,8 +128,9 @@ struct CartesianGrid_ :CoordinateSystem<size>
 	}
 };
 
-template <DIMS size, class AT, class MS = MPI::Slices>
-using CartesianGrid = CartesianGrid_<size, AT, SingleMPIGrid<size, MS>>;
 
-template <DIMS size, class AT, class MS = MPI::Slices>
-using MultiCartesianGrid = CartesianGrid_<size, AT, MultiMPIGrid<size, MS>>;
+template <DIMS size, class MPIDivision = MPI::Slices>
+using CartesianGrid = CartesianGrid_<size, MPI::SingleRegion<size, MPIDivision>>;
+
+template <DIMS size, class MPIDivision = MPI::Slices>
+using MultiCartesianGrid = CartesianGrid_<size, MPI::MultiRegionsReduced<size, MPIDivision>>;

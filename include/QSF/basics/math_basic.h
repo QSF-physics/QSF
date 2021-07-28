@@ -37,7 +37,6 @@ T constexpr Min(T t, Ts... ts)
     else return t;
 }
 
-// inline double MIN(double x, double y) { return x > y ? y : x; }
 
 
 

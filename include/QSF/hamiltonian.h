@@ -7,7 +7,7 @@ namespace Schrodinger
 	{
 		using Base = LocalGrid< Spin0<GType, V_Op, C_Op>, GType, 1>;
 		using Base::psi;
-		using Base::post_step;
+		using Base::postCompute;
 		using Base::DIM;
 		using Base::kin_scale;
 		static constexpr REP couplesInRep = C_Op::couplesInRep;

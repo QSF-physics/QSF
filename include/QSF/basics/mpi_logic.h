@@ -85,14 +85,15 @@ namespace MPI
 		FREE_COORD fc;
 	};
 
-	std::vector<SrcRegion> sourceRegions;
 
-	template <typename, DIMS DIM, FREE_COORD ...>
+
+	template <class MPIDivision, DIMS DIM, FREE_COORD ...>
 	struct Regions;
 
 	template <DIMS DIM, FREE_COORD ... free_coord>
 	struct Regions<Slices, DIM, free_coord...>
 	{
+		std::vector<SrcRegion> sourceRegions;
 		// static_assert(Power(2, DIM) >= sizeof...(free_coord), "Number of regions must be less than 2^DIM");
 		using MPIDivision = Slices;
 		//Whether the current wf interacts in all spatial directions
@@ -114,7 +115,6 @@ namespace MPI
 
 		static inline int groupLeader[uniq<freeCoordCount<free_coord>...>::size];
 
-
 		static inline MPI_Comm lessFree = nullptr; //region inter-comms
 		static inline MPI_Comm moreFree = nullptr; //region inter-comms
 
@@ -122,6 +122,8 @@ namespace MPI
 		{
 			regionCount = sizeof...(free_coord);
 			groupCount = uniq<freeCoordCount<free_coord>...>::size;
+
+			// assertm(MPI::rSize > regionCount, "Number of MPI processes too small");
 			logSETUP("Attempting to init %d groups and %d regions", groupCount, regionCount);
 			// logTestFatal(pSize % regionCount == 0, "Number of MPI processes pSize (%d) should be divisible by the number of regions regionCount (%d)", pSize, regionCount);
 
@@ -191,7 +193,9 @@ namespace MPI
 			if (freeCoordsCount[region] > minFree)
 			{
 				MPI_Intercomm_create(gComm, 0, MPI_COMM_WORLD,
-									 groupLeader[group - 1], freeCoordsCount[region], &lessFreeInter);
+									 groupLeader[group - 1],
+									 freeCoordsCount[region],
+									 &lessFreeInter);
 
 				MPI_Comm_remote_size(lessFreeInter, &size);
 				// __logMPI("Process %d, local group size %d, Remote group (lessFree) size %d and should %d\n", pID, gMembers[freeCoordsCount[region]], size, gMembers[freeCoordsCount[region] - 1]);
@@ -202,7 +206,9 @@ namespace MPI
 			if (freeCoordsCount[region] < maxFree)
 			{
 				MPI_Intercomm_create(gComm, 0, MPI_COMM_WORLD,
-									 groupLeader[group + 1], freeCoordsCount[region] + 1, &moreFreeInter);
+									 groupLeader[group + 1],
+									 freeCoordsCount[region] + 1,
+									 &moreFreeInter);
 
 				MPI_Comm_remote_size(moreFreeInter, &size);
 				// __logMPI("Process %d, local group size %d, Remote group (moreFree) size %d and should %d\n", pID, gMembers[freeCoordsCount[region]], size, gMembers[freeCoordsCount[region] + 1]);
@@ -210,7 +216,7 @@ namespace MPI
 				MPI_Intercomm_merge(moreFreeInter, 0, &moreFree);
 				int rank;
 				MPI_Comm_rank(moreFree, &rank);
-				// __logMPI("[group %d region %d] rank of process %d is %d\n", group, region, pID, rank);
+				// _logMPI("[group %d region %d] rank of process %d is %d\n", group, region, pID, rank);
 			}
 
 			int index = 0;
@@ -240,33 +246,32 @@ namespace MPI
 		{
 			return true;//region == 4;
 		}
+
+
+
+
+
+
 	};
 
 
+	template <DIMS D, class MPIDivision>
+	using SingleRegion = MPI::Regions<MPIDivision, D, FREE_COORD::NO>;
+
+	// Here we merge positive and negative sides of axes into one region
+	template <DIMS D, class MPIDivision>
+	struct MultiRegionsReduced;
+
+	template <class MPIDivision>
+	struct MultiRegionsReduced<3_D, MPIDivision> : MPI::Regions<MPIDivision, 3_D,
+		FREE_COORD::NO, FREE_COORD::X, FREE_COORD::Y, FREE_COORD::Z, FREE_COORD::XY, FREE_COORD::XZ, FREE_COORD::YZ, FREE_COORD::XYZ> {};
+
+	template <class MPIDivision>
+	struct MultiRegionsReduced<2_D, MPIDivision> : MPI::Regions<MPIDivision, 2_D, FREE_COORD::NO, FREE_COORD::X, FREE_COORD::Y, FREE_COORD::XY> {};
+
+	template <class MPIDivision>
+	struct MultiRegionsReduced<1_D, MPIDivision> : MPI::Regions<MPIDivision, 1_D, FREE_COORD::NO, FREE_COORD::X> {};
 }
-template <DIMS D, class MPIDivision>
-struct MultiMPIGrid;
-
-
-
-template <class MPIDivision>
-struct MultiMPIGrid<3_D, MPIDivision> : MPI::Regions<MPIDivision, 3_D,
-	FREE_COORD::NO, FREE_COORD::X, FREE_COORD::Y, FREE_COORD::Z, FREE_COORD::XY, FREE_COORD::XZ, FREE_COORD::YZ, FREE_COORD::XYZ>
-{};
-
-template <class MPIDivision>
-struct MultiMPIGrid<2_D, MPIDivision> : MPI::Regions<MPIDivision, 2_D, FREE_COORD::NO, FREE_COORD::X, FREE_COORD::Y, FREE_COORD::XY> {};
-
-template <class MPIDivision>
-struct MultiMPIGrid<1_D, MPIDivision> : MPI::Regions<MPIDivision, 1_D, FREE_COORD::NO, FREE_COORD::X> {};
-
-template <DIMS D, class MPIDivision>
-using SingleMPIGrid = MPI::Regions<MPIDivision, D, FREE_COORD::NO>;
-// uind size;
-// uind first;
-// uind last;
-// template <typename M, class MPIDivision, DIMS D>
-// using MPIGrid = std::conditional_t < std::is_same_v<M, MPI::Single>, SingleMPIGrid<D, MPIDivision>, MultiMPIGrid<D, MPIDivision>>;
 
 template <typename T, typename F>
 void buildAndScatter(F& fun, T*& local_v)

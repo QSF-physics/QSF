@@ -2,71 +2,70 @@ struct AbsorberType {};
 
 struct NoAbsorber : AbsorberType {};
 
-struct CAP : AbsorberType
+template <class GridType>
+struct CAP;
+
+template <DIMS size, class MPIRegions>
+struct CAP<CartesianGrid_<size, MPIRegions>> : AbsorberType, CartesianGrid_<size, MPIRegions>
 {
-	double CAPlength = 10;
-	double dx;
+	using Base = CartesianGrid_<size, MPIRegions>;
+	using Base::n2;
+
 	ind nCAP;
 	double eta;
-	double L2_effective;
-	CAP() {}
-	CAP(double CAPlength, double dx, double L) :
-		CAPlength(CAPlength),
-		dx(dx),
-		nCAP(ceil(CAPlength / dx)),
-		eta(Power(3.0 / CAPlength, 4)),
-		L2_effective(L / 2 - CAPlength) {}
-
-	void correct(ind n, double L)
+	CAP(Base base, ind nCAP) : Base(base), nCAP(nCAP), eta(Power(3.0 / double(nCAP), 4)) {}
+	CAP(Section& settings) : Base(settings)
 	{
-		logTest((n % nCAP) == 0, "n (%td) mod (nCAP (%td)) == 0", n, nCAP);
-		if (n % nCAP)
-		{
-			ind lCAP = nCAP - 1;
-			ind rCAP = nCAP + 1;
-			while ((n % lCAP) && (n % rCAP)) { lCAP--; rCAP++; }
-			if ((rCAP > n / 2 - 1) && (lCAP < 1))
-			{
-				logError("Auto enlarging and decreasing nCAP failed.");
-			}
-			else if (rCAP > n / 2 - 1)
-			{
-				logWarning("Auto enlarging nCAP failed.");
-			}
-			else if (lCAP < 1)
-			{
-				logWarning("Auto decreasing nCAP failed.");
-			}
-			else
-			{
-				if (n % rCAP == 0)
-				{
-					nCAP = rCAP;
-					CAPlength = nCAP * dx;
-					logWarning("Auto enlarging nCAP to %td, new CAPlength %g", nCAP, CAPlength);
-				}
-				else if (n % lCAP == 0)
-				{
-					nCAP = lCAP;
-					CAPlength = nCAP * dx;
-					logWarning("Auto decreasing nCAP to %td, new CAPlength %g", nCAP, CAPlength);
-				}
-			}
-		}
-		L2_effective = L / 2 - CAPlength;
-		eta = Power(3.0 / CAPlength, 4);
-		// if (isPrime(nCAP)) logWarning("nCAP is prime, and fftw hates primes");
+		inipp::get_value(settings, "nCAP", nCAP);
+		eta = Power(3.0 / double(nCAP), 4);
 	}
-	template <typename ...Ts>
-	inline double operator()(Ts ... x)
+
+	template <uind ... dirs, typename ...Nodes>
+	inline double operator()(Nodes ... nodes)
 	{
-		((x = (fabs(x) - L2_effective)), ...);
-		if (((x <= 0) && ...)) return 1.0;
-		else
-		{
-			((x = x > 0 ? Power(x, 4) : 0), ...);
-			return exp(-(x + ...) * eta);
-		}
+		([&] {nodes = nCAP + std::abs(ind(nodes)) - n2[dirs];}(), ...);
+		if (((nodes < 0) && ...)) return 1.0;
+		else return exp(-double(((nodes > 0 ? Power(nodes, 4) : 0.0) + ...)) * eta);
 	}
 };
 
+// void correct(ind n, double L)
+// 	{
+// 		logTest((n % nCAP) == 0, "n (%td) mod (nCAP (%td)) == 0", n, nCAP);
+// 		if (n % nCAP)
+// 		{
+// 			ind lCAP = nCAP - 1;
+// 			ind rCAP = nCAP + 1;
+// 			while ((n % lCAP) && (n % rCAP)) { lCAP--; rCAP++; }
+// 			if ((rCAP > n / 2 - 1) && (lCAP < 1))
+// 			{
+// 				logError("Auto enlarging and decreasing nCAP failed.");
+// 			}
+// 			else if (rCAP > n / 2 - 1)
+// 			{
+// 				logWarning("Auto enlarging nCAP failed.");
+// 			}
+// 			else if (lCAP < 1)
+// 			{
+// 				logWarning("Auto decreasing nCAP failed.");
+// 			}
+// 			else
+// 			{
+// 				if (n % rCAP == 0)
+// 				{
+// 					nCAP = rCAP;
+// 					CAPlength = nCAP * dx;
+// 					logWarning("Auto enlarging nCAP to %td, new CAPlength %g", nCAP, CAPlength);
+// 				}
+// 				else if (n % lCAP == 0)
+// 				{
+// 					nCAP = lCAP;
+// 					CAPlength = nCAP * dx;
+// 					logWarning("Auto decreasing nCAP to %td, new CAPlength %g", nCAP, CAPlength);
+// 				}
+// 			}
+// 		}
+// 		L2_effective = L / 2 - CAPlength;
+// 		eta = Power(3.0 / CAPlength, 4);
+// 		// if (isPrime(nCAP)) logWarning("nCAP is prime, and fftw hates primes");
+// 	}

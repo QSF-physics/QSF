@@ -68,13 +68,13 @@ struct SplitPropagator : Config, PropagatorBase
 
 	// static constexpr std::string_view name = SplitType::name;
 	// static constexpr REP couplesInRep = C::couplesInRep;
-
 	Section settings;
 	HamWF wf;
 	double tot_energy;
 	double dif_energy;
 	cxd* psi_copy = nullptr;    // backup ψ(x,t) on m_l grid
 	cxd* psi_acc = nullptr;     // accumulated ψ(x,t) on m_l grid
+
 #pragma region Initialization
 
 	void autosetTimestep()
@@ -119,8 +119,8 @@ struct SplitPropagator : Config, PropagatorBase
 		if constexpr (ChainCount > 1)
 		{
 			logInfo("Using Operator Split Groups (Multiproduct splitting)");
-			psi_copy = (cxd*)fftw_malloc(sizeof(cxd) * wf.localSize());
-			psi_acc = (cxd*)fftw_malloc(sizeof(cxd) * wf.localSize());
+			psi_copy = new cxd[wf.localSize()];
+			psi_acc = new cxd[wf.localSize()];
 		}
 
 		file_log = openLog(name);
@@ -128,6 +128,14 @@ struct SplitPropagator : Config, PropagatorBase
 	}
 	~SplitPropagator()
 	{
+		if constexpr (ChainCount > 1)
+		{
+			logInfo("Using Operator Split Groups (Multiproduct splitting)");
+			delete[] psi_copy;
+			delete[] psi_acc;
+			psi_copy = nullptr;
+			psi_acc = nullptr;
+		}
 		logInfo("SplitPropagation done!\n");
 	}
 #pragma endregion Initialization
@@ -210,8 +218,7 @@ struct SplitPropagator : Config, PropagatorBase
 	template <WHEN when, bool B, class... COMP>
 	inline void computeEach(BufferedOutputs<B, COMP...>& bo)
 	{
-		// using BO = BufferedOutputs<B, COMP...>;
-
+		if (!HamWF::MPIGridComm::calcsEnabled()) return;
 		//Run only if required REP is firstREP or no preference
 		((!COMP::late && (COMP::rep == REP::NONE || bool(COMP::rep & firstREP))
 		  ? compute<firstREP>(bo, COMP{})
@@ -227,10 +234,6 @@ struct SplitPropagator : Config, PropagatorBase
 			  : ditch()),
 			 ...);
 			fourier<firstREP>();
-		}
-		else if (step < 1)
-		{
-			logWarning("Computations do not require FFT, if you need to output wavefunction in the opposite REP make sure to export the WF explicitly in the desired REP.");
 		}
 
 		//Check if any "late" operations are required
@@ -352,14 +355,16 @@ struct SplitPropagator : Config, PropagatorBase
 		{
 			makeStep(ChainExpander{});
 			computeEach<WHEN::DURING>(outputs);
-			wf.post_step();
+			wf.postCompute();
+			// logWarning("%d", HamWF::MPIGridComm::many);
 			worker(WHEN::DURING, step, pass, wf);
 		}
 
 		makeStep(ChainExpander{});
 		computeEach<WHEN::AT_END>(outputs);
-		wf.post_step();
+		wf.postCompute();
 		worker(WHEN::AT_END, step, pass, wf);
+
 	   // HACK: This makes sure, the steps are always evenly spaced
 	   // step += (outputs.comp_interval - 1);
 	   // Evolution::incrementBy(outputs.comp_interval);
