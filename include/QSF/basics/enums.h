@@ -2,13 +2,14 @@
 
 #include <type_traits>
 
-template<class T> constexpr inline T operator~ (T a) { return (T)~(unsigned)a; }
-template<class T> constexpr inline T operator| (T a, T b) { return (T)((unsigned)a | (unsigned)b); }
-template<class T> constexpr inline T operator& (T a, T b) { return (T)((unsigned)a & (unsigned)b); }
-template<class T> constexpr inline T operator^ (T a, T b) { return (T)((unsigned)a ^ (unsigned)b); }
-template<class T> constexpr inline T& operator|= (T& a, T b) { return (T&)((unsigned&)a |= (unsigned)b); }
-template<class T> constexpr inline T& operator&= (T& a, T b) { return (T&)((unsigned&)a &= (unsigned)b); }
-template<class T> constexpr inline T& operator^= (T& a, T b) { return (T&)((unsigned&)a ^= (unsigned)b); }
+template<class T> constexpr inline T operator~ (T a) { return (T)~(uind)a; }
+template<class T> constexpr inline T operator| (T a, T b) { return (T)((uind)a | (uind)b); }
+template<class T> constexpr inline T operator& (T a, T b) { return (T)((uind)a & (uind)b); }
+template<class T> constexpr inline T operator^ (T a, T b) { return (T)((uind)a ^ (uind)b); }
+template<class T> constexpr inline T& operator|= (T& a, T b) { return (T&)((uind&)a |= (uind)b); }
+template<class T> constexpr inline T& operator&= (T& a, T b) { return (T&)((uind&)a &= (uind)b); }
+template<class T> constexpr inline T& operator^= (T& a, T b) { return (T&)((uind&)a ^= (uind)b); }
+template<class T> constexpr inline T operator>> (T&& a, T&& b) { return (T)((uind)a >> (uind)b); }
 
 struct DUMP_FORMAT
 {
@@ -59,8 +60,14 @@ enum class AXIS : uind
 {
 	NO = 0,
 	X = 1,
-	Y = 2,
-	Z = 4,
+	Y = 1 << 1,
+	Z = 1 << 2, //3dim up to here
+	// U = 1 << 3,
+	// V = 1 << 4,
+	// W = 1 << 5, //6dim up to here
+	// R = 1 << 6,
+	// S = 1 << 7,
+	// T = 1 << 8, //9dim up to here
 	XY = X | Y,
 	XZ = X | Z,
 	YZ = Y | Z,
@@ -70,6 +77,8 @@ enum class AXIS : uind
 template <uind dir>
 constexpr AXIS Axis = AXIS(1 << dir);
 
+constexpr AXIS getAxis(uind dir) { return AXIS(1 << dir); }
+
 
 enum class WHEN : ind
 {
@@ -78,30 +87,14 @@ enum class WHEN : ind
 	DURING = 1,
 };
 
-using FREE_COORD = AXIS;
 
-template <DIMS D>
-constexpr FREE_COORD maxFreeCoord = FREE_COORD((ind(1) << ind(D)) - 1);
-
+// template <DIMS D>
+// constexpr AXIS maxFreeAxis = AXIS((ind(1) << ind(D)) - 1);
 
 
-// Returns number of dimensions used by direction (size_t)
-template <FREE_COORD fc>
-static constexpr int freeCoordCount = (fc == FREE_COORD::NO ? 0 :
-	((fc == FREE_COORD::X | fc == FREE_COORD::Y | fc == FREE_COORD::Z) ? 1 :
-	 (fc == FREE_COORD::XYZ ? 3 : 2)));
-
-
-// template <FREE_COORD...FC>
-// struct FreeCoords
-// {
-// 	static constexpr auto size = sizeof...(FC);
-// }
-// static int freeCoordDir(FREE_COORD fc)
-// {
-// 	return (int(fc) == 4) ? 2 : ((int)(fc)-1);
-// }
-// Returns number of dimensions used by direction (DIMS flag)
+// Returns number of directions used by AXIS
+template <AXIS Ax>
+static constexpr DIMS freeAxisCount = (uind(Ax) & 1) + (uind(Ax) == 0 ? 0 : freeAxisCount < (Ax >> AXIS(1)) >);
 
 
 

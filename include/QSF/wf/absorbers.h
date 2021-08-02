@@ -21,7 +21,15 @@ struct CAP<CartesianGrid_<size, MPIRegions>> : AbsorberType, CartesianGrid_<size
 	}
 
 	template <uind ... dirs, typename ...Nodes>
-	inline double operator()(Nodes ... nodes)
+	inline double absorb(double delta, Nodes ... nodes)
+	{
+		([&] {nodes = nCAP + std::abs(ind(nodes)) - n2[dirs];}(), ...);
+		if (((nodes < 0) && ...)) return 1.0;
+		else return exp(-delta * double(((nodes > 0 ? Power(nodes, 4) : 0.0) + ...)) * eta);
+	}
+
+	template <uind ... dirs, typename ...Nodes>
+	inline double mask(Nodes ... nodes)
 	{
 		([&] {nodes = nCAP + std::abs(ind(nodes)) - n2[dirs];}(), ...);
 		if (((nodes < 0) && ...)) return 1.0;

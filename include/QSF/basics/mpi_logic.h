@@ -79,49 +79,42 @@ namespace MPI
 	struct Slices :Division {};
 	struct Rods :Division {};
 
-	struct SrcRegion
-	{
-		int rank;
-		FREE_COORD fc;
-	};
 
 
-
-	template <class MPIDivision, DIMS DIM, FREE_COORD ...>
+	template <class MPIDivision, DIMS DIM, AXIS ...>
 	struct Regions;
 
-	template <DIMS DIM, FREE_COORD ... free_coord>
-	struct Regions<Slices, DIM, free_coord...>
+	template <DIMS DIM, AXIS ... freeAxes>
+	struct Regions<Slices, DIM, freeAxes...>
 	{
-		std::vector<SrcRegion> sourceRegions;
-		// static_assert(Power(2, DIM) >= sizeof...(free_coord), "Number of regions must be less than 2^DIM");
+		// static_assert(Power(2, DIM) >= sizeof...(freeAxes), "Number of regions must be less than 2^DIM");
 		using MPIDivision = Slices;
-		//Whether the current wf interacts in all spatial directions
-		bool isMain;
-		bool bounded[DIM];
-		FREE_COORD freeCoord;
+		bool isMain; //Whether the current wf interacts in all spatial directions
+		bool bounded[DIM]; //marks whether a direction is bounded (not free)
+		AXIS freeCoord;
 		int boundedCoordDim;
 
-		static constexpr inline bool many = (sizeof...(free_coord) > 1);
-		static constexpr inline FREE_COORD freeCoords[sizeof...(free_coord)]
-		{ free_coord... };
+		static constexpr inline bool many = (sizeof...(freeAxes) > 1);
+		static constexpr inline AXIS freeCoords[sizeof...(freeAxes)]
+		{ freeAxes... };
 
-		static constexpr inline int freeCoordsCount[sizeof...(free_coord)]
-		{ freeCoordCount<free_coord>... };
+		static constexpr inline int freeCoordsCount[sizeof...(freeAxes)]
+		{ freeAxisCount<freeAxes>... };
 
-		static inline int gMembers[uniq<freeCoordCount<free_coord>...>::size];
+		static inline int gMembers[uniq<freeAxisCount<freeAxes>...>::size];
 		static inline int maxFree = 0;
 		static inline int minFree = 100;
 
-		static inline int groupLeader[uniq<freeCoordCount<free_coord>...>::size];
+		static inline int groupLeader[uniq<freeAxisCount<freeAxes>...>::size];
 
 		static inline MPI_Comm lessFree = nullptr; //region inter-comms
 		static inline MPI_Comm moreFree = nullptr; //region inter-comms
+		template <ind ...Is>
 
 		Regions()
 		{
-			regionCount = sizeof...(free_coord);
-			groupCount = uniq<freeCoordCount<free_coord>...>::size;
+			regionCount = sizeof...(freeAxes);
+			groupCount = uniq<freeAxisCount<freeAxes>...>::size;
 
 			// assertm(MPI::rSize > regionCount, "Number of MPI processes too small");
 			logSETUP("Attempting to init %d groups and %d regions", groupCount, regionCount);
@@ -134,14 +127,9 @@ namespace MPI
 			group = freeCoordsCount[region];
 			freeCoord = freeCoords[region];
 			boundedCoordDim = DIM - freeCoordsCount[region];
-			// int boundedCoord = int(AXIS::ALL) - int(freeCoord);
-			int boundedCoord = int(maxFreeCoord<DIM>) - int(freeCoord);
 			isMain = (boundedCoordDim == DIM);
-			for (int i = 0; i < DIM; i++)
-			{
-				//Determines whether X,Y,Z,... coords are bounded (for ease of use)
-				bounded[i] = bool(boundedCoord & (1 << i));
-			}
+			for (DIMS i = 0; i < DIM; i++) //Determines whether individual directions are bounded (for ease of use)
+				bounded[i] = !bool(freeCoord & getAxis(i));
 
 			MPI_Comm_split(MPI_COMM_WORLD, group, pID, &gComm);
 			MPI_Comm_rank(gComm, &gID);
@@ -164,12 +152,11 @@ namespace MPI
 			logSETUP("Initiated %d regions, processes per region: %d", regionCount, rSize);
 
 			logSETUP("Attempting to init %d inter-communicators linking groups", groupCount - 1);
-			// Determine number of members in each group
+			// Determine number of members in each group (group is determined by freeCoordsCount)
 			for (int i = 0; i < regionCount; i++)
-			{
 				gMembers[freeCoordsCount[i]]++;
-			}
-			// Determine group p-leaders
+
+			// Determine (set) group p-leaders
 			groupLeader[0] = 0;
 			// logSETUP("Group %d has %d regions and p-leader %d", 0, gMembers[i], 0);
 			for (int i = 1; i < groupCount; i++)
@@ -219,44 +206,15 @@ namespace MPI
 				// _logMPI("[group %d region %d] rank of process %d is %d\n", group, region, pID, rank);
 			}
 
-			int index = 0;
-			for (int i = 0; i < regionCount; i++)
-			{
-				if (freeCoordsCount[region] - freeCoordsCount[i] == 1)
-				{
-					switch (int(freeCoord) - int(freeCoords[i]))
-					{
-					case (int)FREE_COORD::X: sourceRegions.push_back({ index * rSize + rID,FREE_COORD::X }); break;
-					case (int)FREE_COORD::Y: sourceRegions.push_back({ index * rSize + rID,FREE_COORD::Y }); break;
-					case (int)FREE_COORD::Z: sourceRegions.push_back({ index * rSize + rID,FREE_COORD::Z }); break;
-					default: break;
-					}
-					index++;
-				}
-			}
 
-			_logMPI("[group %d region %d pID %d] has %td sources", group, region, pID, sourceRegions.size());
 		}
 
-		static bool calcsEnabled()
-		{
-			return group == 0;
-		}
-		static bool evoEnabled()
-		{
-			return true;//region == 4;
-		}
-
-
-
-
-
-
+		static bool calcsEnabled() { return group == 0; }
+		static bool evoEnabled() { return true; };
 	};
 
-
 	template <DIMS D, class MPIDivision>
-	using SingleRegion = MPI::Regions<MPIDivision, D, FREE_COORD::NO>;
+	using SingleRegion = MPI::Regions<MPIDivision, D, AXIS::NO>;
 
 	// Here we merge positive and negative sides of axes into one region
 	template <DIMS D, class MPIDivision>
@@ -264,42 +222,48 @@ namespace MPI
 
 	template <class MPIDivision>
 	struct MultiRegionsReduced<3_D, MPIDivision> : MPI::Regions<MPIDivision, 3_D,
-		FREE_COORD::NO, FREE_COORD::X, FREE_COORD::Y, FREE_COORD::Z, FREE_COORD::XY, FREE_COORD::XZ, FREE_COORD::YZ, FREE_COORD::XYZ> {};
+		AXIS::NO, AXIS::X,
+		AXIS::Y, AXIS::Z,
+		AXIS::XY, AXIS::XZ,
+		AXIS::YZ, AXIS::XYZ> {};
 
 	template <class MPIDivision>
-	struct MultiRegionsReduced<2_D, MPIDivision> : MPI::Regions<MPIDivision, 2_D, FREE_COORD::NO, FREE_COORD::X, FREE_COORD::Y, FREE_COORD::XY> {};
+	struct MultiRegionsReduced<2_D, MPIDivision> : MPI::Regions<MPIDivision, 2_D,
+		AXIS::NO, AXIS::X,
+		AXIS::Y, AXIS::XY> {};
 
 	template <class MPIDivision>
-	struct MultiRegionsReduced<1_D, MPIDivision> : MPI::Regions<MPIDivision, 1_D, FREE_COORD::NO, FREE_COORD::X> {};
-}
+	struct MultiRegionsReduced<1_D, MPIDivision> : MPI::Regions<MPIDivision, 1_D,
+		AXIS::NO, AXIS::X> {};
 
-template <typename T, typename F>
-void buildAndScatter(F& fun, T*& local_v)
-{
-	// T* mask;
-	// if (!MPI::rID)
-	// {
-	// 	mask = new T[m];
-	// 	fun(mask);
-	// }
-	// if (local_v) delete[] local_v;
-	// local_v = new T[m];
 
-	// MPI_Scatter(mask, m_l,
-	// 			is_same<T, double>() ? MPI_DOUBLE : MPI_CXX_DOUBLE_COMPLEX,
-	// 			local_v, m_l,
-	// 			is_same<T, double>() ? MPI_DOUBLE : MPI_CXX_DOUBLE_COMPLEX,
-	// 			0, MPI::rComm);
-	// if (!MPI::rID) delete[] mask;
-}
+	template <typename T, typename F>
+	void buildAndScatter(F& fun, T*& local_v)
+	{
+		// T* mask;
+		// if (!MPI::rID)
+		// {
+		// 	mask = new T[m];
+		// 	fun(mask);
+		// }
+		// if (local_v) delete[] local_v;
+		// local_v = new T[m];
 
-//MPI SIZE DEBUG
-// ind loc0;
-// 	ind loc1;
-// 	ind locs0;
-// 	ind locs1;
-// 	fftw_mpi_local_size_2d_transposed(
-// 		n, n, MPI_COMM_WORLD,
-// 		&loc0, &locs0,
-// 		&loc1, &locs1);
-// 	logInfo("%td,%td,%td,%td", loc0, locs0, loc1, locs1);
+		// MPI_Scatter(mask, m_l,
+		// 			is_same<T, double>() ? MPI_DOUBLE : MPI_CXX_DOUBLE_COMPLEX,
+		// 			local_v, m_l,
+		// 			is_same<T, double>() ? MPI_DOUBLE : MPI_CXX_DOUBLE_COMPLEX,
+		// 			0, MPI::rComm);
+		// if (!MPI::rID) delete[] mask;
+	}
+};
+	//MPI SIZE DEBUG
+	// ind loc0;
+	// 	ind loc1;
+	// 	ind locs0;
+	// 	ind locs1;
+	// 	fftw_mpi_local_size_2d_transposed(
+	// 		n, n, MPI_COMM_WORLD,
+	// 		&loc0, &locs0,
+	// 		&loc1, &locs1);
+	// 	logInfo("%td,%td,%td,%td", loc0, locs0, loc1, locs1);

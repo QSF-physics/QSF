@@ -9,7 +9,7 @@
 #define DEBUG_DUMPS BIT(8)
 
 #define GOBACK "" //"../../"
-#define FAIL() {  MPI_Barrier(MPI_COMM_WORLD); MPI_Finalize();  exit(EXIT_FAILURE); }
+#define FAIL() {  MPI_Barrier(MPI_COMM_WORLD); MPI_Finalize();  abort(); }
 FILE* file_log;
 
 // void* operator new (size_t size, char const* filename, int line) {

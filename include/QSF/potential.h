@@ -18,7 +18,7 @@ struct InteractionBase
 // 	InteractionBase* inters[sizeof...(Inter)]{};
 // 	static constexpr std::string_view name = join_v<Inter::name...>;
 
-// 	template <FREE_COORD fc, typename ... Args>
+// 	template <AXIS fc, typename ... Args>
 // 	inline double operator()(Args...coords)
 // 	{
 // 		// size_t i = 0;
@@ -78,33 +78,33 @@ struct EckhardtSachaInteraction : InteractionBase
 		return NEcharge / sqrt(x * x + Nsoft);
 	}
 
-	template <FREE_COORD fc> inline double operator()(double x)
+	template <AXIS fc> inline double operator()(double x)
 	{
 		return Ne_EckhardtSacha(x);
 	}
-	template <FREE_COORD fc> inline double operator()(double x, double y)
+	template <AXIS fc> inline double operator()(double x, double y)
 	{
-		if (fc == FREE_COORD::Y)
+		if (fc == AXIS::Y)
 			return Ne_EckhardtSacha(x);
-		if (fc == FREE_COORD::X)
+		if (fc == AXIS::X)
 			return Ne_EckhardtSacha(y);
 		else
 			return ee_EckhardtSacha(x, y) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(y);
 	}
-	template <FREE_COORD fc>
+	template <AXIS fc>
 	inline double operator()(double x, double y, double z)
 	{
-		if (fc == FREE_COORD::Z)
+		if (fc == AXIS::Z)
 			return ee_EckhardtSacha(x, y) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(y);
-		else if (fc == FREE_COORD::Y)
+		else if (fc == AXIS::Y)
 			return ee_EckhardtSacha(x, z) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(z);
-		else if (fc == FREE_COORD::X)
+		else if (fc == AXIS::X)
 			return ee_EckhardtSacha(y, z) + Ne_EckhardtSacha(y) + Ne_EckhardtSacha(z);
-		else if (fc == FREE_COORD::YZ)
+		else if (fc == AXIS::YZ)
 			return Ne_EckhardtSacha(x);
-		else if (fc == FREE_COORD::XZ)
+		else if (fc == AXIS::XZ)
 			return Ne_EckhardtSacha(y);
-		else if (fc == FREE_COORD::XY)
+		else if (fc == AXIS::XY)
 			return Ne_EckhardtSacha(z);
 		else return ee_EckhardtSacha(x, y) + ee_EckhardtSacha(y, z) + ee_EckhardtSacha(z, x) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(y) + Ne_EckhardtSacha(z);
 	}

@@ -210,16 +210,17 @@ void writePsiBinaryHeader(FILE* file, double min, double max, double delta, DUMP
 {
 	if (file != nullptr)
 	{
-		// int dim = intDIMS(D);
-		// fwrite(&dim, sizeof(int), 1, file);
-		// fwrite(&n, sizeof(int), 1, file);
-		// //If we start from dimension DIM, but compute distributions for
-		// //dimension dim < DIM then the F should always be double (absolute square)
-		// int size = (F.complex && (dim == DIM)) ? sizeof(cxd) : sizeof(double);
-		// fwrite(&size, sizeof(int), 1, file);
-		// fwrite(&min, sizeof(double), 1, file);
-		// fwrite(&max, sizeof(double), 1, file);
-		// fwrite(&delta, sizeof(double), 1, file);
+		int dim = 3;
+		int n = 32;
+		fwrite(&dim, sizeof(int), 1, file);
+		fwrite(&n, sizeof(int), 1, file);
+		//If we start from dimension DIM, but compute distributions for
+		//dimension dim < DIM then the F should always be double (absolute square)
+		int size = true ? sizeof(cxd) : sizeof(double);
+		fwrite(&size, sizeof(int), 1, file);
+		fwrite(&min, sizeof(double), 1, file);
+		fwrite(&max, sizeof(double), 1, file);
+		fwrite(&delta, sizeof(double), 1, file);
 	}
 }
 
