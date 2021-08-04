@@ -19,11 +19,11 @@ struct CAP<CartesianGrid_<size, MPIRegions>> : AbsorberType, CartesianGrid_<size
 		inipp::get_value(settings, "nCAP", nCAP);
 		eta = Power(3.0 / double(nCAP), 4);
 	}
-
+	//Takes negative distance from the corresponding edge
 	template <uind ... dirs, typename ...Nodes>
 	inline double absorb(double delta, Nodes ... nodes)
 	{
-		([&] {nodes = nCAP + std::abs(ind(nodes)) - n2[dirs];}(), ...);
+		([&] {nodes = nCAP + ind(nodes);}(), ...);
 		if (((nodes < 0) && ...)) return 1.0;
 		else return exp(-delta * double(((nodes > 0 ? Power(nodes, 4) : 0.0) + ...)) * eta);
 	}
@@ -31,7 +31,7 @@ struct CAP<CartesianGrid_<size, MPIRegions>> : AbsorberType, CartesianGrid_<size
 	template <uind ... dirs, typename ...Nodes>
 	inline double mask(Nodes ... nodes)
 	{
-		([&] {nodes = nCAP + std::abs(ind(nodes)) - n2[dirs];}(), ...);
+		([&] {nodes = nCAP + ind(nodes);}(), ...);
 		if (((nodes < 0) && ...)) return 1.0;
 		else return exp(-double(((nodes > 0 ? Power(nodes, 4) : 0.0) + ...)) * eta);
 	}

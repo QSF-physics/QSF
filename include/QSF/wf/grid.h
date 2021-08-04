@@ -148,10 +148,15 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		}
 		else return index;
 	}
-	template <REP R, ind Is> ind constexpr abs_centered_index(ind index) const noexcept
+	template <REP R, ind dir> ind constexpr abs_centered_index(ind index) const noexcept
 	{
-		return abs_index<R, Is>(index) - n2[Is];
+		return abs_index<R, dir>(index) - n2[dir];
 	}
+	template <REP R, ind dir> ind constexpr neg_dist_from_edge(ind index) const noexcept
+	{
+		return std::abs(abs_index<R, dir>(index) - n2[dir]) - n2[dir];
+	}
+
 
 	template <REP R, uind dir> double abs_pos(ind index) noexcept
 	{
@@ -468,7 +473,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 
 			if constexpr (hasAbsorber && R == REP::X)
 			{
-				psi[counters[DIM]] *= BaseGrid::template absorb<Is...>(delta, abs_centered_index<R, Is>(counters[Is])...);
+				psi[counters[DIM]] *= BaseGrid::template absorb<Is...>(delta, neg_dist_from_edge<R, Is>(counters[Is])...);
 				// logWarning("Calling with %g", BaseGrid::template operator() < Is... > (abs_centered_index<R, Is>(counters[Is])...));
 			}
 
@@ -646,7 +651,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		do
 		{
 			psi[counters[DIM]] *= BaseGrid::template mask<Is...>(
-				(mcomm.bounded[Is] ? abs_centered_index<R, Is>(counters[Is]) : 0)...);
+				(mcomm.bounded[Is] ? neg_dist_from_edge<R, Is>(counters[Is]) : 0)...);
 
 		} while (!(...&&
 				   ((counters[rev<Is>]++, counters[rev<Is>] < shape<R, rev<Is>>())
