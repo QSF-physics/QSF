@@ -26,8 +26,8 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 
 	bool isBottomX;
 	bool isTopX;
-	int sizeX;
-	int startX;
+	ind sizeX;
+	ind startX;
 	ind stride_slice[DIM][DIM]; //For each "free" axis
 	template <ind Is> ind static constexpr rev = DIM - 2 - Is;
 
@@ -181,8 +181,11 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 
 		isBottomX = pos_lx.first < nCAP;
 		sizeX = Min(n_lx[0], nCAP - pos_lx.first);
+
 		isTopX = pos_lx.last > n[0] - 1 - nCAP;
 		startX = Max(0, n[0] - nCAP - pos_lx.first);
+
+		printf("pID: %d  startX[%td] sizeX[%td]\n", MPI::pID, startX, sizeX);
 		// if (transf_slice[0] == NULL) logInfo("fftw_mpi_plan... (slice) returned NULL");
 	}
 
@@ -223,21 +226,19 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 	template <uind dirFree, uind dir>
 	inline constexpr ind sliceLimited()
 	{
-		if constexpr (dirFree == dir) return nCAP;
+		if constexpr (dirFree == dir && dirFree) return nCAP;
 		else return sliceShape<dirFree, dir>();
 	}
 	template <uind dirFree, uind dir>
-	inline ind lower()
+	inline ind top()
 	{
 		return ((dirFree == dir && dirFree) ? n_lx[dir] - nCAP : 0);
 	}
 
-
-
 	template <uind dirFree, uind dir>
-	inline ind lslider(ind boxIndex)
+	inline ind tslider(ind boxIndex)
 	{
-		return slider<dirFree, dir>(boxIndex) + lower<dirFree, dir>();
+		return slider<dirFree, dir>(boxIndex) + top<dirFree, dir>();
 	}
 	inline void getData(int rank, ind slice_off, ind wf_offset, ind count)
 	{
@@ -253,25 +254,26 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 	template <uind dirFree, uind ... dirs>
 	inline void getBox(int rank, int box, seq<dirs...>)
 	{
+		// printf("TTT %td %td\n", sliceLimited<dirFree, rev<dirs>>()...);
 		ind counters[DIM] = { 0 }; //Z dimension goes in "bulk" MPI_Get
 		do
 		{
-			// if (Axis<dirFree> == AXIS::X && MPI::pID == 1)
-				// printf("pID: %d dirFree: %td [%td %td] (%td, %td) max (%td %td [%td]) rev (%td %td) isB(%d) isT(%d)\n", MPI::pID, dirFree, counters[dirs]..., dirs..., sliceLimited<dirFree, rev<dirs>>()..., sliceLimited<dirFree, DIM - 1>(), rev<dirs>..., (isBottomX && counters[0] < sizeX), (isTopX && counters[0] >= startX));
 
-					// //bottom/left/front
+			// negative axis
 			if (Axis<dirFree> != AXIS::X || (isBottomX && counters[0] < sizeX))
 				getData(rank, slice_offset<dirFree>(counters[dirs]..., 0),
 						Base::template data_offset<REP::X>(
 							(counters[dirs] + slider<dirFree, dirs>(box))..., slider<dirFree, DIM - 1>(box)),
 						sliceLimited<dirFree, DIM - 1>());
 
-			// //top/right/back
+			// positive axis
 			if (Axis<dirFree> != AXIS::X || (isTopX && counters[0] >= startX))
 				getData(rank,
-						slice_offset<dirFree>((counters[dirs] + lower<dirFree, dirs>())..., lower<dirFree, DIM - 1>()),
-						Base::template data_offset<REP::X>((counters[dirs] + lslider<dirFree, dirs>(box))..., lslider<dirFree, DIM - 1>(box)),
+						slice_offset<dirFree>((counters[dirs] + top<dirFree, dirs>())..., top<dirFree, DIM - 1>()),
+						Base::template data_offset<REP::X>((counters[dirs] + tslider<dirFree, dirs>(box))..., tslider<dirFree, DIM - 1>(box)),
 						sliceLimited<dirFree, DIM - 1>());
+			// if ((Axis<dirFree> != AXIS::X || (isTopX && counters[0] >= startX)) && MPI::pID == 1)
+				// printf("==== %td %td %td\n", counters[dirs] ..., startX);
 
 		} while (!(...&&
 				   ((counters[rev<dirs>]++, counters[rev<dirs>] < sliceLimited<dirFree, rev<dirs>>())
@@ -315,8 +317,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 	inline double invCAP2(ind i, ind j) { return 1 - Base::template mask<0, 1>(i, j); }
 
 
-	constexpr static inline double onesixth = 1.0 / 6.0;
-	constexpr static inline double onehalf = 0.5;//0.5;
+
 	inline static constexpr bool corrections = true;
 
 	// template <uind dirFree, uind ... dirs>
@@ -325,6 +326,16 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 	// 	return (onesixth * (invCAP2(pos_lx.first + i, boxIndex * nCAP + k))
 	// 			+ onehalf * (CAP1(pos_lx.first + i) + CAP1(boxIndex * nCAP + k)));
 	// }
+	const double onesixth = 1.0 / 6.0;
+	const double onehalf = 0.5;//0.5;
+	template <uind dirFree, uind ... dirs, typename ...Nodes>
+	inline double mask_correction(Nodes ... nodes)
+	{
+		return 1.0;
+		if (MPI::group == 1) return 1.0;
+		else return  onehalf * ((dirs == dirFree ? 0 : Base::template mask<dirs>(nodes)) + ... + 0) +
+			onesixth * (1 - ((dirs == dirFree ? 1.0 : Base::template mask<dirs>(nodes))*...));
+	}
 
 	template <uind dirFree, uind ... dirs>
 	inline void maskSlice(int boxIndex, seq<dirs...>)
@@ -335,19 +346,15 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 			//those by design operate on nCAP nodes, which takes neg dist from boundry
 			if (Axis<dirFree> != AXIS::X || (isBottomX && counters[0] < sizeX))
 				slice[slice_offset<dirFree>(counters[dirs]...)]
-				*= invCAP1(-counters[dirFree]);
+				*= Base::template inv_mask<0>(Base::template neg_dist_from_edge<REP::X, dirFree>(counters[dirFree]))
+				* mask_correction<dirFree, dirs...>(Base::template neg_dist_from_edge<REP::X, dirFree>(counters[dirs] + slider<dirFree, dirs>(boxIndex))...);
 
 			if (Axis<dirFree> != AXIS::X || (isTopX && counters[0] >= startX))
-				slice[slice_offset<dirFree>((counters[dirs] + lower<dirFree, dirs>())...)]
-				*= invCAP1(counters[dirFree] - nCAP);
+				slice[slice_offset<dirFree>((counters[dirs] + top<dirFree, dirs>())...)]
+				*= Base::template inv_mask<0>(Base::template neg_dist_from_edge<REP::X, dirFree>(counters[dirFree] + top<dirFree, dirFree>()))
+				* mask_correction<dirFree, dirs...>(Base::template neg_dist_from_edge<REP::X, dirFree>(counters[dirs] + tslider<dirFree, dirs>(boxIndex))...);
 
-		//TODO: add corrections!
-			if (MPI::group == 1 && corrections)
-			{
-				// slice[slice_offset<dirFree>(counters[dirs]...)] *=
-					// (onesixth * (1 - Base::template mask<dirs>(pos_lx.first + i, boxIndex * nCAP + k))
-					//  + onehalf * (CAP1(pos_lx.first + i) + CAP1(boxIndex * nCAP + k)));
-			}
+
 		} while (!(...&&
 				   ((counters[Base::template rev<dirs>]++,
 					 counters[Base::template rev<dirs>] < sliceLimited<dirFree, Base::template rev<dirs>>())
@@ -363,8 +370,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 		{
 			psi[Base::template data_offset<REP::X>((counters[dirs] + slider<dirFree, dirs>(box))...)]
 				+= slice[slice_offset<dirFree>(counters[dirs]...)];
-			// if (MPI::pID == 1)
-			// 	printf("adding %g %g\n", real(slice[slice_offset<dirFree>(counters[dirs]...)]), imag(slice[slice_offset<dirFree>(counters[dirs]...)]));
+
 		} while (!(...&&
 				   ((counters[Base::template rev<dirs>]++,
 					 counters[Base::template rev<dirs>] < sliceShape<dirFree, Base::template rev<dirs>>())
@@ -372,113 +378,15 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 				   ));
 	}
 
-	inline void maskSliceX(int boxIndex)
-	{
-		if constexpr (DIM == 1)
-		{
-			for (int i = 0; i < n_lx[0]; i++)
-				slice[i] *= invCAP1(pos_lx.first + i);
-		}
-		if constexpr (DIM == 2)
-		{
-
-			for (int i = 0; i < n_lx[0]; i++)
-				for (int j = 0; j < n[0]; j++)
-				{
-					slice[(i * n[0] + j)] *= invCAP1(pos_lx.first + i);
-				}
-		}
-		if constexpr (DIM == 3)
-		{
-			for (int i = 0; i < n_lx[0]; i++)
-				for (int j = 0; j < nCAP; j++)
-					for (int k = 0; k < n[0]; k++)
-					{
-						slice[(i * nCAP + j) * n[0] + k] *= invCAP1(pos_lx.first + i);
-						if (MPI::group == 1 && corrections)
-							slice[(i * nCAP + j) * n[0] + k] *=
-							(onesixth * (invCAP2(j + boxIndex * nCAP, k))
-							 + onehalf * (CAP1(j + boxIndex * nCAP) + CAP1(k)));
-
-					}
-		}
-	}
-	inline void maskSliceY(int boxIndex)
-	{
-		if constexpr (DIM == 2)
-		{
-			for (int i = 0; i < n_lx[0]; i++)
-				for (int j = 0; j < n[0]; j++)
-					slice[(i * n[0] + j)] *= invCAP1(j);
-		}
-		if constexpr (DIM == 3)
-		{
-			for (int i = 0; i < n_lx[0]; i++)
-				for (int j = 0; j < n[0]; j++)
-					for (int k = 0; k < nCAP; k++)
-					{
-						slice[(i * n[0] + j) * nCAP + k] *= invCAP1(j);
-						if (MPI::group == 1 && corrections)
-							slice[(i * n[0] + j) * nCAP + k] *=
-							(onesixth * (invCAP2(pos_lx.first + i, boxIndex * nCAP + k))
-							 + onehalf * (CAP1(pos_lx.first + i) + CAP1(boxIndex * nCAP + k)));
-					}
-		}
-	}
-	inline void maskSliceZ(int boxIndex)
-	{
-		for (int i = 0; i < n_lx[0]; i++)
-			for (int j = 0; j < nCAP; j++)
-				for (int k = 0; k < n[0]; k++)
-				{
-					slice[(i * nCAP + j) * n[0] + k] *= invCAP1(k);
-					if (MPI::group == 1 && corrections)
-						slice[(i * nCAP + j) * n[0] + k] *=
-						(onesixth * (invCAP2(pos_lx.first + i, boxIndex * nCAP + j))
-						 + onehalf * (CAP1(pos_lx.first + i) + CAP1(boxIndex * nCAP + j)));
-				}
-
-	}
 	//Max at 0,0,0, Min at (c,c,c), c=CAP_nodes
 	inline void coherentAddition(AXIS fc, int boxIndex)
 	{
 		// printf("cohh\n");
 		if (fc == AXIS::X)
 		{
-			double res = 0;
-			for (ind i = 0; i < m_lslice; i++)
-				res += std::abs(slice[i]);// * Base::template vol<REP::X>();
-			// if (MPI::pID == 1) printf("pID: %d avgSlice[00]: %g\n", MPI::pID, res);
 			maskSlice<0>(boxIndex, n_seq<DIM>);
-
 			fftw_execute(transf_slice[0]);
-			res = 0;
-			for (ind i = 0; i < m_lslice; i++)
-				res += std::abs(slice[i]);// * Base::template vol<REP::X>();
-			// if (MPI::pID == 1) printf("pID: %d avgSlice[##]: %g\n", MPI::pID, res);
 			add<0>(boxIndex, n_seq<DIM>);
-
-			// maskSlice(boxIndex);
-
-
-			// if constexpr (DIM == 1)
-			// {
-			// 	for (int i = 0; i < n_lx[0]; i++)
-			// 		psi[i] += slice[i];
-			// }
-			// if constexpr (DIM == 2)
-			// {
-			// 	for (int i = 0; i < n_lx[0]; i++)
-			// 		for (int j = 0; j < n[0]; j++)
-			// 			psi[i * n[0] + j] += slice[i * n[0] + j];
-			// }
-			// if constexpr (DIM == 3)
-			// {
-			// 	for (int i = 0; i < n_lx[0]; i++)
-			// 		for (int j = 0; j < nCAP; j++)
-			// 			for (int k = 0; k < n[0]; k++)
-			// 				psi[(i * n[0] + (j + boxIndex * nCAP)) * n[0] + k] += slice[(i * nCAP + j) * n[0] + k];
-			// }
 		}
 		if (fc == AXIS::Y)
 		{
@@ -487,37 +395,16 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 				maskSlice<1>(boxIndex, n_seq<DIM>);
 				fftw_execute(transf_slice[1]);
 				add<1>(boxIndex, n_seq<DIM>);
-
-				// maskSliceY(boxIndex);
-				// if constexpr (DIM == 2)
-				// {
-				// 	for (int i = 0; i < n_lx[0]; i++)
-				// 		for (int j = 0; j < n[0]; j++)
-				// 			psi[i * n[0] + j] += slice[i * n[0] + j];
-				// }
-				// if constexpr (DIM == 3)
-				// {
-				// 	for (int i = 0; i < n_lx[0]; i++)
-				// 		for (int j = 0; j < n[0]; j++)
-				// 			for (int k = 0; k < nCAP; k++)
-				// 				psi[(i * n[0] + j) * n[0] + boxIndex * nCAP + k] += slice[(i * n[0] + j) * nCAP + k];
-				// }
 			}
 		}
 
 		if (fc == AXIS::Z)
 		{
-			if constexpr (DIM == 3)
+			if constexpr (DIM > 2)
 			{
 				maskSlice<2>(boxIndex, n_seq<DIM>);
 				fftw_execute(transf_slice[2]);
 				add<2>(boxIndex, n_seq<DIM>);
-
-				// maskSliceZ(boxIndex);
-				// for (int i = 0; i < n_lx[0]; i++)
-				// 	for (int j = 0; j < nCAP; j++)
-				// 		for (int k = 0; k < n[0]; k++)
-				// 			psi[(i * n[0] + (boxIndex * nCAP + j)) * n[0] + k] += slice[(i * nCAP + j) * n[0] + k];
 			}
 		}
 	}
@@ -544,7 +431,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 					if (MPI::group == gI - 1) MPI_Win_fence(MPI_MODE_NOSTORE & MPI_MODE_NOPUT, moreFreeWin);
 					if (MPI::group == gI)
 					{
-						//TODO: check for null ref? 
+						//TODO: check for null ref?
 						auto& src = sourceRegions[sI];
 						resetSlice();
 						MPI_Win_fence(MPI_MODE_NOSTORE & MPI_MODE_NOPUT, lessFreeWin);

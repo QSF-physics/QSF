@@ -129,7 +129,6 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 
 	void gather()
 	{
-		_logMPI("my %d", MPI::rID);
 		if (!MPI::rID && psi_total == nullptr)
 		{
 			logALLOC("Allocating memory for psi_total (%td nodes)", m);
@@ -154,7 +153,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	}
 	template <REP R, ind dir> ind constexpr neg_dist_from_edge(ind index) const noexcept
 	{
-		return std::abs(abs_index<R, dir>(index) - n2[dir]) - n2[dir];
+		return abs_index<R, dir>(index) >= n2[dir] ? abs_index<R, dir>(index) - n[dir] + 1 : -abs_index<R, dir>(index);
 	}
 
 
@@ -407,7 +406,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		default: break;
 		}
 	}
-	int count = 0;
+
 	template <REP R>
 	inline void fourier()
 	{
@@ -417,11 +416,11 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		if (mpiFFTW)
 		{
 			fftw_execute(mpi_plans[back]);
-			// logWarning("mainFFTW");
+			// logWarning("mainFFTW plan pID %d", MPI::pID);
 		}
 		for (int i = 0; i < extra_plans_count; i++)
 		{
-			// printf("fourier pID %d i:%d\n", MPI::pID, i);
+			// printf("fourier pID %d plan %d/%d\n", MPI::pID, i, extra_plans_count);
 			fftw_execute(extra_plans[i + DIM * back]);
 			logWarning("extra_plans");
 		}
@@ -437,14 +436,14 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	{
 
 	}
-	void save()
+	void save(std::string_view name)
 	{
 		gather();
 		if (!MPI::rID)
 		{
 			logDUMPS("Dumping " psi_symbol " in X rep");
 
-			FILE* file = openPsi< AFTER<>, REP::X, DIM, IO_ATTR::WRITE>("special", 0, 0, true);
+			FILE* file = openPsi< AFTER<>, REP::X, DIM, IO_ATTR::WRITE>(name, 0, 0, true);
 			//HACK: change second false to true after done with Dmitry!
 
 			writePsiBinaryHeader<DIM>(file, xmin[0], -xmin[0], dx[0], DUMP_FORMAT{ true, true, true, true, false });

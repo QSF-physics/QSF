@@ -13,6 +13,7 @@ struct CAP<CartesianGrid_<size, MPIRegions>> : AbsorberType, CartesianGrid_<size
 
 	ind nCAP;
 	double eta;
+
 	CAP(Base base, ind nCAP) : Base(base), nCAP(nCAP), eta(Power(3.0 / double(nCAP), 4)) {}
 	CAP(Section& settings) : Base(settings)
 	{
@@ -33,8 +34,15 @@ struct CAP<CartesianGrid_<size, MPIRegions>> : AbsorberType, CartesianGrid_<size
 	{
 		([&] {nodes = nCAP + ind(nodes);}(), ...);
 		if (((nodes < 0) && ...)) return 1.0;
-		else return exp(-double(((nodes > 0 ? Power(nodes, 4) : 0.0) + ...)) * eta);
+		else return exp(-double(((nodes > 0 ? Power(nodes, 4) : 0.0) + ... + 0)) * eta);
 	}
+
+	template <uind ... dirs, typename ...Nodes>
+	inline double inv_mask(Nodes ... nodes)
+	{
+		return 1.0 - mask<dirs...>(nodes...);
+	}
+
 };
 
 // void correct(ind n, double L)

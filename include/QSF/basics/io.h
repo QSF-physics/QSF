@@ -211,7 +211,7 @@ void writePsiBinaryHeader(FILE* file, double min, double max, double delta, DUMP
 	if (file != nullptr)
 	{
 		int dim = 3;
-		int n = 32;
+		int n = 64; //TODO: pass n[]
 		fwrite(&dim, sizeof(int), 1, file);
 		fwrite(&n, sizeof(int), 1, file);
 		//If we start from dimension DIM, but compute distributions for
