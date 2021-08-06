@@ -65,9 +65,21 @@ struct EckhardtSachaInteraction : InteractionBase
 	double NEcharge;
 	double EEcharge;
 	static constexpr std::string_view name = "ES";
-	EckhardtSachaInteraction(InteractionBase p) :
+	explicit EckhardtSachaInteraction(InteractionBase p) :
 		InteractionBase(p), NEcharge(Ncharge* Echarge),
 		EEcharge(Echarge* Echarge) {}
+
+	EckhardtSachaInteraction(Section& settings)
+	{
+		logInfo("InteractionBase init");
+		inipp::get_value(settings, "Ncharge", Ncharge);
+		inipp::get_value(settings, "Echarge", Echarge);
+		inipp::get_value(settings, "Nsoft", Nsoft);
+		inipp::get_value(settings, "Esoft", Esoft);
+		logInfo("EckhardtSachaInteraction init");
+		NEcharge = (Ncharge * Echarge);
+		EEcharge = (Echarge * Echarge);
+	}
 
 	inline double ee_EckhardtSacha(double x, double y)
 	{
@@ -94,18 +106,20 @@ struct EckhardtSachaInteraction : InteractionBase
 	template <AXIS fc>
 	inline double operator()(double x, double y, double z)
 	{
-		if (fc == AXIS::Z)
+		if constexpr (fc == AXIS::NO)
+			return ee_EckhardtSacha(x, y) + ee_EckhardtSacha(y, z) + ee_EckhardtSacha(z, x) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(y) + Ne_EckhardtSacha(z);
+		else if constexpr (fc == AXIS::Z)
 			return ee_EckhardtSacha(x, y) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(y);
-		else if (fc == AXIS::Y)
+		else if constexpr (fc == AXIS::Y)
 			return ee_EckhardtSacha(x, z) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(z);
-		else if (fc == AXIS::X)
+		else if constexpr (fc == AXIS::X)
 			return ee_EckhardtSacha(y, z) + Ne_EckhardtSacha(y) + Ne_EckhardtSacha(z);
-		else if (fc == AXIS::YZ)
+		else if constexpr (fc == AXIS::YZ)
 			return Ne_EckhardtSacha(x);
-		else if (fc == AXIS::XZ)
+		else if constexpr (fc == AXIS::XZ)
 			return Ne_EckhardtSacha(y);
-		else if (fc == AXIS::XY)
+		else if constexpr (fc == AXIS::XY)
 			return Ne_EckhardtSacha(z);
-		else return ee_EckhardtSacha(x, y) + ee_EckhardtSacha(y, z) + ee_EckhardtSacha(z, x) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(y) + Ne_EckhardtSacha(z);
+		else return 0.0;
 	}
 };

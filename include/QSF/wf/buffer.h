@@ -114,7 +114,7 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 		using returnType = typename COMP::returnType;
 		constexpr bool usingReduceBuffer = usesReduceBuffer<COMP>;
 		//If the computation *WOULD* use reduce buffer in different mode reduce it immediataly
-
+		if (!usingReduceBuffer && MPI::rID) return;
 
 		size_t pos = offset<COMP>();
 

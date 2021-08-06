@@ -99,7 +99,7 @@ struct SUM : COMPUTATION<std::common_type_t< typename Op::returnType...>, (Op::r
 
 };
 
-template <class Op> struct CHANGE : COMPUTATION<typename Op::returnType, Op::reduce, Change>
+template <class Op> struct CHANGE : COMPUTATION<typename Op::returnType, false, Change>
 {
 };
 

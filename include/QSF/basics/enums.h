@@ -11,20 +11,6 @@ template<class T> constexpr inline T& operator&= (T& a, T b) { return (T&)((uind
 template<class T> constexpr inline T& operator^= (T& a, T b) { return (T&)((uind&)a ^= (uind)b); }
 template<class T> constexpr inline T operator>> (T&& a, T&& b) { return (T)((uind)a >> (uind)b); }
 
-struct DUMP_FORMAT
-{
-	bool binary = true;
-	bool complex = true;
-	bool unnormalized = false;
-	bool no_coords = true;
-	bool subtract_initial_wf = false;
-};
-
-struct DATA_FORMAT
-{
-	bool binary = true;
-	// constexpr DATA_FORMAT(bool binary = false) : binary(binary) {}
-};
 
 enum class MODE
 {
@@ -154,6 +140,22 @@ enum class OPTIMS
 };
 
 
+struct DUMP_FORMAT
+{
+	DIMS dim;
+	REP rep = REP::X;
+	bool binary = true;
+	bool complex = true;
+	bool unnormalized = false;
+	bool no_coords = true;
+	bool initial_wf_subtracted = false;
+};
+
+struct DATA_FORMAT
+{
+	bool binary = true;
+	// constexpr DATA_FORMAT(bool binary = false) : binary(binary) {}
+};
 // //Return the flag for current DIM
 // // constexpr DIMS DIMflag = (DIM == 1 ? D1 : (DIM == 2 ? D2 : D3));
 // constexpr int intDIMS(DIMS D)

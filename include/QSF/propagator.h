@@ -53,8 +53,6 @@ struct SplitPropagator : Config, PropagatorBase
 
 	template <uind chain>
 	using Chain = typename SplitType::template Chain<chain>;
-	// template <uind chain>
-	// using reps = typename Chain<chain>::reps;
 
 	template <uind chain>
 	using splits = typename Chain<chain>::splits;
@@ -105,7 +103,7 @@ struct SplitPropagator : Config, PropagatorBase
 		{
 			inipp::get_value(settings, "max_steps", max_steps);
 			inipp::get_value(settings, "state_accuracy", state_accuracy);
-			logInfo("max_steps %td", max_steps);
+			logInfo("max_steps %td state_accuracy %g", max_steps, state_accuracy);
 		}
 		else
 		{
@@ -172,11 +170,11 @@ struct SplitPropagator : Config, PropagatorBase
 		using T = CHANGE<Op>;
 
 		double curr = bo.template getLastValue<Op>();
+		MPI::reduceImmediataly(&curr);
 		bo.template store<T>(curr - last);
-		last = curr;
-
 		if constexpr (std::is_same_v<T, ENERGY_DIFFERENCE>)
-			dif_energy = bo.template getLastValue<T>();
+			dif_energy = curr - last;
+		last = curr;
 	}
 
 	template < REP R, class BO, class ... Op>
@@ -250,7 +248,7 @@ struct SplitPropagator : Config, PropagatorBase
 #pragma endregion Computations
 
 #pragma region Evolution
-	inline bool stillEvolving()
+	inline bool shouldContinue()
 	{
 		if constexpr (mode == MODE::RE) return (step <= max_steps);
 		else return fabs(dif_energy) > state_accuracy && step != max_steps;
@@ -351,7 +349,7 @@ struct SplitPropagator : Config, PropagatorBase
 		outputs.template init<M>(pass, name);
 		worker(WHEN::AT_START, step, pass, wf);
 		computeEach<WHEN::AT_START>(outputs);
-		while (stillEvolving())
+		while (shouldContinue())
 		{
 			makeStep(ChainExpander{});
 			computeEach<WHEN::DURING>(outputs);
@@ -359,7 +357,7 @@ struct SplitPropagator : Config, PropagatorBase
 			// logWarning("%d", HamWF::MPIGridComm::many);
 			worker(WHEN::DURING, step, pass, wf);
 		}
-
+		logInfo("Final step...");
 		makeStep(ChainExpander{});
 		computeEach<WHEN::AT_END>(outputs);
 		wf.postCompute();
@@ -407,67 +405,3 @@ struct ADV_CONFIG
 	DATA_FORMAT data_format;
 	DUMP_FORMAT dump_format;
 };
-
-/* Imagi time
-struct ImagTime
-{
-	static constexpr std::string_view name = "IM";
-	static constexpr MODE mode = IM;
-	double operator()(double val)
-	{
-		return exp(-val);
-	}
-	inline bool exitCondition()
-	{
-		return !((fabs(dE) <state_accuracy || dE / energy == 0.) || step == max_imaginary_steps);
-	}
-	void config(Section& settings)
-	{
-		inipp::get_value(settings, "max_imaginary_steps", max_imaginary_steps);
-		inipp::get_value(settings, "state_accuracy", state_accuracy);
-	}
-	inline void after()
-	{
-		// basePass::after();
-		// Eigen::store<startREP>(state, PASS, energy);
-		// Eigen::saveEnergyInfo(name, state, PASS, energy, dE);
-		// energy = 0;
-		// energy_prev = 0;
-		// dE = 0;
-	}
-};
-struct RealTime
-{
-	static constexpr std::string_view name = "RE";
-	static constexpr MODE mode = RE;
-	cxd operator()(double val)
-	{
-		return cos(-val) + I * sin(-val);
-	}
-	inline bool exitCondition()
-	{
-		return (step <ntsteps);
-	}
-};
-*/
-
-/* old get chain
-SplitType splitSum;
-	template <uind Chain>
-	constexpr size_t splitCount() const { return splitSum.sizes[Chain]; };
-
-	constexpr SplitPropagator() {}
-	template <typename ... deltaMult>
-	constexpr SplitPropagator(SplitType splitSum, double CAPlength, deltaMult...mult) :
-		splitSum(splitSum) {}
-			splits{ SplitOperators<T_Op, V_Op, C_Op>{mult, CAPlength} ... } {}
-
-
-	template <size_t chain> constexpr auto getChain() const { return get<chain>(splitSum.chains); }
-
-	template <size_t chain, size_t I> constexpr auto getOperator() const
-	{
-		return  get<I>(getChain<chain>().splits);
-	}
-
-	*/

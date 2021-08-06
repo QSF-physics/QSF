@@ -10,6 +10,7 @@ namespace Schrodinger
 		using Base::postCompute;
 		using Base::DIM;
 		using Base::kin_scale;
+		using Base::mcomm;
 		static constexpr REP couplesInRep = C_Op::couplesInRep;
 
 		V_Op _potential;
@@ -43,7 +44,33 @@ namespace Schrodinger
 		template <REP R, uind ... dirs, typename ... Cooords>
 		double potential(Cooords ... coords)
 		{
-			if constexpr (R == REP::X) return _potential(coords...);
+			if constexpr (R == REP::X)
+			{
+				if constexpr (mcomm.many)
+				{
+					switch (mcomm.freeCoord)
+					{
+					case AXIS::NO:
+						return _potential.template operator() < AXIS::NO > (coords...);
+					case AXIS::X:
+						return _potential.template operator() < AXIS::X > (coords...); break;
+					case AXIS::Y:
+						return _potential.template operator() < AXIS::Y > (coords...); break;
+					case AXIS::Z:
+						return _potential.template operator() < AXIS::Z > (coords...); break;
+					case AXIS::XY:
+						return _potential.template operator() < AXIS::XY > (coords...); break;
+					case AXIS::YZ:
+						return _potential.template operator() < AXIS::YZ > (coords...); break;
+					case AXIS::XZ:
+						return _potential.template operator() < AXIS::XZ > (coords...); break;
+					case AXIS::XYZ:
+					default:
+						return 0.0; break;
+					}
+				}
+				else return _potential.template operator() < AXIS::NO > (coords...);
+			}
 			else return 0;
 		}
 

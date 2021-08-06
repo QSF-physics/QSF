@@ -436,17 +436,19 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	{
 
 	}
-	void save(std::string_view name)
+
+			//HACK: change second false to true after done with Dmitry!
+	void saveAllRegions(std::string_view common_name = "",
+						DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false })
 	{
 		gather();
 		if (!MPI::rID)
 		{
-			logDUMPS("Dumping " psi_symbol " in X rep");
+			// logDUMPS("Dumping " psi_symbol " in %s rep", (R == REP::X ? "X" : "P"));
 
-			FILE* file = openPsi< AFTER<>, REP::X, DIM, IO_ATTR::WRITE>(name, 0, 0, true);
-			//HACK: change second false to true after done with Dmitry!
+			FILE* file = openPsi< AFTER<>, REP::X, DIM, IO_ATTR::WRITE>(common_name, 0, 0, true);
 
-			writePsiBinaryHeader<DIM>(file, xmin[0], -xmin[0], dx[0], DUMP_FORMAT{ true, true, true, true, false });
+			writePsiBinaryHeader(file, n, dx, df);
 			fwrite(psi_total, sizeof(cxd), m, file);
 			fclose(file);
 		}

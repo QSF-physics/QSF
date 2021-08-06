@@ -198,29 +198,23 @@ void dispatchComp(FILE* file, T t)
 }
 
 
-/** What the header contains
- * at the beginning: dim (# of dimensions written), n (# of points per dimension),
- * sizeof (size of the data, either sizeof(double) or sizeof(cxd),
- * min (real start of the axis, max (real end of the axis value),
- * delta (step between data in atomic units).
- * Total # of points expected is always pow(n,dim)
- */
-template <DIMS D>
-void writePsiBinaryHeader(FILE* file, double min, double max, double delta, DUMP_FORMAT F)
+
+void writePsiBinaryHeader(FILE* file, ind* ns, double* dxs, DUMP_FORMAT df)
 {
 	if (file != nullptr)
 	{
-		int dim = 3;
-		int n = 64; //TODO: pass n[]
-		fwrite(&dim, sizeof(int), 1, file);
-		fwrite(&n, sizeof(int), 1, file);
+
+		fwrite(&df.dim, sizeof(int), 1, file);
+		fwrite(&df.rep, sizeof(int), 1, file);
+		fwrite(&df.unnormalized, sizeof(int), 1, file);
+		fwrite(&df.initial_wf_subtracted, sizeof(int), 1, file);
 		//If we start from dimension DIM, but compute distributions for
 		//dimension dim < DIM then the F should always be double (absolute square)
 		int size = true ? sizeof(cxd) : sizeof(double);
 		fwrite(&size, sizeof(int), 1, file);
-		fwrite(&min, sizeof(double), 1, file);
-		fwrite(&max, sizeof(double), 1, file);
-		fwrite(&delta, sizeof(double), 1, file);
+
+		fwrite(&ns, sizeof(int), df.dim, file);
+		fwrite(&dxs, sizeof(double), df.dim, file);
 	}
 }
 
