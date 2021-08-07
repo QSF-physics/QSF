@@ -204,38 +204,49 @@ void writePsiBinaryHeader(FILE* file, ind* ns, double* dxs, DUMP_FORMAT df)
 	if (file != nullptr)
 	{
 
-		fwrite(&df.dim, sizeof(int), 1, file);
-		fwrite(&df.rep, sizeof(int), 1, file);
-		fwrite(&df.unnormalized, sizeof(int), 1, file);
-		fwrite(&df.initial_wf_subtracted, sizeof(int), 1, file);
+		ind test = 12;
+		fwrite(&df.dim, sizeof(DIMS), 1, file);
+		fwrite(&df.rep, sizeof(DIMS), 1, file);
+		fwrite(&df.unnormalized, sizeof(bool), 1, file);
+		fwrite(&df.initial_wf_subtracted, sizeof(bool), 1, file);
 		//If we start from dimension DIM, but compute distributions for
 		//dimension dim < DIM then the F should always be double (absolute square)
 		int size = true ? sizeof(cxd) : sizeof(double);
 		fwrite(&size, sizeof(int), 1, file);
 
-		fwrite(&ns, sizeof(int), df.dim, file);
-		fwrite(&dxs, sizeof(double), df.dim, file);
+		fwrite(ns, sizeof(ind), df.dim, file);
+		fwrite(dxs, sizeof(double), df.dim, file);
 	}
 }
 
 //This should match exactly the above writePsiBinaryHeader
-bool readPsiBinaryHeader(FILE* file, ind expected_n)
+template <DIMS DIM>
+bool readPsiBinaryHeader(FILE* file)
 {
-	int dim;
-	fread(&dim, sizeof(int), 1, file);
-	// SKUBANY TEST POWODUJE EXC_BAD_ACCESS
-	// logTest(dim == DIM, "Dimension of the input " psi_symbol" (%d) equals DIM (%d)", dim, DIM);
-	int n_read;
-	fread(&n_read, sizeof(int), 1, file);
-	// logTest(n_read == expected_n, "1D Length of the input " psi_symbol " (%d) equals expected_n (%td)", n_read, expected_n);
-
+	DIMS dim, rep;
+	fread(&dim, sizeof(DIMS), 1, file);
+	fread(&rep, sizeof(DIMS), 1, file);
+	bool unnormalized, initial_wf_subtracted;
+	fread(&unnormalized, sizeof(bool), 1, file);
+	fread(&initial_wf_subtracted, sizeof(bool), 1, file);
 	int size;
 	fread(&size, sizeof(int), 1, file);
+	double ns[DIM];
+	double dxs[DIM];
+	fread(&ns, sizeof(ind), DIM, file);
+	fread(&dxs, sizeof(double), DIM, file);
+	// SKUBANY TEST POWODUJE EXC_BAD_ACCESS
+	// logTest(dim == DIM, "Dimension of the input " psi_symbol" (%d) equals DIM (%d)", dim, DIM);
+
+	// logTest(n_read == expected_n, "1D Length of the input " psi_symbol " (%d) equals expected_n (%td)", n_read, expected_n);
+
+	// int size;
+	// fread(&size, sizeof(int), 1, file);
 	//Discarded for now
-	double tmp;
-	fread(&tmp, sizeof(double), 1, file);
-	fread(&tmp, sizeof(double), 1, file);
-	fread(&tmp, sizeof(double), 1, file);
+	// double tmp;
+	// fread(&tmp, sizeof(double), 1, file);
+	// fread(&tmp, sizeof(double), 1, file);
+	// fread(&tmp, sizeof(double), 1, file);
 	return (sizeof(cxd) == size);
 }
 

@@ -31,7 +31,7 @@ constexpr DIMS operator""_D(unsigned long long val)
 }
 
 static constexpr auto modeName(MODE M) { return M == MODE::IM ? "IM" : "RE"; }
-enum class REP
+enum class REP : DIMS
 {
 	NONE = 0,
 	X = 1,

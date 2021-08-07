@@ -437,9 +437,9 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 
 	}
 
-			//HACK: change second false to true after done with Dmitry!
-	void saveAllRegions(std::string_view common_name = "",
-						DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false })
+	//HACK: change second false to true after done with Dmitry!
+	std::string save(std::string_view common_name = "",
+					 DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false })
 	{
 		gather();
 		if (!MPI::rID)
@@ -452,6 +452,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 			fwrite(psi_total, sizeof(cxd), m, file);
 			fclose(file);
 		}
+		return std::string(file_path);
 	}
 
 #pragma region Computations
@@ -742,9 +743,23 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		add<F, R, false>(std::forward<F>(f), indices);
 	}
 
-	void addFromFile()
+	void load(std::string input_path)
 	{
+		if (!MPI::pID)
+		{
+			// auto out = PsiFile(M_FROM, )
+			FILE* fin = fopen_with_check<IO_ATTR::READ>(input_path.c_str());
+			//openPsi<AFTER<>, REP::X, DIM, IO::ATTR::READ>(name, 0, 0, true);
+			bool is_complex = readPsiBinaryHeader<DIM>(fin);
 
+			if (is_complex) fread(psi, sizeof(cxd), m, fin);
+			else for (ind i = 0; i < m; i++) fread(&psi[i], sizeof(double), 1, fin);
+			closeFile(fin);
+
+			double qnorm = 0.0;
+			for (ind i = 0; i < m; i++) qnorm += std::norm(psi[i]);
+			logSETUP("State " psi_symbol "_%d loaded with norm %g", 0, BaseGrid::template vol<REP::X>() * qnorm);
+		}
 	}
 
 
