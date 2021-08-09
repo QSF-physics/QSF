@@ -59,7 +59,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	using BaseGrid::nn;
 	using BaseGrid::n2;
 	using BaseGrid::xmin;
-	using BaseGrid::dx;
+	using BaseGrid::dx, BaseGrid::dp;
 	using MPIGridComm = MPI_GC;
 
 	static constexpr auto indices = n_seq<DIM>;
@@ -73,10 +73,9 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 
 	MPIGridComm mcomm; 			// MPI Grid Communicator
 	const bool canLeaveTransposed;
-	bool mpiFFTW;
+
 	fftw_plan mpi_plans[2];
-	fftw_plan extra_plans[2 * DIM];
-	int extra_plans_count;
+
 
 	cxd* psi_total = nullptr; 	// total ψ on m grid (used for saving)
 	cxd* psi = nullptr;      	// local ψ(x,t) on m_l grid
@@ -101,15 +100,13 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	ind strides_lp[DIM];
 
 	// const int transpose_f[2] = { 0, 0 };
-	unsigned transpose_f[2];
+	const unsigned transpose_f[2] = { FFTW_MPI_TRANSPOSED_OUT, FFTW_MPI_TRANSPOSED_IN };
 	const int for_back[2] = { FFTW_FORWARD, FFTW_BACKWARD };
 
 	LocalGrid(Section& settings) : BaseGrid(settings), mcomm(),
 		canLeaveTransposed(DIM > 1 && mcomm.isMain),
-		mpiFFTW(mcomm.bounded[0]),
-		m_l(m / MPI::rSize),
-		transpose_f{ canLeaveTransposed ? FFTW_MPI_TRANSPOSED_OUT : 0, canLeaveTransposed ? FFTW_MPI_TRANSPOSED_IN : 0 }
-
+		// mpiFFTW(mcomm.bounded[0]),
+		m_l(m / MPI::rSize)
 	{
 		init();
 		// mcomm.init(psi, m_l, n_lx, strides_lx);
@@ -118,9 +115,8 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 
 	LocalGrid(BaseGrid g) : BaseGrid(g), mcomm(),
 		canLeaveTransposed(DIM > 1 && mcomm.isMain),
-		mpiFFTW(mcomm.bounded[0]),
-		m_l(m / MPI::rSize),
-		transpose_f{ canLeaveTransposed ? FFTW_MPI_TRANSPOSED_OUT : 0, canLeaveTransposed ? FFTW_MPI_TRANSPOSED_IN : 0 }
+		// mpiFFTW(mcomm.bounded[0]),
+		m_l(m / MPI::rSize)
 	{
 		init();
 		// mcomm.init(psi, m_l, n_lx, strides_lx);
@@ -220,7 +216,27 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		n_l[0] = n[0] / MPI::rSize;
 		// ((printf("n_l%s[%td]=%td\n", (R == REP::X ? "x" : "p"), Is, n_l[Is])), ...);
 	}
+	void initFFTW()
+	{
+		if (mcomm.isMain)
+		{
 
+			//make forward and backward mpi plans
+			for (int i = 0; i < 2; i++)
+				mpi_plans[i] =
+				fftw_mpi_plan_many_dft(DIM, n, 1, 	//rank, dims,howmany
+									   FFTW_MPI_DEFAULT_BLOCK, //block 
+									   FFTW_MPI_DEFAULT_BLOCK, //tblock
+									   reinterpret_cast<fftw_complex*>(psi),
+									   reinterpret_cast<fftw_complex*>(psi),
+									   MPI::rComm, for_back[i], MPI::plan_rigor | transpose_f[i]);
+			reset();
+		}
+		// logSETUP("FFTW will be performed in one step");
+		// logSETUP("Main Forward/backward plans for " psi_symbol " are initialized");
+		// fftw_print_plan(transf_x2p);
+		// fftw_print_plan(transf_p2x);
+	}
 	void init()
 	{
 		initSizes<REP::X>(n_seq<DIM>);
@@ -239,84 +255,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		/* Main region transforms all directions using MPI FFTW, others only use it to transform X.
 		Transposing the first two dimensions in not all-dim cases would lead to problems */
 		// ind nd[1] = { n_lx };
-		if (mpiFFTW)
-		{
-			//make forward and backward mpi plans
-			for (int i = 0; i < 2; i++)
-				mpi_plans[i] =
-				fftw_mpi_plan_many_dft(mcomm.isMain ? DIM : 1, n, 	//rank & dims
-									   mcomm.isMain ? 1 : m / n[0], //howmany
-									   FFTW_MPI_DEFAULT_BLOCK, //block 
-									   FFTW_MPI_DEFAULT_BLOCK, //tblock
-									   reinterpret_cast<fftw_complex*>(psi),
-									   reinterpret_cast<fftw_complex*>(psi),
-									   MPI::rComm, for_back[i], MPI::plan_rigor | transpose_f[i]);
-
-			if (mcomm.isMain) logSETUP("FFTW will be performed in one step");
-		}
-
-		// Non-mpi fftw (extra) plans for non-main region (region!=0) are coupled 
-		// together if involve consecutive directions (case for 1-3D)
-		int fftw_rank = 0;
-		int start_dim = -1;
-		extra_plans_count = 0;
-		if (!mcomm.isMain) for (DIMS i = 1; i <= DIM; i++)
-		{
-			logWarning("FFTW extra steps");
-			if (i == DIM || !mcomm.bounded[i])
-			{
-				if (fftw_rank)
-				{
-					fftw_iodim64* dims = new fftw_iodim64[fftw_rank];
-					for (int j = 0; j < fftw_rank; j++)
-					{
-						dims[j] = { n_lx[start_dim + j], strides_lx[start_dim + j],strides_lx[start_dim + j] };
-						__logMPI("region %d start_dim %d j %d n_lx[start_dim+j]=%td strides_lx[start_dim+j]=%td\n", MPI::region, start_dim, j, n_lx[start_dim + j], strides_lx[start_dim + j]);
-					}
-
-					//define a loop over all howmany_dims (free) dimensions
-					int index = 0;
-					int howmany_rank = DIM - fftw_rank;
-					fftw_iodim64* howmany_dims = new fftw_iodim64[howmany_rank];
-					for (int j = 0; j < DIM;j++)
-					{
-						if (j < start_dim || (j >= start_dim + fftw_rank && j < DIM))
-						{
-							howmany_dims[index] = { n_lx[j], strides_lx[j], strides_lx[j] };
-							index++;
-							__logMPI("region %d start_dim %d index %d j %d n_lx[j]=%td dist[j]=%td\n", MPI::region, start_dim, index, j, n_lx[j], strides_lx[j]);
-						}
-					};
-					for (int k = 0; k < 2; k++)
-						extra_plans[extra_plans_count + DIM * k] = fftw_plan_guru64_dft(
-							fftw_rank, dims,
-							howmany_rank, howmany_dims,
-							reinterpret_cast<fftw_complex*>(psi),
-							reinterpret_cast<fftw_complex*>(psi),
-							for_back[k], MPI::plan_rigor);
-
-					delete[] dims;
-					delete[] howmany_dims;
-					extra_plans_count++;
-					__logMPI("region %d mpiFFTW %d extra_plans_count %d dim %d/%d fftw_rank %d howmany_rank %d\n", MPI::region, mpiFFTW, extra_plans_count, start_dim, i - 1, fftw_rank, howmany_rank);
-				}
-				fftw_rank = 0;
-			}
-			else if (mcomm.bounded[i])
-			{
-				if (start_dim == -1) start_dim = i;
-				fftw_rank++;
-			}
-		}
-
-		_logMPI("region %d mpiFFTW %d extra_plans_count %d", MPI::region, mpiFFTW, extra_plans_count);
-		_logMPI("Region %d MPI::pID: %d got %td nodes or %td rows [start row: %td end row: %td]", MPI::region, MPI::pID, m_l, n_lx[0], pos_lx.first, pos_lx.last);
-		logSETUP("Forward/backward plans for " psi_symbol " are initialized");
-
-		reset();
-
-		// fftw_print_plan(transf_x2p);
-		// fftw_print_plan(transf_p2x);
+		initFFTW();
 	}
 
 
@@ -391,20 +330,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 
 	inline void normalizeAfterTwoFFT()
 	{
-		switch (mcomm.freeCoord)
-		{
-		case AXIS::NO:
-			multiplyArray(psi, inv_m); break;
-		case AXIS::X:
-		case AXIS::Y:
-		case AXIS::Z:
-			multiplyArray(psi, inv_n[0] * inv_n[0]); break;
-		case AXIS::XY:
-		case AXIS::YZ:
-		case AXIS::XZ:
-			multiplyArray(psi, inv_n[0]); break;
-		default: break;
-		}
+		multiplyArray(psi, inv_m);
 	}
 
 	template <REP R>
@@ -412,18 +338,8 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	{
 	// Timings::measure::start("FFTW");
 		static_assert(R == REP::X || R == REP::P, "Can only transform to X or P, unambigously.");
-		constexpr uind back = R == REP::P ? 0 : 1;
-		if (mpiFFTW)
-		{
-			fftw_execute(mpi_plans[back]);
-			// logWarning("mainFFTW plan pID %d", MPI::pID);
-		}
-		for (int i = 0; i < extra_plans_count; i++)
-		{
-			// printf("fourier pID %d plan %d/%d\n", MPI::pID, i, extra_plans_count);
-			fftw_execute(extra_plans[i + DIM * back]);
-			logWarning("extra_plans");
-		}
+		constexpr DIMS back = R == REP::P ? 0 : 1;
+		fftw_execute(mpi_plans[back]);
 		if constexpr (back) normalizeAfterTwoFFT();
 		// Timings::measure::stop("FFTW");
 	}
@@ -445,10 +361,13 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		if (!MPI::rID)
 		{
 			// logDUMPS("Dumping " psi_symbol " in %s rep", (R == REP::X ? "X" : "P"));
+			// double dxORdp[DIM];
+			// for (int i = 0;i < DIM; i++)
+				// dxORdp[i] = mcomm.bounded[i] ? dx[i] : dp[i] / n[i];
 
 			FILE* file = openPsi< AFTER<>, REP::X, DIM, IO_ATTR::WRITE>(common_name, 0, 0, true);
 
-			writePsiBinaryHeader(file, n, dx, df);
+			writePsiBinaryHeader(file, n, dx, mcomm.bounded, df);
 			fwrite(psi_total, sizeof(cxd), m, file);
 			fclose(file);
 		}
@@ -471,9 +390,12 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	{
 		ind counters[DIM + 1] = { 0 };
 		do {
-			psi[counters[DIM]] *= static_cast<Hamiltonian*>(this)->template expOp < M, R>(delta * static_cast<Hamiltonian*>(this)->template operator() < R, Is... > (abs_pos<R, Is>(counters[Is])...));
+			// logInfo("pos [%g %g] val: %g delta: %g rep: %d", abs_pos<R, Is>(counters[Is])..., static_cast<Hamiltonian*>(this)->template operator() < R, Is... > (abs_pos<R, Is>(counters[Is])...), delta, ind(R));
+			// if (mcomm.isMain)
+			psi[counters[DIM]] *=
+				static_cast<Hamiltonian*>(this)->template expOp < M, R>(delta * static_cast<Hamiltonian*>(this)->template operator() < R, Is... > (abs_pos<R, Is>(counters[Is])...));
 
-			if constexpr (hasAbsorber && R == REP::X)
+			if constexpr (hasAbsorber && R == REP::X && !MPIGridComm::many)
 			{
 				psi[counters[DIM]] *= BaseGrid::template absorb<Is...>(delta, neg_dist_from_edge<R, Is>(counters[Is])...);
 				// logWarning("Calling with %g", BaseGrid::template operator() < Is... > (abs_centered_index<R, Is>(counters[Is])...));
@@ -881,69 +803,3 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 
 
 
-
-// template <class BaseGrid, uind Components>
-// struct Grid<BaseGrid, Components, MPI::Slices, MPI::Multi> :
-// 	Grid<BaseGrid, Components, MPI::Slices, MPI::Single>
-// {
-// 	using Base = Grid<BaseGrid, Components, MPI::Slices, MPI::Single>;
-// 	using Base::DIM;
-// 	using Base::pos;
-// 	using Base::mcomm;
-// 	using Base::psi;
-// 	using Base::m;
-// 	using Base::n;
-// 	using Base::xmin;
-// 	using Base::dx;
-// 	using Base::nn;
-// 	using Base::n0_l;
-// 	using Base::absorber;
-// 	using Base::n0_o;
-// 	using Base::n0_e;
-
-
-// 	void postCompute()
-// 	{
-// 		Base::postCompute();
-// 		transfer();
-// 	}
-// };
-
-
-
-
-
-
-	// template <REP R, uind dir_avg, class Op, uind ... Is>
-	// double average_der_(seq<Is...>)
-	// {
-	// 	// logInfo("%td %td %td %td", shape_l[0], shape_l[1], shape_l[2], sizeof...(Is));
-	// 	ind counters[DIM]{ 0 };
-	// 	counters[dir_avg] = 0;
-	// 	double res = 0.0;
-	// 	do {
-	// 		res += abs2(data_offset<R>(counters[Is]...)) * //abs2(counters[DIM]) *
-	// 			(static_cast<Hamiltonian*>(this)->template
-	// 			 call < Op, Is... >(abs_pos<R, Is>(counters[Is] + (Is == dir_avg ? 1 : 0))...)
-	// 			 - static_cast<Hamiltonian*>(this)->template
-	// 			 call < Op, Is... >(abs_pos<R, Is>(counters[Is] + (Is == dir_avg ? -1 : 0))...));
-
-	// 	} while (!(...&&
-	// 			   ((counters[rev<Is>]++,
-	// 				 counters[rev<Is>] < bulk_shape<R, rev<Is>, dir_avg>())
-	// 				? (false)
-	// 				: (counters[rev<Is>] = bulk_start<rev<Is>, dir_avg>(), true))
-	// 			   ));
-
-	// 	return res * BaseGrid::template vol<R>() * inv_2dx[dir_avg];
-	// }
-			// if constexpr (std::is_same_v<Op, Identity>)
-			// 	res += abs2(counters[DIM]);
-
-			// else if constexpr (std::is_same_v<Op, KineticEnergy>)
-			// 	res += abs2(counters[DIM]) * static_cast<Hamiltonian*>(this)->template kinetic< REP::P, Is... >(abs_pos<R, Is>(counters[Is])...);
-
-			// else if constexpr (std::is_same_v<Op, PotentialEnergy>)
-			// 	res += abs2(counters[DIM]) * static_cast<Hamiltonian*>(this)->template potential< REP::X, Is... >(abs_pos<R, Is>(counters[Is])...);
-
-			// else 

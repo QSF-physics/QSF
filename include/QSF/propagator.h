@@ -101,7 +101,7 @@ struct SplitPropagator : Config, PropagatorBase
 		init();
 	}
 	SplitPropagator() :
-		Config("project.ini", 1, 1),//DIMS, ELEC
+		Config("project.ini", HamWF::DIM, HamWF::DIM),//DIMS, ELEC
 		settings(ini.sections[name.data()]),
 		wf(settings)
 	{
@@ -151,7 +151,7 @@ struct SplitPropagator : Config, PropagatorBase
 	{
 		if constexpr (std::is_same_v<Time, Op>) return timer;
 		if constexpr (std::is_same_v<Step, Op>) return step;
-		else return wf.template getValue<Op>();
+		else if constexpr (!std::is_same_v<Step, Op> && !std::is_same_v<Time, Op>) return wf.template getValue<Op>();
 	}
 	template <REP R, class BO, class... Op>
 	inline void compute(BO& bo, VALUE<Op...>&&)
@@ -275,8 +275,9 @@ struct SplitPropagator : Config, PropagatorBase
 			constexpr REP rep = Chain<chain>::template rep<SI>;
 			if (SI > 0) fourier<rep>();
 
-			wf.template precalc<rep, OPTIMS::NONE>(timer);
-			   //  Timings::measure::start(op.name);
+			if constexpr (REP::BOTH == HamWF::couplesInRep || rep == HamWF::couplesInRep)
+				wf.template precalc<rep, OPTIMS::NONE>(timer);
+				   //  Timings::measure::start(op.name);
 			wf.template evolve<M, rep>(dt * Chain<chain>::mults[SI]);
 			// Timings::measure::stop(op.name);
 			if (step == 4)

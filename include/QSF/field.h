@@ -24,11 +24,11 @@ struct Field : _Operator
 		(
 			[&](auto const&... pulse)
 			{
-				((lastVal += (!(time > endtimes[i] || time < delays[i++]) ?
-							  pulse(time - delays[i]) : 0.0)), ...);
-							  // if (time <= endtimes[i] && time >= delays[i])
-							  // 	val += field.operator()(time - delays[i]);
-							  // i++;
+				(((lastVal += (!(time > endtimes[i] || time < delays[i]) ?
+							   pulse(time - delays[i]) : 0.0)), i++), ...);
+				 // if (time <= endtimes[i] && time >= delays[i])
+					 // lastVal += field.operator()(time - delays[i]);
+				 // i++;
 			}, pulses
 		);
 
@@ -49,16 +49,39 @@ struct Field : _Operator
 			max < endtimes[i] ? max = endtimes[i] : 0.0;
 		return max;
 	}
-	// constexpr auto getField(size_t index)
-	// {
-	// 	return static_cast<PulsePrototype*>(pulses[index]);
-	// }
 
 	Field(Pulses&& ... p) :
 		pulses{ std::move(p)... },
 		delays{ (p.delay_in_cycles * 2.0 * pi / p.omega)... },
 		endtimes{ (p.delay_in_cycles * 2.0 * pi / p.omega + p.pulse_time)... }{}
-	// ~Field() { logInfo("Field Destructor called"); }
-	// ~Field() { i = 0; ((delete static_cast<Pulses*>(fields[i++])), ...); }
 };
 
+template <class F>
+struct VectorPotential : F
+{
+	using type = VectorPotential;
+	VectorPotential(F field) :F(field) {}
+	using F::lastVal;
+
+	// double Fval = 0.0;
+	double prevVal = 0.0;
+	double prevTime = 0.0;
+	inline double operator()(double time)
+	{
+		prevVal = lastVal;
+		F::operator()(time);
+		// Fval = lastVal;
+		lastVal = prevVal + (prevTime - time) * lastVal;//includes the minus in -A(t)
+		prevTime = time;
+		return lastVal;
+	}
+	// static constexpr REP rep = F::rep;
+	// static constexpr bool late = false;
+	// static constexpr auto axis = F::Ax;
+	// static constexpr std::string_view name = F::name;
+	// static constexpr uind count = F::count;
+
+	// double delays[sizeof...(Pulses)]{};
+	// double endtimes[sizeof...(Pulses)]{};
+	// double lastVal = 0;
+};

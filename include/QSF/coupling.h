@@ -79,10 +79,13 @@ struct CouplingBase<DipoleApprox, Fields...> //: COMPUTATION<double, false, Fiel
 	inline void precalc(double time)
 	{
 		(std::get < Fields>(fields)(time), ...);
+		// logInfo("precalc! %g %g", time, std::get<Fields>(fields).lastVal...);
+		// logInfo("vla %g", ((bool(Fields::axis & ax) ? std::get<Fields>(fields).lastVal : 0) + ...));
 	}
 	// void reset() { last_values{ 0 }; last_values_backup{ 0 }; }
 	double operator[](AXIS ax)
 	{
+
 		return ((bool(Fields::axis & ax) ? std::get<Fields>(fields).lastVal : 0) + ...);
 	}
 };
@@ -99,6 +102,7 @@ struct CouplingBase<NoApprox, Fields...>
 
 	double operator[](AXIS ax)
 	{
+		//TODO: NOT IMPLEMENTED!
 		return middle_values[ax];
 	}
 };
@@ -108,30 +112,35 @@ struct DipoleCoupling;
 
 template <class ... Fields>
 struct DipoleCoupling<VelocityGauge, Fields...> :
-	CouplingBase<DipoleApprox, Fields...>
+	CouplingBase<DipoleApprox, VectorPotential<Fields>...>
 {
-	using base = CouplingBase<DipoleApprox, Fields...>;
-	using base::precalc;
+	using base = CouplingBase<DipoleApprox, VectorPotential<Fields>...>;
+	// using base::precalc;
 	static constexpr REP couplesInRep = REP::P;
 
-	double lastTime;
 	DipoleCoupling(Section& settings) : base(settings) {}
 
 	DipoleCoupling(Fields...fields) :base(fields...) {}
 
+	template <class F> double getValue()
+	{
+		if constexpr ((std::is_same_v<F, Fields> || ...))
+			return std::get<VectorPotential<F>>(base::fields).lastVal;
+		else return -1; //TODO: log meaningful error 
+	}
 	// DipoleCoupling(const DipoleCoupling&) = default;
 	// A(t) = -int_0^t E(t) dt
 	// template <REP R, OPTIMS opt>
-	// inline void precalc() const
+	// inline void precalc(double time)
 	// {
-	// 	if constexpr (R == REP::P)
+	// 	CouplingBase<DipoleApprox, Fields...>::precalc(time);
 	// 	{
-	// 		// int i = 0;
-	// 		// ([&]
-	// 		//  {
-	// 		// 	 base::last_values[i++] -= (timer - lastTime) * (std::get <Fields>(base::fields).operator()(timer));
-	// 		//  }(), ...);
-	// 		// lastTime = timer;
+	// 		int i = 0;
+	// 		([&]
+	// 		 {
+	// 			 base::last_values[i++] -= (timer - lastTime) * (std::get <Fields>(base::fields).operator()(timer));
+	// 		 }(), ...);
+	// 		lastTime = timer;
 	// 	}
 	// }
 	// inline double operator()()

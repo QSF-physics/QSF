@@ -199,12 +199,10 @@ void dispatchComp(FILE* file, T t)
 
 
 
-void writePsiBinaryHeader(FILE* file, ind* ns, double* dxs, DUMP_FORMAT df)
+void writePsiBinaryHeader(FILE* file, ind* ns, double* dxs, bool* bounded, DUMP_FORMAT df)
 {
 	if (file != nullptr)
 	{
-
-		ind test = 12;
 		fwrite(&df.dim, sizeof(DIMS), 1, file);
 		fwrite(&df.rep, sizeof(DIMS), 1, file);
 		fwrite(&df.unnormalized, sizeof(bool), 1, file);
@@ -216,6 +214,7 @@ void writePsiBinaryHeader(FILE* file, ind* ns, double* dxs, DUMP_FORMAT df)
 
 		fwrite(ns, sizeof(ind), df.dim, file);
 		fwrite(dxs, sizeof(double), df.dim, file);
+		fwrite(bounded, sizeof(bool), df.dim, file);
 	}
 }
 
@@ -231,10 +230,12 @@ bool readPsiBinaryHeader(FILE* file)
 	fread(&initial_wf_subtracted, sizeof(bool), 1, file);
 	int size;
 	fread(&size, sizeof(int), 1, file);
-	double ns[DIM];
+	ind ns[DIM];
 	double dxs[DIM];
+	bool bounded[DIM];
 	fread(&ns, sizeof(ind), DIM, file);
 	fread(&dxs, sizeof(double), DIM, file);
+	fread(&dxs, sizeof(bool), DIM, file);
 	// SKUBANY TEST POWODUJE EXC_BAD_ACCESS
 	// logTest(dim == DIM, "Dimension of the input " psi_symbol" (%d) equals DIM (%d)", dim, DIM);
 

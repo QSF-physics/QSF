@@ -27,10 +27,10 @@
 #include "wf.h"
 // #include "dumps.h"
 // #include "average.h"
+#include "field.h"
 #include "coupling.h"
 #include "hamiltonian.h"
 #include "potential.h"
-#include "field.h"
 #include "propagator.h"
 #include "routines.h"
 

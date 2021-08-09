@@ -10,31 +10,112 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 	using Base = LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false>;
 	using Base::DIM, Base::n_lx, Base::n, Base::pos_lx, Base::nCAP;
 	// using Base::n_lx;
-	using Base::m_l, Base::m, Base::xmin, Base::dx;
-	using Base::mcomm, Base::psi, Base::mask;
-	static_assert(Base::hasAbsorber, "Absorb is required for multigrid computations");
+	using Base::m_l, Base::m, Base::xmin, Base::dx, Base::strides_lx;
+	using Base::mcomm, Base::psi, Base::mask, Base::inv_m, Base::inv_n;
+	static_assert(Base::hasAbsorber, "Absorber is required for multigrid computations");
 	static inline constexpr cxd zero = { 0.0, 0.0 };
+	template <ind Is> ind static constexpr rev = DIM - 2 - Is;
 
-	fftw_plan transf_slice[DIM];
 	MPI_Win lessFreeWin = nullptr;
 	MPI_Win moreFreeWin = nullptr;
+	bool mpiFFTW;
+	fftw_plan extra_plans[2 * DIM];
+	int extra_plans_count;
 
+	ind stride_slice[DIM][DIM]; //For each "free" axis
+	fftw_plan transf_slice[DIM];
 	cxd* slice;
 	ind m_slice;
 	ind m_lslice;
 	int boxesCount;
-
 	bool isBottomX;
 	bool isTopX;
 	ind sizeX;
 	ind startX;
-	ind stride_slice[DIM][DIM]; //For each "free" axis
-	template <ind Is> ind static constexpr rev = DIM - 2 - Is;
 
 	std::vector<SrcRegion> sourceRegions;
 
-	LocalGrid(Base g) : Base(g) { init(); }
-	LocalGrid(Section& settings) :Base(settings) { init(); }
+	LocalGrid(Base g) : Base(g), mpiFFTW(g.mcomm.bounded[0]) { init(); }
+	LocalGrid(Section& settings) :Base(settings), mpiFFTW(Base::mcomm.bounded[0]) { init(); }
+	void initExtraFFTW()
+	{
+		if (!mcomm.isMain)
+		{
+
+			if (mpiFFTW)
+			{
+				//make forward and backward mpi plans
+				for (int i = 0; i < 2; i++)
+					Base::mpi_plans[i] =
+					fftw_mpi_plan_many_dft(1, n, m / n[0], //rank, dims, howmany
+										   FFTW_MPI_DEFAULT_BLOCK, //block 
+										   FFTW_MPI_DEFAULT_BLOCK, //tblock
+										   reinterpret_cast<fftw_complex*>(psi),
+										   reinterpret_cast<fftw_complex*>(psi),
+										   MPI::rComm, Base::for_back[i], MPI::plan_rigor);
+
+
+			}
+
+			int fftw_rank = 0;
+			int start_dim = -1;
+			extra_plans_count = 0;
+			// Non-mpi fftw (extra) plans for non-main region (region!=0) are coupled 
+			// together if involve consecutive directions (case for 1-3D)
+
+			for (DIMS i = 1; i <= DIM; i++)
+			{
+				logWarning("FFTW extra steps");
+				if (i == DIM || !mcomm.bounded[i])
+				{
+					if (fftw_rank)
+					{
+						fftw_iodim64* dims = new fftw_iodim64[fftw_rank];
+						for (int j = 0; j < fftw_rank; j++)
+						{
+							dims[j] = { n_lx[start_dim + j], strides_lx[start_dim + j],strides_lx[start_dim + j] };
+							// __logMPI("region %d start_dim %d j %d n_lx[start_dim+j]=%td strides_lx[start_dim+j]=%td\n", MPI::region, start_dim, j, n_lx[start_dim + j], strides_lx[start_dim + j]);
+						}
+
+						//define a loop over all howmany_dims (free) dimensions
+						int index = 0;
+						int howmany_rank = DIM - fftw_rank;
+						fftw_iodim64* howmany_dims = new fftw_iodim64[howmany_rank];
+						for (int j = 0; j < DIM;j++)
+						{
+							if (j < start_dim || (j >= start_dim + fftw_rank && j < DIM))
+							{
+								howmany_dims[index] = { n_lx[j], strides_lx[j], strides_lx[j] };
+								index++;
+								// __logMPI("region %d start_dim %d index %d j %d n_lx[j]=%td dist[j]=%td\n", MPI::region, start_dim, index, j, n_lx[j], strides_lx[j]);
+							}
+						};
+						for (int k = 0; k < 2; k++)
+							extra_plans[extra_plans_count + DIM * k] = fftw_plan_guru64_dft(
+								fftw_rank, dims,
+								howmany_rank, howmany_dims,
+								reinterpret_cast<fftw_complex*>(psi),
+								reinterpret_cast<fftw_complex*>(psi),
+								Base::for_back[k], MPI::plan_rigor);
+
+						delete[] dims;
+						delete[] howmany_dims;
+						extra_plans_count++;
+						// __logMPI("region %d mpiFFTW %d extra_plans_count %d dim %d/%d fftw_rank %d howmany_rank %d\n", MPI::region, mpiFFTW, extra_plans_count, start_dim, i - 1, fftw_rank, howmany_rank);
+					}
+					fftw_rank = 0;
+				}
+				else if (mcomm.bounded[i])
+				{
+					if (start_dim == -1) start_dim = i;
+					fftw_rank++;
+				}
+			}
+			Base::reset();
+		}
+		// _logMPI("region %d mpiFFTW %d extra_plans_count %d", MPI::region, mpiFFTW, extra_plans_count);
+		// _logMPI("Region %d MPI::pID: %d got %td nodes or %td rows [start row: %td end row: %td]", MPI::region, MPI::pID, m_l, n_lx[0], pos_lx.first, pos_lx.last);
+	}
 
 	void init()
 	{
@@ -93,7 +174,12 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 		boxesCount = DIM < 3 ? 1 : n[0] / nCAP;
 
 		logWarning("boxesCount %d", boxesCount);
-		if (!mcomm.isMain) initSlice(n_seq<DIM>); //Main region doesn't operate with slices
+		if (!mcomm.isMain)
+		{
+			initExtraFFTW();
+			initSlice(n_seq<DIM>); //Main region doesn't operate with slices
+
+		}
 		if (mcomm.moreFree) MPI_Win_create(psi, m_l * sizeof(cxd), sizeof(cxd), MPI_INFO_NULL, mcomm.moreFree, &moreFreeWin);
 		if (mcomm.lessFree) MPI_Win_create(NULL, 0, sizeof(cxd), MPI_INFO_NULL, mcomm.lessFree, &lessFreeWin);
 	}
@@ -310,15 +396,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 		}
 	}
 
-
-	inline double CAP1(ind i) { return Base::template mask<0>(i); }
-	inline double invCAP1(ind i) { return 1.0 - Base::template mask<0>(i); }
-	inline double CAP2(ind i, ind j) { return Base::template mask<0, 1>(i, j); }
-	inline double invCAP2(ind i, ind j) { return 1 - Base::template mask<0, 1>(i, j); }
-
-
-
-	inline static constexpr bool corrections = true;
+	// inline static constexpr bool corrections = true;
 
 	// template <uind dirFree, uind ... dirs>
 	// double weightCorrections(ind x, ind y, ind z)
@@ -331,7 +409,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 	template <uind dirFree, uind ... dirs, typename ...Nodes>
 	inline double mask_correction(Nodes ... nodes)
 	{
-		return 1.0;
+		// return 1.0;
 		if (MPI::group == 1) return 1.0;
 		else return  onehalf * ((dirs == dirFree ? 0 : Base::template mask<dirs>(nodes)) + ... + 0) +
 			onesixth * (1 - ((dirs == dirFree ? 1.0 : Base::template mask<dirs>(nodes))*...));
@@ -443,9 +521,52 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 				}
 			}
 		}
-
 		// Timings::measure::stop("TRANSFER");
 	}
+
+#pragma region FFToverloads
+	inline void normalizeAfterTwoFFT()
+	{
+		if constexpr (Base::MPIGridComm::many)
+		{
+			switch (mcomm.freeCoord)
+			{
+			case AXIS::NO:
+				Base::multiplyArray(psi, inv_m); break;
+			case AXIS::X:
+			case AXIS::Y:
+			case AXIS::Z:
+				Base::multiplyArray(psi, inv_n[0] * inv_n[0]); break;
+			case AXIS::XY:
+			case AXIS::YZ:
+			case AXIS::XZ:
+				Base::multiplyArray(psi, inv_n[0]); break;
+			default: break;
+			}
+		}
+		else Base::normalizeAfterTwoFFT();
+	}
+	template <REP R>
+	inline void fourier()
+	{
+		constexpr DIMS back = R == REP::P ? 0 : 1;
+		// if (mcomm.isMain)
+		{
+			if (mpiFFTW)
+			{
+				fftw_execute(Base::mpi_plans[back]);
+				// logWarning("mainFFTW plan pID %d", MPI::pID);
+			}
+			for (int i = 0; i < extra_plans_count; i++)
+			{
+				// printf("fourier pID %d plan %d/%d\n", MPI::pID, i, extra_plans_count);
+				fftw_execute(extra_plans[i + DIM * back]);
+				// logWarning("extra_plans");
+			}
+			if constexpr (back) normalizeAfterTwoFFT();
+		}
+	}
+#pragma endregion FFToverloads
 
 #pragma region Tests
 		//See: http://www.fftw.org/fftw3_doc/Load-balancing.html#Load-balancing
@@ -466,96 +587,3 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 #pragma endregion Tests
 
 };
-
-
-
-
-// // (0,0,0) = (bottom, left, front)
-// 	inline void getXBox(int rank, int boxIndex)
-// 	{
-// 		if constexpr (DIM == 1)
-// 		{
-// 			if (isBottomX) //bottom
-// 				MPI_Get(&slice[0], sizeX, MPI_CXX_DOUBLE_COMPLEX, rank,
-// 						0, sizeX, MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
-
-// 			if (isTopX) //top
-// 				MPI_Get(&slice[startX], n_lx[0] - startX, MPI_CXX_DOUBLE_COMPLEX, rank,
-// 						startX, n_lx[0] - startX, MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
-// 		}
-// 		if constexpr (DIM == 2)
-// 		{
-// 			if (isBottomX) //bottom
-// 				for (int i = 0; i < sizeX; i++)
-// 					MPI_Get(&slice[i * n[0]], n[0], MPI_CXX_DOUBLE_COMPLEX, rank,
-// 							i * n[0], n[0], MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
-
-// 			if (isTopX) //top
-// 				for (int i = startX; i < n_lx[0]; i++)
-// 					MPI_Get(&slice[i * n[0]], n[0], MPI_CXX_DOUBLE_COMPLEX, rank,
-// 							i * n[0], n[0], MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
-// 		}
-// 		if constexpr (DIM == 3)
-// 		{
-// 			// std::cout << ("get box") << std::endl;
-// 			if (isBottomX) //bottom
-// 				for (int i = 0; i < sizeX; i++) //full x, every node
-// 					for (int j = 0; j < nCAP; j++) //should be z
-// 						MPI_Get(&slice[(i * nCAP + j) * n[0]], n[0], MPI_CXX_DOUBLE_COMPLEX, rank,
-// 								(i * n[0] + (j + boxIndex * nCAP)) * n[0], n[0], MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
-
-// 								// from [0,sizeX]*n*n + ([0,nCAP]+box*nCAP)*n
-// 			if (isTopX) //top
-// 				for (int i = startX; i < n_lx[0]; i++)
-// 					for (int j = 0; j < nCAP; j++)
-// 						MPI_Get(&slice[(i * nCAP + j) * n[0]], n[0], MPI_CXX_DOUBLE_COMPLEX, rank,
-// 								(i * n[0] + (j + boxIndex * nCAP)) * n[0], n[0], MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
-
-// 		}
-// 		// n_lx[0],n_lx[1],nCAP
-// 	}
-// 	inline void getYBox(int rank, int boxIndex)
-// 	{
-// 		if constexpr (DIM == 2)
-// 		{
-// 			for (int i = 0; i < n_lx[0]; i++)
-// 			{
-// 				MPI_Get(&slice[i * n[0]], nCAP, MPI_CXX_DOUBLE_COMPLEX, rank,
-// 						i * n[0], nCAP, MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
-// 				MPI_Get(&slice[(i + 1) * n[0] - nCAP], nCAP, MPI_CXX_DOUBLE_COMPLEX, rank,
-// 						(i + 1) * n[0] - nCAP, nCAP, MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
-// 			}
-
-// 		}
-// 		if constexpr (DIM == 3)
-// 		{
-// 			for (int i = 0; i < n_lx[0]; i++) //left
-// 				for (int j = 0; j < nCAP; j++)
-// 					MPI_Get(&slice[(i * n[0] + j) * nCAP], nCAP, MPI_CXX_DOUBLE_COMPLEX, rank,
-// 							(i * n[0] + j) * n[0] + boxIndex * nCAP, nCAP, MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
-// 					//from [0, ]
-
-// 			for (int i = 0; i < n_lx[0]; i++) //right
-// 				for (int j = n[0] - nCAP; j < n[0]; j++)
-// 					MPI_Get(&slice[(i * n[0] + j) * nCAP], nCAP, MPI_CXX_DOUBLE_COMPLEX, rank,
-// 							(i * n[0] + j) * n[0] + boxIndex * nCAP, nCAP, MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
-// 						   //disp, count
-// 		}
-// 	}
-// 	inline void getZBox(int rank, int boxIndex)
-// 	{
-// 		ind z_start;
-// 		for (int i = 0; i < n_lx[0]; i++)
-// 			for (int j = 0; j < nCAP; j++)
-// 			{
-// 				//front
-// 				z_start = 0;
-// 				MPI_Get(&slice[(i * nCAP + j) * n[0] + z_start], nCAP, MPI_CXX_DOUBLE_COMPLEX, rank,
-// 						(i * n[0] + (boxIndex * nCAP + j)) * n[0] + z_start, nCAP, MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
-// 				//back
-// 				z_start = n[0] - nCAP;
-// 				MPI_Get(&slice[(i * nCAP + j) * n[0] + z_start], nCAP, MPI_CXX_DOUBLE_COMPLEX, rank,
-// 						(i * n[0] + (boxIndex * nCAP + j)) * n[0] + z_start, nCAP, MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
-// 				// disp, count
-// 			}
-// 	}

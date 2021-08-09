@@ -45,8 +45,8 @@ struct CoulombInteraction : InteractionBase
 		inipp::get_value(settings, "Echarge", Echarge);
 		inipp::get_value(settings, "Nsoft", Nsoft);
 		inipp::get_value(settings, "Esoft", Esoft);
-		logInfo("CoulombInteraction init");
 		NEcharge = (Ncharge * Echarge);
+		logInfo("CoulombInteraction init with NEcharge=%g (%g*%g)", NEcharge, Ncharge, Echarge);
 	}
 	explicit CoulombInteraction(InteractionBase ib) :
 		InteractionBase(ib), NEcharge(Ncharge* Echarge) {}
@@ -58,6 +58,44 @@ struct CoulombInteraction : InteractionBase
 		//TODO: finish
 		return NEcharge / sqrt(((coords * coords) + ...) + Nsoft);
 	}
+
+
+	inline double partial(AXIS fc, double x, double y, double z)
+	{
+		if (fc == AXIS::NO)
+			return operator()(x, y, z);
+		else if (fc == AXIS::Z)
+			return operator()(x, y);
+		else if (fc == AXIS::Y)
+			return operator()(x, z);
+		else if (fc == AXIS::X)
+			return operator()(y, z);
+		else if (fc == AXIS::YZ)
+			return operator()(z);
+		else if (fc == AXIS::XZ)
+			return operator()(y);
+		else if (fc == AXIS::XY)
+			return operator()(z);
+		else return 0.0;
+	}
+
+	inline double partial(AXIS fc, double x, double y)
+	{
+		if (fc == AXIS::NO)
+			return operator()(x, y);
+		else if (fc == AXIS::Y)
+			return operator()(x);
+		else if (fc == AXIS::X)
+			return operator()(y);
+		else return 0.0;
+	}
+
+	inline double partial(AXIS fc, double x)
+	{
+		if (fc == AXIS::NO)
+			return operator()(x);
+		else return 0.0;
+	}
 };
 
 struct EckhardtSachaInteraction : InteractionBase
@@ -66,8 +104,12 @@ struct EckhardtSachaInteraction : InteractionBase
 	double EEcharge;
 	static constexpr std::string_view name = "ES";
 	explicit EckhardtSachaInteraction(InteractionBase p) :
-		InteractionBase(p), NEcharge(Ncharge* Echarge),
-		EEcharge(Echarge* Echarge) {}
+		InteractionBase(p),
+		NEcharge(Ncharge* Echarge),
+		EEcharge(Echarge* Echarge)
+	{
+		logInfo("EckhardtSachaInteraction init NEcharge=%g, EEcharge=%g", NEcharge, EEcharge);
+	}
 
 	EckhardtSachaInteraction(Section& settings)
 	{
@@ -76,9 +118,9 @@ struct EckhardtSachaInteraction : InteractionBase
 		inipp::get_value(settings, "Echarge", Echarge);
 		inipp::get_value(settings, "Nsoft", Nsoft);
 		inipp::get_value(settings, "Esoft", Esoft);
-		logInfo("EckhardtSachaInteraction init");
 		NEcharge = (Ncharge * Echarge);
 		EEcharge = (Echarge * Echarge);
+		logInfo("EckhardtSachaInteraction init NEcharge=%g, EEcharge=%g", NEcharge, EEcharge);
 	}
 
 	inline double ee_EckhardtSacha(double x, double y)
@@ -89,36 +131,46 @@ struct EckhardtSachaInteraction : InteractionBase
 	{
 		return NEcharge / sqrt(x * x + Nsoft);
 	}
-
-	template <AXIS fc> inline double operator()(double x)
-	{
-		return Ne_EckhardtSacha(x);
-	}
-	template <AXIS fc> inline double operator()(double x, double y)
-	{
-		if (fc == AXIS::Y)
-			return Ne_EckhardtSacha(x);
-		if (fc == AXIS::X)
-			return Ne_EckhardtSacha(y);
-		else
-			return ee_EckhardtSacha(x, y) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(y);
-	}
-	template <AXIS fc>
 	inline double operator()(double x, double y, double z)
 	{
-		if constexpr (fc == AXIS::NO)
-			return ee_EckhardtSacha(x, y) + ee_EckhardtSacha(y, z) + ee_EckhardtSacha(z, x) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(y) + Ne_EckhardtSacha(z);
-		else if constexpr (fc == AXIS::Z)
-			return ee_EckhardtSacha(x, y) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(y);
-		else if constexpr (fc == AXIS::Y)
-			return ee_EckhardtSacha(x, z) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(z);
-		else if constexpr (fc == AXIS::X)
-			return ee_EckhardtSacha(y, z) + Ne_EckhardtSacha(y) + Ne_EckhardtSacha(z);
-		else if constexpr (fc == AXIS::YZ)
+		return ee_EckhardtSacha(x, y) + ee_EckhardtSacha(y, z) + ee_EckhardtSacha(z, x) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(y) + Ne_EckhardtSacha(z);
+	}
+	inline double operator()(double x, double y)
+	{
+		return ee_EckhardtSacha(x, y) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(y);
+	}
+	inline double partial(AXIS fc, double x)
+	{
+		if (fc == AXIS::NO)
 			return Ne_EckhardtSacha(x);
-		else if constexpr (fc == AXIS::XZ)
+		else return 0.0;
+	}
+	inline double partial(AXIS fc, double x, double y)
+	{
+		if (fc == AXIS::NO)
+			return operator()(x, y);
+		else if (fc == AXIS::Y)
+			return Ne_EckhardtSacha(x);
+		else if (fc == AXIS::X)
 			return Ne_EckhardtSacha(y);
-		else if constexpr (fc == AXIS::XY)
+		else return 0.0;
+	}
+
+	inline double partial(AXIS fc, double x, double y, double z)
+	{
+		if (fc == AXIS::NO)
+			return operator()(x, y, z);
+		else if (fc == AXIS::Z)
+			return ee_EckhardtSacha(x, y) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(y);
+		else if (fc == AXIS::Y)
+			return ee_EckhardtSacha(x, z) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(z);
+		else if (fc == AXIS::X)
+			return ee_EckhardtSacha(y, z) + Ne_EckhardtSacha(y) + Ne_EckhardtSacha(z);
+		else if (fc == AXIS::YZ)
+			return Ne_EckhardtSacha(x);
+		else if (fc == AXIS::XZ)
+			return Ne_EckhardtSacha(y);
+		else if (fc == AXIS::XY)
 			return Ne_EckhardtSacha(z);
 		else return 0.0;
 	}
