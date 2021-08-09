@@ -575,10 +575,11 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		do
 		{
 			psi[counters[DIM]] *= BaseGrid::template mask<Is...>(
-				(mcomm.bounded[Is] ? neg_dist_from_edge<R, Is>(counters[Is]) : 0)...);
+				(mcomm.bounded[Is] ? neg_dist_from_edge<R, Is>(counters[Is]) : -n2[Is])...);
 
 		} while (!(...&&
-				   ((counters[rev<Is>]++, counters[rev<Is>] < shape<R, rev<Is>>())
+				   ((counters[rev<Is>]++,
+					 counters[rev<Is>] < shape<R, rev<Is>>())
 					? (counters[DIM]++, false)
 					: (counters[rev<Is>] = 0, true))
 				   ));
