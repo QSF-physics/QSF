@@ -337,6 +337,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	inline void fourier()
 	{
 	// Timings::measure::start("FFTW");
+		// fprintf(stderr, "normal fourier\n");
 		static_assert(R == REP::X || R == REP::P, "Can only transform to X or P, unambigously.");
 		constexpr DIMS back = R == REP::P ? 0 : 1;
 		fftw_execute(mpi_plans[back]);

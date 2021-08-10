@@ -235,7 +235,7 @@ bool readPsiBinaryHeader(FILE* file)
 	bool bounded[DIM];
 	fread(&ns, sizeof(ind), DIM, file);
 	fread(&dxs, sizeof(double), DIM, file);
-	fread(&dxs, sizeof(bool), DIM, file);
+	fread(&bounded, sizeof(bool), DIM, file);
 	// SKUBANY TEST POWODUJE EXC_BAD_ACCESS
 	// logTest(dim == DIM, "Dimension of the input " psi_symbol" (%d) equals DIM (%d)", dim, DIM);
 

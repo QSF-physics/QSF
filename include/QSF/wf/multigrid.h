@@ -20,7 +20,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 	MPI_Win moreFreeWin = nullptr;
 	bool mpiFFTW;
 	fftw_plan extra_plans[2 * DIM];
-	int extra_plans_count;
+	int extra_plans_count = 0;
 
 	ind stride_slice[DIM][DIM]; //For each "free" axis
 	fftw_plan transf_slice[DIM];
@@ -44,6 +44,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 
 			if (mpiFFTW)
 			{
+				printf("pID %d: is not main makes mpiFFTW plans\n", MPI::pID);
 				//make forward and backward mpi plans
 				for (int i = 0; i < 2; i++)
 					Base::mpi_plans[i] =
@@ -113,7 +114,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 			}
 			Base::reset();
 		}
-		// _logMPI("region %d mpiFFTW %d extra_plans_count %d", MPI::region, mpiFFTW, extra_plans_count);
+		fprintf(stderr, "---> region %d mpiFFTW %d extra_plans_count %d\n", MPI::region, mpiFFTW, extra_plans_count);
 		// _logMPI("Region %d MPI::pID: %d got %td nodes or %td rows [start row: %td end row: %td]", MPI::region, MPI::pID, m_l, n_lx[0], pos_lx.first, pos_lx.last);
 	}
 
@@ -271,7 +272,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 		isTopX = pos_lx.last > n[0] - 1 - nCAP;
 		startX = Max(0, n[0] - nCAP - pos_lx.first);
 
-		printf("pID: %d  startX[%td] sizeX[%td]\n", MPI::pID, startX, sizeX);
+		printf("pID: %d  startX[%td] (sizeX[%td] isBottomX %d) isTopX %d \n", MPI::pID, startX, sizeX, isBottomX, isTopX);
 		// if (transf_slice[0] == NULL) logInfo("fftw_mpi_plan... (slice) returned NULL");
 	}
 
@@ -328,6 +329,10 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 	}
 	inline void getData(int rank, ind slice_off, ind wf_offset, ind count)
 	{
+		if (slice_off<0 || slice_off + count >m_lslice)
+			printf("ERROR %d slice[%td/%td/%td]", MPI::pID, slice_off, count, m_lslice);
+		if (wf_offset<0 || wf_offset + count >m_l)
+			printf("ERROR %d wf[% td / % td / % td] \n", MPI::pID, wf_offset, count, m_l);
 		MPI_Get(&slice[slice_off], //pos in slice
 				count, //send count
 				MPI_CXX_DOUBLE_COMPLEX, rank,
@@ -344,7 +349,6 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 		ind counters[DIM] = { 0 }; //Z dimension goes in "bulk" MPI_Get
 		do
 		{
-
 			// negative axis
 			if (Axis<dirFree> != AXIS::X || (isBottomX && counters[0] < sizeX))
 				getData(rank, slice_offset<dirFree>(counters[dirs]..., 0),
@@ -550,21 +554,22 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 	inline void fourier()
 	{
 		constexpr DIMS back = R == REP::P ? 0 : 1;
-		// if (mcomm.isMain)
+
+		if (mpiFFTW)
 		{
-			if (mpiFFTW)
-			{
-				fftw_execute(Base::mpi_plans[back]);
-				// logWarning("mainFFTW plan pID %d", MPI::pID);
-			}
-			for (int i = 0; i < extra_plans_count; i++)
-			{
-				// printf("fourier pID %d plan %d/%d\n", MPI::pID, i, extra_plans_count);
-				fftw_execute(extra_plans[i + DIM * back]);
-				// logWarning("extra_plans");
-			}
-			if constexpr (back) normalizeAfterTwoFFT();
+			// fprintf(stderr, "%d multi fourier %p\n", MPI::pID, Base::mpi_plans[back]);
+			fftw_execute(Base::mpi_plans[back]);
+			// logWarning("mainFFTW plan pID %d", MPI::pID);
 		}
+		for (int i = 0; i < extra_plans_count; i++)
+		{
+			// fprintf(stderr, "%d multi fourier %p\n", MPI::pID, Base::mpi_plans[back]);
+			// fprintf(stderr, "fourier pID %d plan [%d/%d]\n", MPI::pID, i, extra_plans_count);
+			fftw_execute(extra_plans[i + DIM * back]);
+			// logWarning("extra_plans");
+		}
+		if constexpr (back) normalizeAfterTwoFFT();
+
 	}
 #pragma endregion FFToverloads
 
