@@ -20,6 +20,7 @@ struct CAP<CartesianGrid_<size, MPIRegions>> : AbsorberType, CartesianGrid_<size
 		inipp::get_value(settings, "nCAP", nCAP);
 		eta = Power(3.0 / double(nCAP), 4);
 	}
+
 	//Takes negative distance from the corresponding edge
 	template <uind ... dirs, typename ...Nodes>
 	inline double absorb(double delta, Nodes ... nodes)

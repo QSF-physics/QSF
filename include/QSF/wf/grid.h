@@ -134,6 +134,12 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		MPI_Gather(psi, m_l, MPI_CXX_DOUBLE_COMPLEX, psi_total, m_l, MPI_CXX_DOUBLE_COMPLEX, 0, MPI::rComm);
 	}
 
+	void scatter()
+	{
+		logMPI("Scattering " psi_symbol "... to address %p", psi);
+		MPI_Scatter(psi_total, m_l, MPI_CXX_DOUBLE_COMPLEX, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, 0, MPI::rComm);
+	}
+
 	template <REP R, ind Is> ind constexpr abs_index(ind index) const noexcept
 	{
 		if constexpr (Is == 0)
@@ -667,22 +673,32 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		add<F, R, false>(std::forward<F>(f), indices);
 	}
 
-	void load(std::string input_path)
+	void load(std::string input_path, int region_index = 0)
 	{
-		if (!MPI::pID)
+		if (MPI::region == region_index)
 		{
-			// auto out = PsiFile(M_FROM, )
-			FILE* fin = fopen_with_check<IO_ATTR::READ>(input_path.c_str());
-			//openPsi<AFTER<>, REP::X, DIM, IO::ATTR::READ>(name, 0, 0, true);
-			bool is_complex = readPsiBinaryHeader<DIM>(fin);
+			if (!MPI::rID) //only node can load the file
+			{
+				if (psi_total == nullptr)
+				{
+					logALLOC("Allocating memory for psi_total (%td nodes)", m);
+					psi_total = new cxd[m];
+				}
+					// auto out = PsiFile(M_FROM, )
+				FILE* fin = fopen_with_check<IO_ATTR::READ>(input_path.c_str());
+				//openPsi<AFTER<>, REP::X, DIM, IO::ATTR::READ>(name, 0, 0, true);
+				bool is_complex = readPsiBinaryHeader<DIM>(fin);
 
-			if (is_complex) fread(psi, sizeof(cxd), m, fin);
-			else for (ind i = 0; i < m; i++) fread(&psi[i], sizeof(double), 1, fin);
-			closeFile(fin);
+				if (is_complex) fread(psi_total, sizeof(cxd), m, fin);
+				else for (ind i = 0; i < m; i++) fread(&psi_total[i], sizeof(double), 1, fin);
+				closeFile(fin);
 
-			double qnorm = 0.0;
-			for (ind i = 0; i < m; i++) qnorm += std::norm(psi[i]);
-			logSETUP("State " psi_symbol "_%d loaded with norm %g", 0, BaseGrid::template vol<REP::X>() * qnorm);
+
+				double qnorm = 0.0;
+				for (ind i = 0; i < m; i++) qnorm += std::norm(psi_total[i]);
+				logSETUP("State " psi_symbol "_%d loaded with norm %g", 0, BaseGrid::template vol<REP::X>() * qnorm);
+			}
+			scatter();
 		}
 	}
 
