@@ -144,7 +144,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	{
 		if constexpr (Is == 0)
 		{
-			if constexpr (REP::X == R) return index + pos_lx.first;
+			if constexpr (R == REP::X) return index + pos_lx.first;
 			else return index + pos_lp.first;
 		}
 		else return index;
@@ -153,9 +153,12 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	{
 		return abs_index<R, dir>(index) - n2[dir];
 	}
-	template <REP R, ind dir> ind constexpr neg_dist_from_edge(ind index) const noexcept
+	//only for X rep
+	template <ind dir> ind constexpr neg_dist_from_edge(ind index) const noexcept
 	{
-		return abs_index<R, dir>(index) >= n2[dir] ? abs_index<R, dir>(index) - n[dir] + 1 : -abs_index<R, dir>(index);
+		return abs_index<REP::X, dir>(index) >= n2[dir]
+			? abs_index<REP::X, dir>(index) - n[dir] + 1
+			: -abs_index<REP::X, dir>(index);
 	}
 
 
@@ -360,7 +363,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 
 	}
 
-	//HACK: change second false to true after done with Dmitry!
+
 	std::string save(std::string_view common_name = "",
 					 DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false })
 	{
@@ -404,7 +407,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 
 			if constexpr (hasAbsorber && R == REP::X && !MPIGridComm::many)
 			{
-				psi[counters[DIM]] *= BaseGrid::template absorb<Is...>(delta, neg_dist_from_edge<R, Is>(counters[Is])...);
+				psi[counters[DIM]] *= BaseGrid::template absorb<Is...>(delta, neg_dist_from_edge<Is>(counters[Is])...);
 				// logWarning("Calling with %g", BaseGrid::template operator() < Is... > (abs_centered_index<R, Is>(counters[Is])...));
 			}
 
@@ -575,25 +578,26 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 #pragma endregion Computations
 
 #pragma region Operations
-	template <REP R, uind ... Is>
+	template <uind ... Is>
 	inline void maskRegion_(seq<Is...>)
 	{
 		ind counters[DIM + 1] = { 0 };
 		do
 		{
 			psi[counters[DIM]] *= BaseGrid::template mask<Is...>(
-				(mcomm.bounded[Is] ? neg_dist_from_edge<R, Is>(counters[Is]) : -n2[Is])...);
+				(mcomm.bounded[Is] ? neg_dist_from_edge<Is>(counters[Is]) : -n2[Is])...);
 
 		} while (!(...&&
 				   ((counters[rev<Is>]++,
-					 counters[rev<Is>] < shape<R, rev<Is>>())
+					 counters[rev<Is>] < shape<REP::X, rev<Is>>())
 					? (counters[DIM]++, false)
 					: (counters[rev<Is>] = 0, true))
 				   ));
 	}
+	// REP::X only!
 	inline void maskRegion()
 	{
-		maskRegion_<REP::X>(indices);
+		maskRegion_(indices);
 	}
 
 	template <MODE M, REP R, class Op>

@@ -87,9 +87,12 @@ struct SplitPropagator : Config, PropagatorBase
 	SplitPropagator(PropagatorBase pb, HamWF&& wf) : PropagatorBase(pb), wf(wf)
 	{
 		logInfo("SplitPropagator init");
-		max_steps = wf._coupling.maxPulseDuration() / dt + 1;
-		logSETUP("maxPulseDuration: %g, dt: %g => max_steps: %td", wf._coupling.maxPulseDuration(), dt, max_steps);
-		state_accuracy = 0;
+		if constexpr (M == MODE::RE)
+		{
+			max_steps = wf._coupling.maxPulseDuration() / dt + 1;
+			logSETUP("maxPulseDuration: %g, dt: %g => max_steps: %td", wf._coupling.maxPulseDuration(), dt, max_steps);
+			state_accuracy = 0;
+		}
 		init();
 	}
 	SplitPropagator(HamWF&& wf) : wf(wf)

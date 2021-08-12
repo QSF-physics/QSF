@@ -14,7 +14,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 	using Base::mcomm, Base::psi, Base::mask, Base::inv_m, Base::inv_n;
 	static_assert(Base::hasAbsorber, "Absorber is required for multigrid computations");
 	static inline constexpr cxd zero = { 0.0, 0.0 };
-	template <ind Is> ind static constexpr rev = DIM - 2 - Is;
+	template <ind Is> ind static constexpr rev = DIM - 2 - Is; //when iterating over n-1 dims
 
 	MPI_Win lessFreeWin = nullptr;
 	MPI_Win moreFreeWin = nullptr;
@@ -216,7 +216,6 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 	template <uind dirFree, uind ...dirs>
 	void initFFTWplans(seq<dirs...>)
 	{
-
 		if constexpr (dirFree == 0)
 		{
 			printf("pID %d MPI initFFTWplans dirFree: [%td] howmany %td\n",
@@ -341,6 +340,12 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 				MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
 	}
 
+	std::string save(std::string_view common_name = "",
+					 DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false })
+	{
+		if (df.rep == REP::P) fourier<REP::P>();
+		return Base::save(common_name, df);
+	}
 
 	template <uind dirFree, uind ... dirs>
 	inline void getBox(int rank, int box, seq<dirs...>)
@@ -413,10 +418,10 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 	template <uind dirFree, uind ... dirs, typename ...Nodes>
 	inline double mask_correction(Nodes ... nodes)
 	{
-		// return 1.0;
-		if (MPI::group == 1) return 1.0;
-		else return  onehalf * ((dirs == dirFree ? 0 : Base::template mask<dirs>(nodes)) + ... + 0) +
-			onesixth * (1 - ((dirs == dirFree ? 1.0 : Base::template mask<dirs>(nodes))*...));
+		return  onehalf * ((dirs == dirFree ? 0 : Base::template mask<dirs>(nodes)) + ... + 0)
+			+ onesixth * (1 - ((dirs == dirFree ? 1.0 : Base::template mask<dirs>(nodes))*...));
+			// else return 1.0;
+		// onesixth* (invCAP2(j + boxIndex * CAPnodes, k)) + onehalf * (CAP1(j + boxIndex * CAPnodes) + CAP1(k));
 	}
 
 	template <uind dirFree, uind ... dirs>
@@ -426,17 +431,33 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 		do
 		{
 			//those by design operate on nCAP nodes, which takes neg dist from boundry
-			if (Axis<dirFree> != AXIS::X || (isBottomX && counters[0] < sizeX))
+			if (Axis<dirFree> != AXIS::X || (isBottomX && counters[0] < sizeX)) //TODO: HERE!!!
+			{
 				slice[slice_offset<dirFree>(counters[dirs]...)]
-				*= Base::template inv_mask<0>(Base::template neg_dist_from_edge<REP::X, dirFree>(counters[dirFree]))
-				* mask_correction<dirFree, dirs...>(Base::template neg_dist_from_edge<REP::X, dirFree>(counters[dirs] + slider<dirFree, dirs>(boxIndex))...);
+					*= Base::template inv_mask<0>(Base::template neg_dist_from_edge<dirFree>(counters[dirFree]));
+
+				if (MPI::group == 1)
+					slice[slice_offset<dirFree>(counters[dirs]...)]
+					*= mask_correction<dirFree, dirs...>(Base::template neg_dist_from_edge<dirs>(counters[dirs] + slider<dirFree, dirs>(boxIndex))...);
+				// if ((MPI::group == 1) && (dirFree == 0))// && ((counters[dirs] == 1) && ...))
+				// 	printf("pID %d reg %d box %d dir %td cooords[%2td %2td %2td] local[%2td %2td %2td] (bottom) val [%g]\n", MPI::pID, MPI::group, boxIndex, dirFree, Base::template neg_dist_from_edge<dirs>(counters[dirs] + slider<dirFree, dirs>(boxIndex))...,
+				// 		   counters[dirs]...,
+				// 		   mask_correction<dirFree, dirs...>(Base::template neg_dist_from_edge<dirs>(counters[dirs] + slider<dirFree, dirs>(boxIndex))...));
+			}
 
 			if (Axis<dirFree> != AXIS::X || (isTopX && counters[0] >= startX))
+			{
 				slice[slice_offset<dirFree>((counters[dirs] + top<dirFree, dirs>())...)]
-				*= Base::template inv_mask<0>(Base::template neg_dist_from_edge<REP::X, dirFree>(counters[dirFree] + top<dirFree, dirFree>()))
-				* mask_correction<dirFree, dirs...>(Base::template neg_dist_from_edge<REP::X, dirFree>(counters[dirs] + tslider<dirFree, dirs>(boxIndex))...);
+					*= Base::template inv_mask<0>(Base::template neg_dist_from_edge<dirFree>(counters[dirFree] + top<dirFree, dirFree>()));
+				if (MPI::group == 1)
+					slice[slice_offset<dirFree>((counters[dirs] + top<dirFree, dirs>())...)]
+					*= mask_correction<dirFree, dirs...>(Base::template neg_dist_from_edge<dirs>(counters[dirs] + tslider<dirFree, dirs>(boxIndex))...);
 
-
+				// if ((MPI::group == 1) && (dirFree == 0))// && ((counters[dirs] == 1) && ...))
+				// 	printf("pID %d reg %d box %d dir %td cooords[%2td %2td %2td] local[%2td %2td %2td] (top   ) val [%g]\n", MPI::pID, MPI::group, boxIndex, dirFree, Base::template neg_dist_from_edge<dirs>(counters[dirs] + tslider<dirFree, dirs>(boxIndex))...,
+				// 		   counters[dirs]...,
+				// 		   mask_correction<dirFree, dirs...>(Base::template neg_dist_from_edge<dirs>(counters[dirs] + tslider<dirFree, dirs>(boxIndex))...));
+			}
 		} while (!(...&&
 				   ((counters[Base::template rev<dirs>]++,
 					 counters[Base::template rev<dirs>] < sliceLimited<dirFree, Base::template rev<dirs>>())
@@ -479,7 +500,6 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 				add<1>(boxIndex, n_seq<DIM>);
 			}
 		}
-
 		if (fc == AXIS::Z)
 		{
 			if constexpr (DIM > 2)

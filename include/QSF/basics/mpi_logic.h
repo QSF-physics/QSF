@@ -201,8 +201,8 @@ namespace MPI
 				// __logMPI("Process %d, local group size %d, Remote group (moreFree) size %d and should %d\n", pID, gMembers[freeCoordsCount[region]], size, gMembers[freeCoordsCount[region] + 1]);
 
 				MPI_Intercomm_merge(moreFreeInter, 0, &moreFree);
-				int rank;
-				MPI_Comm_rank(moreFree, &rank);
+				// int rank;
+				// MPI_Comm_rank(moreFree, &rank);
 				// _logMPI("[group %d region %d] rank of process %d is %d\n", group, region, pID, rank);
 			}
 
