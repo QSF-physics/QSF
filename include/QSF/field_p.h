@@ -60,7 +60,7 @@ struct ChemPhysPulse :PulsePrototype
 	inline double operator()(double time) const
 	{
 		double tmp = omega * time + phi - pi * ncycles;
-		return F0 * sin(env_mult * time) * cos(tmp) + cos(env_mult * time) * sin(tmp) / ncycles;
+		return F0 * (sin(env_mult * time) * cos(tmp) + cos(env_mult * time) * sin(tmp) / ncycles);
 	}
 };
 

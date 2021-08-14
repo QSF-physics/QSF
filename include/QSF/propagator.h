@@ -1,5 +1,5 @@
+#include <chrono>
 #include "splitting.h"
-
 struct Step {
 	static constexpr REP rep = REP::NONE;
 	static constexpr bool late = false;
@@ -9,8 +9,17 @@ struct Time {
 	static constexpr bool late = false;
 };
 
+struct ETA
+{
+	static constexpr REP rep = REP::NONE;
+	static constexpr bool late = false;
+	static constexpr std::string_view name = "ETA [h:m:s]";
+	static constexpr std::string_view formatting = "%8d:%02d:%02d";
+};
+
 using ENERGY_TOTAL = SUM<AVG<PotentialEnergy>, AVG<KineticEnergy>>;
 using ENERGY_DIFFERENCE = CHANGE<SUM<AVG<PotentialEnergy>, AVG<KineticEnergy>>>;
+
 
 struct PropagatorBase
 {
@@ -48,6 +57,11 @@ struct PropagatorBase
 template <MODE M, class SpType, class HamWF>
 struct SplitPropagator : Config, PropagatorBase
 {
+	using clock = std::chrono::high_resolution_clock;
+	using TimeVar = clock::time_point;
+
+	TimeVar pass_start;
+
 	using SplitType = SpType;
 	using ChainExpander = typename SplitType::ChainExpander;
 
@@ -152,8 +166,18 @@ struct SplitPropagator : Config, PropagatorBase
 	template <class Op>
 	inline double getValue()
 	{
+		using std::chrono::seconds;
+		using std::chrono::milliseconds;
+		using std::chrono::duration;
+		using std::chrono::duration_cast;
+			// LOG_INLINE(formatting.data(), val / 3600, val % 3600 / 60, val % 60);
 		if constexpr (std::is_same_v<Time, Op>) return timer;
 		if constexpr (std::is_same_v<Step, Op>) return step;
+		if constexpr (std::is_same_v<ETA, Op>)
+		{
+			auto sec = duration_cast<seconds>(clock::now() - pass_start).count();
+			return (1.0 * max_steps / step - 1.0) * sec;
+		}
 		else if constexpr (!std::is_same_v<Step, Op> && !std::is_same_v<Time, Op>) return wf.template getValue<Op>();
 	}
 	template <REP R, class BO, class... Op>
@@ -357,6 +381,7 @@ struct SplitPropagator : Config, PropagatorBase
 	template <class OUTS, class Worker>
 	void run(OUTS&& outputs, Worker&& worker, uind pass = 0)
 	{
+		pass_start = clock::now();
 		outputs.template init<M>(pass, name);
 		worker(WHEN::AT_START, step, pass, wf);
 		computeEach<WHEN::AT_START>(outputs);

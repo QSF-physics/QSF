@@ -23,14 +23,18 @@ namespace MPI
 	/* Process id in MPI execution */
 	int gID;	// In group
 	int rID;	// In region
+	int eID;	// In equiv. class
 	/* Total number of MPI processes */
 	int gSize;	// In group
 	int rSize;	// In region
+	int eSize;	// In equiv. class
 	/* Communicate between */
 	MPI_Comm gComm;
 	MPI_Comm rComm;
+	MPI_Comm eComm;
 	MPI_Group gGroup;
 	MPI_Group rGroup;
+	MPI_Group eGroup;
 
 
 	// All rigor opt: FFTW_ESTIMATE, FFTW_MEASURE, FFTW_PATIENT, FFTW_EXHAUSTIVE, FFTW_WISDOM_ONLY
@@ -148,8 +152,17 @@ namespace MPI
 			MPI_Comm_group(rComm, &rGroup);
 			_logMPI("region %d: [rID %3d/%3d] is in group %d [gID %3d/%3d]", region, rID, rSize, group, gID, gSize);
 
-			MPI_Barrier(MPI_COMM_WORLD);
 			logSETUP("Initiated %d regions, processes per region: %d", regionCount, rSize);
+			MPI_Barrier(MPI_COMM_WORLD);
+
+			//equivalence comm - for joining the wf
+			MPI_Comm_split(MPI_COMM_WORLD, rID, pID, &eComm);
+			MPI_Comm_rank(eComm, &eID);
+			MPI_Comm_size(eComm, &eSize);
+			MPI_Comm_group(eComm, &eGroup);
+
+			_logMPI("pID %d belongs to equiv. class %d with eID %d/ %d", pID, rID, eID, eSize);
+			MPI_Barrier(MPI_COMM_WORLD);
 
 			logSETUP("Attempting to init %d inter-communicators linking groups", groupCount - 1);
 			// Determine number of members in each group (group is determined by freeCoordsCount)

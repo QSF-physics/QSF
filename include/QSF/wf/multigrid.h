@@ -344,8 +344,32 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 					 DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false })
 	{
 		if (df.rep == REP::P) fourier<REP::P>();
-		return Base::save(common_name, df);
+		return Base::_save(common_name, df);
+		if (df.rep == REP::P) fourier<REP::X>();
 	}
+
+	std::string saveJoined(std::string_view common_name = "",
+						   DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false })
+	{
+		if (df.rep == REP::P) fourier<REP::P>();
+		// MPI_Allreduce(MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, MPI::eComm);
+		MPI_Reduce((MPI::eID) ? psi : MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, 0, MPI::eComm);
+		return Base::_save(common_name, df, true);
+		if (df.rep == REP::P) fourier<REP::X>();
+	}
+
+	std::string saveIonizedJoined(std::string_view common_name = "",
+								  DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false })
+	{
+		if (df.rep == REP::P) fourier<REP::P>();
+		// MPI_Allreduce(MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, MPI::eComm);
+		if (MPI::region == 0) Base::reset();
+
+		MPI_Reduce((MPI::eID) ? psi : MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, 0, MPI::eComm);
+		return Base::_save(common_name, df, true);
+		if (df.rep == REP::P) fourier<REP::X>();
+	}
+
 
 	template <uind dirFree, uind ... dirs>
 	inline void getBox(int rank, int box, seq<dirs...>)
@@ -570,6 +594,8 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 		}
 		else Base::normalizeAfterTwoFFT();
 	}
+
+
 	template <REP R>
 	inline void fourier()
 	{
@@ -589,8 +615,8 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 			// logWarning("extra_plans");
 		}
 		if constexpr (back) normalizeAfterTwoFFT();
-
 	}
+
 #pragma endregion FFToverloads
 
 #pragma region Tests

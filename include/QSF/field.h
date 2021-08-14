@@ -56,11 +56,13 @@ struct Field : _Operator
 		endtimes{ (p.delay_in_cycles * 2.0 * pi / p.omega + p.pulse_time)... }{}
 };
 
+struct _VectorPotential {};
+
 template <class F>
-struct VectorPotential : F
+struct PromoteFieldToA : F, _VectorPotential
 {
-	using type = VectorPotential;
-	VectorPotential(F field) :F(field) {}
+	using type = PromoteFieldToA;
+	PromoteFieldToA(F field) :F(field) {}
 	using F::lastVal;
 
 	// double Fval = 0.0;

@@ -112,9 +112,9 @@ struct DipoleCoupling;
 
 template <class ... Fields>
 struct DipoleCoupling<VelocityGauge, Fields...> :
-	CouplingBase<DipoleApprox, VectorPotential<Fields>...>
+	CouplingBase<DipoleApprox, std::conditional_t<std::is_base_of_v<_VectorPotential, Fields>, Fields, PromoteFieldToA<Fields>>...>
 {
-	using base = CouplingBase<DipoleApprox, VectorPotential<Fields>...>;
+	using base = CouplingBase<DipoleApprox, std::conditional_t<std::is_base_of_v<_VectorPotential, Fields>, Fields, PromoteFieldToA<Fields>>...>;
 	// using base::precalc;
 	static constexpr REP couplesInRep = REP::P;
 
@@ -125,7 +125,11 @@ struct DipoleCoupling<VelocityGauge, Fields...> :
 	template <class F> double getValue()
 	{
 		if constexpr ((std::is_same_v<F, Fields> || ...))
-			return std::get<VectorPotential<F>>(base::fields).lastVal;
+		{
+			if constexpr ((std::is_base_of_v<_VectorPotential, Fields> || ...))
+				return std::get<F>(base::fields).lastVal;
+			else return std::get<PromoteFieldToA<F>>(base::fields).lastVal;
+		}
 		else return -1; //TODO: log meaningful error 
 	}
 	// DipoleCoupling(const DipoleCoupling&) = default;

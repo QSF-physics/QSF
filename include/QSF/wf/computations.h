@@ -73,11 +73,9 @@ template <uind dir, class Op> struct DERIVATIVE : COMPUTATION <double, true, Op>
 	static constexpr std::string_view name = "DER_";
 };
 
-//Not stored in buffers, but shown during logging. Useful for ETAOperator
-struct _AUXILLARY_VALUES {};
-template <typename ... Args> struct AUXILLARY_VALUES :_AUXILLARY_VALUES
+template <typename ... Args> struct AUXILLARY_VALUES :COMPUTATION<double, false, Args...>
 {
-	std::tuple<Args...> types;
+	static constexpr std::string_view name = "";
 };
 
 

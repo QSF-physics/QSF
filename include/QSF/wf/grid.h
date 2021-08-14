@@ -91,8 +91,8 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	ind m_l; //m local - total number of nodes per process
 
 	GridPos<MPI::Slices> pos_lx;
-	ind strides_lx[DIM];
 	ind n_lx[DIM]; //MPI local n[]: local_n0,n1,n2,...
+	ind strides_lx[DIM];
 
 	// Different from shape_l[] if n0!=n1 and if FFTW_MPI_TRANSPOSED_OUT is used:
 	GridPos<MPI::Slices> pos_lp;
@@ -109,7 +109,6 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		m_l(m / MPI::rSize)
 	{
 		init();
-		// mcomm.init(psi, m_l, n_lx, strides_lx);
 		logSETUP("m %td m_l %td", m, m_l);
 	}
 
@@ -119,7 +118,6 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		m_l(m / MPI::rSize)
 	{
 		init();
-		// mcomm.init(psi, m_l, n_lx, strides_lx);
 		logSETUP("m %td m_l %td", m, m_l);
 	}
 
@@ -203,17 +201,22 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		pos_lp.last = (MPI::rID + 1) * n_lp[0] - 1;
 		// n0_e = n0_o + n0_l - 1;
 	}
+	template <uind ... Is>
+	void initAbsStrides(seq<Is...>)
+	{
+		strides[DIM - 1] = 1;
+		((strides[Is] = n[Is + 1] * strides[Is + 1]), ...);
+	}
 	template <REP R, uind ... Is>
-	void initStrides(seq<Is...>)
+	void initLocalStrides(seq<Is...>)
 	{
 		ind* n_l = R == REP::X ? n_lx : n_lp;
 		ind* strides_l = R == REP::X ? strides_lx : strides_lp;
 		strides_l[DIM - 1] = 1;
-		//Strides
 		((strides_l[Is] = n_l[Is + 1] * strides_l[Is + 1]), ...);
 	}
 	template <REP R, uind ... Is>
-	void initSizes(seq<Is...>)
+	void initLocalSizes(seq<Is...>)
 	{
 		ind* n_l = R == REP::X ? n_lx : n_lp;
 		((n_l[Is] = n[Is]), ...);
@@ -248,10 +251,11 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	}
 	void init()
 	{
-		initSizes<REP::X>(n_seq<DIM>);
-		initSizes<REP::P>(n_seq<DIM>);
-		initStrides<REP::X>(rev_seq<DIM - 1>);
-		initStrides<REP::P>(rev_seq<DIM - 1>);
+		initLocalSizes<REP::X>(n_seq<DIM>);
+		initLocalSizes<REP::P>(n_seq<DIM>);
+		initAbsStrides(rev_seq<DIM - 1>);
+		initLocalStrides<REP::X>(rev_seq<DIM - 1>);
+		initLocalStrides<REP::P>(rev_seq<DIM - 1>);
 		initPositions();
 		testSizes();
 
@@ -283,6 +287,12 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	{
 		if constexpr (DIM - 1 != dim) return i * stride<R, dim>() + data_offset<R, dim + 1>(args...);
 		else  return i * stride<R, dim>();
+	}
+	template <uind dim = 0, class I, class... Args>
+	constexpr inline auto abs_data_offset(I i, Args... args) // noexcept
+	{
+		if constexpr (DIM - 1 != dim) return i * strides[dim] + abs_data_offset<dim + 1>(args...);
+		else  return i * strides[dim];
 	}
 
 	template <REP R, class... I> cxd& operator()(I... i)
@@ -364,11 +374,12 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	}
 
 
-	std::string save(std::string_view common_name = "",
-					 DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false })
+	std::string _save(std::string_view common_name = "",
+					  DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false },
+					  bool mainRegionOnly = false)
 	{
 		gather();
-		if (!MPI::rID)
+		if ((!mainRegionOnly && !MPI::rID) || (mainRegionOnly && !MPI::pID))
 		{
 			// logDUMPS("Dumping " psi_symbol " in %s rep", (R == REP::X ? "X" : "P"));
 			// double dxORdp[DIM];
@@ -382,6 +393,14 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 			fclose(file);
 		}
 		return std::string(file_path);
+	}
+
+	std::string save(std::string_view common_name = "",
+					 DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false })
+	{
+		if (df.rep == REP::P) fourier<REP::P>();
+		return _save(common_name, df);
+		if (df.rep == REP::P) fourier<REP::X>();
 	}
 
 #pragma region Computations
@@ -615,7 +634,36 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		}
 		if constexpr (std::is_same_v<AntiSymmetrize, Op>)
 		{
+			if (MPI::rSize > 1)
+			{
+				if (psi_total == nullptr)
+					psi_total = new cxd[m];
+			   // MPI_Gather(psi, m_l, MPI_CXX_DOUBLE_COMPLEX, psi_total, m_l, MPI_CXX_DOUBLE_COMPLEX, 0, MPI::rComm);
+				MPI_Allgather(psi, m_l, MPI_CXX_DOUBLE_COMPLEX, psi_total, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI::rComm);
+			}
+			else
+			{
+				//TODO: do it locally
+			}
 
+			ind readInd0;
+			for (ind i = 0; i < n_lx[0]; i++)
+			{
+				for (ind j = 0; j < n_lx[1]; j++)
+				{
+					for (ind k = 0; k < n_lx[2]; k++)
+					{
+						readInd0 = data_offset<REP::X>(i, j, k);// (i * n + j) * n + k;
+
+						// psi[readInd0] = psi_total[abs_data_offset(i + pos_lx.first, j, k)];
+						psi[readInd0] += psi_total[abs_data_offset(j, k, i + pos_lx.first)];
+						psi[readInd0] += psi_total[abs_data_offset(k, i + pos_lx.first, j)];
+						psi[readInd0] -= psi_total[abs_data_offset(j, i + pos_lx.first, k)];
+						psi[readInd0] -= psi_total[abs_data_offset(i + pos_lx.first, k, j)];
+						psi[readInd0] -= psi_total[abs_data_offset(k, j, i + pos_lx.first)];
+					}
+				}
+			}
 		}
 		if constexpr (std::is_same_v<Orthogonalize, Op>)
 		{
