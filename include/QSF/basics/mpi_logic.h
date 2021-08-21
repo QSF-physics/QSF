@@ -111,8 +111,8 @@ namespace MPI
 
 		static inline int groupLeader[uniq<freeAxisCount<freeAxes>...>::size];
 
-		static inline MPI_Comm lessFree = nullptr; //region inter-comms
-		static inline MPI_Comm moreFree = nullptr; //region inter-comms
+		static inline MPI_Comm lessFree = NULL; //region inter-comms
+		static inline MPI_Comm moreFree = NULL; //region inter-comms
 		template <ind ...Is>
 
 		Regions()
@@ -187,8 +187,8 @@ namespace MPI
 			}
 
 			int size;
-			MPI_Comm lessFreeInter = nullptr; //region inter-comms
-			MPI_Comm moreFreeInter = nullptr; //region inter-comms
+			MPI_Comm lessFreeInter = NULL; //region inter-comms
+			MPI_Comm moreFreeInter = NULL; //region inter-comms
 			//inter-communicate with lessFree groups
 			if (freeCoordsCount[region] > minFree)
 			{

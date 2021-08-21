@@ -37,13 +37,13 @@
 // #include "setup/buffer.h"
 namespace QSF
 {
-	void init(int argc, char* argv[])
+	void init(const char* location, const char* dir, int argc, char* argv[])
 	{
 		// We forward argc, argv arguments, but this is NOT part of the MPI standard!
 		// See W. Gropp et al. - Using MPI Portable Parallel Programming with the Message-Passing Interface (2014, The MIT Press), p.60
 		MPI::init(argc, argv);
 		logImportant("PROJECT: [%s] MPI PROCESSES: [%d]", STRINGIFY(PROJNAME), MPI::pSize);
-		createDir(project_dir, results_dir);
+		createDir(location, dir);
 		// createDir(home_dir, results_project_dir);
 	}
 

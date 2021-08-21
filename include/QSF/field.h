@@ -54,6 +54,8 @@ struct Field : _Operator
 		pulses{ std::move(p)... },
 		delays{ (p.delay_in_cycles * 2.0 * pi / p.omega)... },
 		endtimes{ (p.delay_in_cycles * 2.0 * pi / p.omega + p.pulse_time)... }{}
+
+
 };
 
 struct _VectorPotential {};
@@ -73,7 +75,8 @@ struct PromoteFieldToA : F, _VectorPotential
 		prevVal = lastVal;
 		F::operator()(time);
 		// Fval = lastVal;
-		lastVal = prevVal + (prevTime - time) * lastVal;//includes the minus in -A(t)
+		// logInfo("%g %g dt: %g", lastVal, prevVal, (prevTime - time));
+		lastVal = prevVal + (prevTime - time) * lastVal;//includes the minus in A(t)=int_0^t -F(t) dt
 		prevTime = time;
 		return lastVal;
 	}

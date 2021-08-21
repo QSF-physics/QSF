@@ -16,8 +16,8 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 	static inline constexpr cxd zero = { 0.0, 0.0 };
 	template <ind Is> ind static constexpr rev = DIM - 2 - Is; //when iterating over n-1 dims
 
-	MPI_Win lessFreeWin = nullptr;
-	MPI_Win moreFreeWin = nullptr;
+	MPI_Win lessFreeWin = NULL;
+	MPI_Win moreFreeWin = NULL;
 	bool mpiFFTW;
 	fftw_plan extra_plans[2 * DIM];
 	int extra_plans_count = 0;

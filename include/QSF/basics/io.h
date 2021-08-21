@@ -16,6 +16,7 @@ auto home_dir = getenv("HOME");
 auto scratch_dir = getenv("SCRATCH");
 auto scratch_local_dir = getenv("SCRATCH_LOCAL");
 auto project_dir = ".";
+auto project_name = STRINGIFY(PROJNAME);
 constexpr auto results_dir = "Results";
 constexpr auto results_project_dir = "Results/" STRINGIFY(PROJNAME);
 constexpr auto common_prefix = "";//STRINGIFY(ELEC) "e" STRINGIFY(DIM) "d";

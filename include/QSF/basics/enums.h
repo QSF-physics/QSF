@@ -20,10 +20,10 @@ enum class MODE
 	ALL = IM + RE
 };
 
-#ifndef ONLY_MODE
-#define ONLY_MODE MODE::ALL
+#ifndef MODES_ENABLED
+#define MODES_ENABLED MODE::ALL
 #endif
-
+#define SHOULD_RUN(M) bool(M & MODES_ENABLED)
 
 constexpr DIMS operator""_D(unsigned long long val)
 {
