@@ -11,7 +11,7 @@ namespace Schrodinger
 		using Base::DIM;
 		using Base::kin_scale;
 		using Base::mcomm;
-		using Base::MPIGridComm;
+		using typename Base::MPIGridComm;
 		static constexpr REP couplesInRep = C_Op::couplesInRep;
 
 		V_Op _potential;

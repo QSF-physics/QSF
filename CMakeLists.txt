@@ -61,6 +61,8 @@ target_link_libraries(${PROJECT_NAME} INTERFACE MPI::MPI_C)
 # target_link_libraries(${PROJECT_NAME} INTERFACE MPI::MPI_CXX)
 message(STATUS "FFTW_DOUBLE_LIB_FOUND: ${FFTW_DOUBLE_LIB_FOUND}") 
 message(STATUS "FFTW_DOUBLE_MPI_LIB_FOUND: ${FFTW_DOUBLE_MPI_LIB_FOUND}") 
+
+# target_compile_options(${PROJECT_NAME} INTERFACE -lm -lmpi -lfftw3_mpi -lfftw3)
 target_link_libraries(${PROJECT_NAME} INTERFACE FFTW::Double)
 target_link_libraries(${PROJECT_NAME} INTERFACE FFTW::DoubleMPI)
 # target_link_libraries(${PROJECT_NAME} INTERFACE fmt::fmt-header-only)

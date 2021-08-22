@@ -754,6 +754,35 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		}
 	}
 
+	void restore(std::string input_path)
+	{
+
+		// latest_backup0__aft_xyz.psib2
+		if (!MPI::rID) //only node can load the file
+		{
+			if (psi_total == nullptr)
+			{
+				logALLOC("Allocating memory for psi_total (%td nodes)", m);
+				psi_total = new cxd[m];
+			}
+				// auto out = PsiFile(M_FROM, )
+			FILE* fin = fopen_with_check<IO_ATTR::READ>(input_path.c_str());
+			//openPsi<AFTER<>, REP::X, DIM, IO::ATTR::READ>(name, 0, 0, true);
+			bool is_complex = readPsiBinaryHeader<DIM>(fin);
+
+			if (is_complex) fread(psi_total, sizeof(cxd), m, fin);
+			else for (ind i = 0; i < m; i++) fread(&psi_total[i], sizeof(double), 1, fin);
+			closeFile(fin);
+
+
+			double qnorm = 0.0;
+			for (ind i = 0; i < m; i++) qnorm += std::norm(psi_total[i]);
+			logSETUP("State " psi_symbol "_%d loaded with norm %g", 0, BaseGrid::template vol<REP::X>() * qnorm);
+		}
+		scatter();
+
+	}
+
 
 #pragma region ArrayOperations
 	//BUNCH OF HELPFUL FUNCTIONS
