@@ -363,7 +363,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 	{
 		if (df.rep == REP::P) fourier<REP::P>();
 		// MPI_Allreduce(MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, MPI::eComm);
-		if (MPI::region == 0) Base::reset();
+		if (MPI::region == 0) Base::reset(); //removing un-ionized part
 
 		MPI_Reduce((MPI::eID) ? psi : MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, 0, MPI::eComm);
 		return Base::_save(common_name, df, true);
@@ -442,8 +442,12 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 	template <uind dirFree, uind ... dirs, typename ...Nodes>
 	inline double mask_correction(Nodes ... nodes)
 	{
-		return  onehalf * ((dirs == dirFree ? 0 : Base::template mask<dirs>(nodes)) + ... + 0)
+		if constexpr (DIM == 3)
+			return  onehalf * ((dirs == dirFree ? 0 : Base::template mask<dirs>(nodes)) + ... + 0)
 			+ onesixth * (1 - ((dirs == dirFree ? 1.0 : Base::template mask<dirs>(nodes))*...));
+		// else if constexpr (DIM == 2) //TODO: FIX
+			// return onehalf * (1 - ((dirs == dirFree ? 1.0 : Base::template mask<dirs>(nodes))*...));
+		else return 1.0;
 			// else return 1.0;
 		// onesixth* (invCAP2(j + boxIndex * CAPnodes, k)) + onehalf * (CAP1(j + boxIndex * CAPnodes) + CAP1(k));
 	}
@@ -455,7 +459,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 		do
 		{
 			//those by design operate on nCAP nodes, which takes neg dist from boundry
-			if (Axis<dirFree> != AXIS::X || (isBottomX && counters[0] < sizeX)) //TODO: HERE!!!
+			if (Axis<dirFree> != AXIS::X || (isBottomX && counters[0] < sizeX))
 			{
 				slice[slice_offset<dirFree>(counters[dirs]...)]
 					*= Base::template inv_mask<0>(Base::template neg_dist_from_edge<dirFree>(counters[dirFree]));
@@ -508,7 +512,6 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 	//Max at 0,0,0, Min at (c,c,c), c=CAP_nodes
 	inline void coherentAddition(AXIS fc, int boxIndex)
 	{
-		// printf("cohh\n");
 		if (fc == AXIS::X)
 		{
 			maskSlice<0>(boxIndex, n_seq<DIM>);
@@ -538,8 +541,10 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 	{
 		Base::postCompute();
 		transfer();
-		if (MPI::group != MPI::groupCount - 1) Base::maskRegion();
+		if (MPI::group != MPI::groupCount - 1)
+			Base::maskRegion();
 	}
+	const unsigned MPI_win_flags = MPI_MODE_NOSTORE | MPI_MODE_NOPUT;
 	void transfer()
 	{
 		// MPI_Barrier(MPI_COMM_WORLD);
@@ -554,18 +559,18 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 				{
 					// logInfo("\t\t Looking at source number %d", sI);
 					// std::cout << "pID: " << MPI::pID << " group: " << MPI::group << " region: " << MPI::region << " gI:" << gI << " bI: " << bI << " sI: " << sI << std::endl;
-					if (MPI::group == gI - 1) MPI_Win_fence(MPI_MODE_NOSTORE & MPI_MODE_NOPUT, moreFreeWin);
+					if (MPI::group == gI - 1) MPI_Win_fence(MPI_win_flags | MPI_MODE_NOPRECEDE, moreFreeWin);
 					if (MPI::group == gI)
 					{
 						//TODO: check for null ref?
 						auto& src = sourceRegions[sI];
 						resetSlice();
-						MPI_Win_fence(MPI_MODE_NOSTORE & MPI_MODE_NOPUT, lessFreeWin);
+						MPI_Win_fence(MPI_win_flags | MPI_MODE_NOPRECEDE, lessFreeWin);
 						boxDispatcher(src.fc, src.rank, bI);
-						MPI_Win_fence(MPI_MODE_NOSTORE & MPI_MODE_NOPUT, lessFreeWin);
+						MPI_Win_fence(MPI_win_flags | MPI_MODE_NOSUCCEED, lessFreeWin);
 						coherentAddition(src.fc, bI);
 					}
-					if (MPI::group == gI - 1) MPI_Win_fence(MPI_MODE_NOSTORE & MPI_MODE_NOPUT, moreFreeWin);
+					if (MPI::group == gI - 1) MPI_Win_fence(MPI_win_flags | MPI_MODE_NOSUCCEED, moreFreeWin);
 				}
 			}
 		}
@@ -577,20 +582,8 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 	{
 		if constexpr (Base::MPIGridComm::many)
 		{
-			switch (mcomm.freeCoord)
-			{
-			case AXIS::NO:
-				Base::multiplyArray(psi, inv_m); break;
-			case AXIS::X:
-			case AXIS::Y:
-			case AXIS::Z:
-				Base::multiplyArray(psi, inv_n[0] * inv_n[0]); break;
-			case AXIS::XY:
-			case AXIS::YZ:
-			case AXIS::XZ:
-				Base::multiplyArray(psi, inv_n[0]); break;
-			default: break;
-			}
+			if (mcomm.boundedCoordDim > 0)
+				Base::multiplyArray(psi, Power(inv_n[0], mcomm.boundedCoordDim));
 		}
 		else Base::normalizeAfterTwoFFT();
 	}
@@ -602,19 +595,13 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 		constexpr DIMS back = R == REP::P ? 0 : 1;
 
 		if (mpiFFTW)
-		{
-			// fprintf(stderr, "%d multi fourier %p\n", MPI::pID, Base::mpi_plans[back]);
 			fftw_execute(Base::mpi_plans[back]);
-			// logWarning("mainFFTW plan pID %d", MPI::pID);
-		}
+
 		for (int i = 0; i < extra_plans_count; i++)
-		{
-			// fprintf(stderr, "%d multi fourier %p\n", MPI::pID, Base::mpi_plans[back]);
-			// fprintf(stderr, "fourier pID %d plan [%d/%d]\n", MPI::pID, i, extra_plans_count);
 			fftw_execute(extra_plans[i + DIM * back]);
-			// logWarning("extra_plans");
-		}
-		if constexpr (back) normalizeAfterTwoFFT();
+
+		if constexpr (back)
+			normalizeAfterTwoFFT();
 	}
 
 #pragma endregion FFToverloads

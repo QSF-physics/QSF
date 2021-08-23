@@ -307,8 +307,8 @@ struct SplitPropagator : Config, PropagatorBase
 				   //  Timings::measure::start(op.name);
 			wf.template evolve<M, rep>(dt * Chain<chain>::mults[SI]);
 			// Timings::measure::stop(op.name);
-			if (step == 4)
-				logInfo("SplitGroup %td Evolving in REP %td with delta=%g", chain, ind(rep), Chain<chain>::mults[SI]);
+			// if (step == 4)
+			// 	logInfo("SplitGroup %td Evolving in REP %td with delta=%g", chain, ind(rep), Chain<chain>::mults[SI]);
 			if constexpr (REP::BOTH == HamWF::couplesInRep)
 				incrementBy(Chain<chain>::mults[SI] * 0.5);
 			else if constexpr (rep == HamWF::couplesInRep)
