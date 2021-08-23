@@ -139,6 +139,10 @@ struct EckhardtSachaInteraction : InteractionBase
 	{
 		return ee_EckhardtSacha(x, y) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(y);
 	}
+	inline double operator()(double x)
+	{
+		return Ne_EckhardtSacha(x);
+	}
 	inline double partial(AXIS fc, double x)
 	{
 		if (fc == AXIS::NO)

@@ -634,6 +634,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		}
 		if constexpr (std::is_same_v<AntiSymmetrize, Op>)
 		{
+
 			if (MPI::rSize > 1)
 			{
 				if (psi_total == nullptr)
@@ -651,16 +652,22 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 			{
 				for (ind j = 0; j < n_lx[1]; j++)
 				{
-					for (ind k = 0; k < n_lx[2]; k++)
-					{
-						readInd0 = data_offset<REP::X>(i, j, k);// (i * n + j) * n + k;
+					if (DIM == 3)
+						for (ind k = 0; k < n_lx[2]; k++)
+						{
+							readInd0 = data_offset<REP::X>(i, j, k);// (i * n + j) * n + k;
 
-						// psi[readInd0] = psi_total[abs_data_offset(i + pos_lx.first, j, k)];
-						psi[readInd0] += psi_total[abs_data_offset(j, k, i + pos_lx.first)];
-						psi[readInd0] += psi_total[abs_data_offset(k, i + pos_lx.first, j)];
-						psi[readInd0] -= psi_total[abs_data_offset(j, i + pos_lx.first, k)];
-						psi[readInd0] -= psi_total[abs_data_offset(i + pos_lx.first, k, j)];
-						psi[readInd0] -= psi_total[abs_data_offset(k, j, i + pos_lx.first)];
+							// psi[readInd0] = psi_total[abs_data_offset(i + pos_lx.first, j, k)];
+							psi[readInd0] += psi_total[abs_data_offset(j, k, i + pos_lx.first)];
+							psi[readInd0] += psi_total[abs_data_offset(k, i + pos_lx.first, j)];
+							psi[readInd0] -= psi_total[abs_data_offset(j, i + pos_lx.first, k)];
+							psi[readInd0] -= psi_total[abs_data_offset(i + pos_lx.first, k, j)];
+							psi[readInd0] -= psi_total[abs_data_offset(k, j, i + pos_lx.first)];
+						}
+					else
+					{
+						readInd0 = data_offset<REP::X>(i, j);// (i * n + j) * n + k;
+						psi[readInd0] -= psi_total[abs_data_offset(j, i + pos_lx.first)];
 					}
 				}
 			}
