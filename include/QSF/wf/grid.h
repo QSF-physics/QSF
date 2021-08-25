@@ -374,32 +374,33 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	}
 
 
-	std::string _save(std::string_view common_name = "",
-					  DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false },
-					  bool mainRegionOnly = false)
+	IOUtils::fspath _save(IOUtils::fspath path = "",
+						  DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false },
+						  bool mainRegionOnly = false)
 	{
 		gather();
 		if ((!mainRegionOnly && !MPI::rID) || (mainRegionOnly && !MPI::pID))
 		{
-			// logDUMPS("Dumping " psi_symbol " in %s rep", (R == REP::X ? "X" : "P"));
-			// double dxORdp[DIM];
-			// for (int i = 0;i < DIM; i++)
-				// dxORdp[i] = mcomm.bounded[i] ? dx[i] : dp[i] / n[i];
+			FILE* file;
+			logWarning("%s =?= %s %d", path.parent_path().c_str(), IOUtils::target_path.c_str(), path.parent_path().compare(IOUtils::target_path));
 
-			FILE* file = openPsi< AFTER<>, REP::X, DIM, IO_ATTR::WRITE>(common_name, 0, 0, true);
+			if ((path.has_parent_path() && path.parent_path().compare(IOUtils::target_path)) || path.has_extension()) file = fopen(path.c_str(), "wb");
+			else
+				file = IOUtils::openPsi< AFTER<>, REP::X, DIM, IOUtils::IO_ATTR::WRITE>(path.c_str(), 0, 0, true);
+		   // logDUMPS("Dumping " psi_symbol " in %s rep", (R == REP::X ? "X" : "P"));
 
-			writePsiBinaryHeader(file, n, dx, mcomm.bounded, df);
+			IOUtils::writePsiBinaryHeader(file, n, dx, mcomm.bounded, df);
 			fwrite(psi_total, sizeof(cxd), m, file);
 			fclose(file);
 		}
-		return std::string(file_path);
+		return IOUtils::fspath(IOUtils::file_path);
 	}
 
-	std::string save(std::string_view common_name = "",
-					 DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false })
+	IOUtils::fspath save(IOUtils::fspath path = "",
+						 DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false })
 	{
 		if (df.rep == REP::P) fourier<REP::P>();
-		return _save(common_name, df);
+		return _save(path, df);
 		if (df.rep == REP::P) fourier<REP::X>();
 	}
 
@@ -732,7 +733,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		add<F, R, false>(std::forward<F>(f), indices);
 	}
 
-	void load(std::string input_path, int region_index = 0)
+	void load(IOUtils::fspath input_path, int region_index = 0)
 	{
 		if (MPI::region == region_index)
 		{
@@ -740,17 +741,18 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 			{
 				if (psi_total == nullptr)
 				{
-					logALLOC("Allocating memory for psi_total (%td nodes)", m);
+					logALLOC("Allocating memory for psi_total (%td nodes) loading file %s", m, input_path.c_str());
 					psi_total = new cxd[m];
 				}
 					// auto out = PsiFile(M_FROM, )
-				FILE* fin = fopen_with_check<IO_ATTR::READ>(input_path.c_str());
+				FILE* fin = fopen(input_path.c_str(), "rb");
+				//IOUtils::fopen_with_check<IOUtils::IO_ATTR::READ>(input_path.c_str());
 				//openPsi<AFTER<>, REP::X, DIM, IO::ATTR::READ>(name, 0, 0, true);
-				bool is_complex = readPsiBinaryHeader<DIM>(fin);
+				bool is_complex = IOUtils::readPsiBinaryHeader<DIM>(fin);
 
 				if (is_complex) fread(psi_total, sizeof(cxd), m, fin);
 				else for (ind i = 0; i < m; i++) fread(&psi_total[i], sizeof(double), 1, fin);
-				closeFile(fin);
+				IOUtils::closeFile(fin);
 
 
 				double qnorm = 0.0;
@@ -773,13 +775,13 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 				psi_total = new cxd[m];
 			}
 				// auto out = PsiFile(M_FROM, )
-			FILE* fin = fopen_with_check<IO_ATTR::READ>(input_path.c_str());
+			FILE* fin = IOUtils::fopen_with_check<IOUtils::IO_ATTR::READ>(input_path.c_str());
 			//openPsi<AFTER<>, REP::X, DIM, IO::ATTR::READ>(name, 0, 0, true);
-			bool is_complex = readPsiBinaryHeader<DIM>(fin);
+			bool is_complex = IOUtils::readPsiBinaryHeader<DIM>(fin);
 
 			if (is_complex) fread(psi_total, sizeof(cxd), m, fin);
 			else for (ind i = 0; i < m; i++) fread(&psi_total[i], sizeof(double), 1, fin);
-			closeFile(fin);
+			IOUtils::closeFile(fin);
 
 
 			double qnorm = 0.0;

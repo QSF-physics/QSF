@@ -79,7 +79,7 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 		}
 
 		if (comp_interval > 0)
-			file_dat = openOut<IO_ATTR::WRITE >(name, PASS, binary);
+			file_dat = IOUtils::openOut<IOUtils::IO_ATTR::WRITE >(name, PASS, binary);
 	}
 
 	BufferedOutputs(Section& settings)
@@ -95,7 +95,7 @@ struct BufferedOutputs : BufferedOutputsBase, TypeBox<Ts...>
 	{
 		if (rbufferSize > 0) { logSETUP("Destroying rbuffer"); delete[] rbuffer; }
 		if (!MPI::pID) if (xbufferSize > 0) { logSETUP("Destroying xbuffer"); delete[] xbuffer; }
-		closeFile(file_dat);
+		IOUtils::closeFile(file_dat);
 	}
 
 	template < class COMP>

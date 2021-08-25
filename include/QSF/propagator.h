@@ -145,7 +145,7 @@ struct SplitPropagator : Config, PropagatorBase
 			psi_acc = new cxd[wf.localSize()];
 		}
 
-		file_log = openLog(name);
+		file_log = IOUtils::openLog(name);
 		logInfo("dt %g", dt);
 	}
 	~SplitPropagator()
