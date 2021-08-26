@@ -10,9 +10,6 @@ template<class T> constexpr inline T& operator|= (T& a, T b) { return (T&)((uind
 template<class T> constexpr inline T& operator&= (T& a, T b) { return (T&)((uind&)a &= (uind)b); }
 template<class T> constexpr inline T& operator^= (T& a, T b) { return (T&)((uind&)a ^= (uind)b); }
 template<class T> constexpr inline T operator>> (T&& a, T&& b) { return (T)((uind)a >> (uind)b); }
-#ifndef TEST
-#define TEST 0
-#endif
 
 enum class MODE
 {

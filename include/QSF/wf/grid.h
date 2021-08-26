@@ -653,7 +653,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 			{
 				for (ind j = 0; j < n_lx[1]; j++)
 				{
-					if (DIM == 3)
+					if constexpr (DIM == 3)
 						for (ind k = 0; k < n_lx[2]; k++)
 						{
 							readInd0 = data_offset<REP::X>(i, j, k);// (i * n + j) * n + k;
