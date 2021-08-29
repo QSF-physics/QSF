@@ -182,7 +182,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 
 		}
 		if (mcomm.moreFree) MPI_Win_create(psi, m_l * sizeof(cxd), sizeof(cxd), MPI_INFO_NULL, mcomm.moreFree, &moreFreeWin);
-		if (mcomm.lessFree) MPI_Win_create(NULL, 0, sizeof(cxd), MPI_INFO_NULL, mcomm.lessFree, &lessFreeWin);
+		if (mcomm.lessFree) MPI_Win_create(MPI_BOTTOM, 0, sizeof(cxd), MPI_INFO_NULL, mcomm.lessFree, &lessFreeWin);
 	}
 
 	~LocalGrid()
