@@ -18,6 +18,8 @@ struct Symmetrize
 	static constexpr REP rep = REP::NONE;
 	static constexpr bool late = false;
 };
+
+template <DIMS D>
 struct AntiSymmetrize
 {
 	static constexpr REP rep = REP::NONE;
@@ -631,44 +633,113 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		}
 		if constexpr (std::is_same_v<Symmetrize, Op>)
 		{
-
+			//TODO: raise not implemented!
 		}
-		if constexpr (std::is_same_v<AntiSymmetrize, Op>)
+		if constexpr (std::is_same_v<AntiSymmetrize<3_D>, Op>)
 		{
-
-			if (MPI::rSize > 1)
-			{
-				if (psi_total == nullptr)
-					psi_total = new cxd[m];
-			   // MPI_Gather(psi, m_l, MPI_CXX_DOUBLE_COMPLEX, psi_total, m_l, MPI_CXX_DOUBLE_COMPLEX, 0, MPI::rComm);
-				MPI_Allgather(psi, m_l, MPI_CXX_DOUBLE_COMPLEX, psi_total, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI::rComm);
-			}
+			if constexpr (DIM < 3) return; //TODO:: log error
 			else
 			{
-				//TODO: do it locally
-			}
-
-			ind readInd0;
-			for (ind i = 0; i < n_lx[0]; i++)
-			{
-				for (ind j = 0; j < n_lx[1]; j++)
+				if (MPI::rSize > 1)
 				{
-					if constexpr (DIM == 3)
-						for (ind k = 0; k < n_lx[2]; k++)
-						{
-							readInd0 = data_offset<REP::X>(i, j, k);// (i * n + j) * n + k;
-
-							// psi[readInd0] = psi_total[abs_data_offset(i + pos_lx.first, j, k)];
-							psi[readInd0] += psi_total[abs_data_offset(j, k, i + pos_lx.first)];
-							psi[readInd0] += psi_total[abs_data_offset(k, i + pos_lx.first, j)];
-							psi[readInd0] -= psi_total[abs_data_offset(j, i + pos_lx.first, k)];
-							psi[readInd0] -= psi_total[abs_data_offset(i + pos_lx.first, k, j)];
-							psi[readInd0] -= psi_total[abs_data_offset(k, j, i + pos_lx.first)];
-						}
-					else
+					if (psi_total == nullptr)
+						psi_total = new cxd[m];
+				   // MPI_Gather(psi, m_l, MPI_CXX_DOUBLE_COMPLEX, psi_total, m_l, MPI_CXX_DOUBLE_COMPLEX, 0, MPI::rComm);
+					MPI_Allgather(psi, m_l, MPI_CXX_DOUBLE_COMPLEX, psi_total, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI::rComm);
+					ind regular;
+					for (ind i = 0; i < n_lx[0]; i++)
 					{
-						readInd0 = data_offset<REP::X>(i, j);// (i * n + j) * n + k;
-						psi[readInd0] -= psi_total[abs_data_offset(j, i + pos_lx.first)];
+						for (ind j = 0; j < n_lx[1]; j++)
+						{
+							for (ind k = 0; k < n_lx[2]; k++)
+							{
+								regular = data_offset<REP::X>(i, j, k);
+								// psi[regular] = psi_total[abs_data_offset(i + pos_lx.first, j, k)]; //Already there
+								psi[regular] += psi_total[abs_data_offset(j, k, i + pos_lx.first)];
+								psi[regular] += psi_total[abs_data_offset(k, i + pos_lx.first, j)];
+								psi[regular] -= psi_total[abs_data_offset(j, i + pos_lx.first, k)];
+								psi[regular] -= psi_total[abs_data_offset(i + pos_lx.first, k, j)];
+								psi[regular] -= psi_total[abs_data_offset(k, j, i + pos_lx.first)];
+							}
+						}
+					}
+				}
+				else
+				{
+					ind regular;
+					ind regular2;
+					ind regular3;
+					ind switched;
+					ind switched2;
+					ind switched3;
+					for (ind i = 0; i < n_lx[0]; i++)
+					{
+						for (ind j = 0; j < i; j++)
+						{
+							for (ind k = 0; k < j; k++)
+							{
+								regular = data_offset<REP::X>(i, j, k);
+								regular2 = data_offset<REP::X>(j, k, i);
+								regular3 = data_offset<REP::X>(k, i, j);
+								switched = data_offset<REP::X>(j, i, k);
+								switched2 = data_offset<REP::X>(i, k, j);
+								switched3 = data_offset<REP::X>(k, j, i);
+								psi[regular] += psi[regular2] + psi[regular3]
+									- psi[switched] - psi[switched2] - psi[switched3];
+								psi[regular2] = psi[regular];
+								psi[regular3] = psi[regular];
+								psi[switched] = -psi[regular];
+								psi[switched2] = -psi[regular];
+								psi[switched3] = -psi[regular];
+							}
+						}
+						for (ind j = 0; j < n_lx[1]; j++)
+						{
+							psi[data_offset<REP::X>(i, j, j)] = 0.0;
+							psi[data_offset<REP::X>(j, i, j)] = 0.0;
+							psi[data_offset<REP::X>(j, j, i)] = 0.0;
+						}
+					}
+				}
+			}
+		}
+		if constexpr (std::is_same_v<AntiSymmetrize<2_D>, Op>)
+		{
+			if constexpr (DIM < 2) return;
+			else
+			{
+				if constexpr (DIM == 3_D) //Partial anti-symmetrization as in Neon
+				{
+					ind regular;
+					ind switched;
+					for (ind i = 0; i < n_lx[0]; i++)
+					{
+						for (ind j = 0; j < n_lx[1]; j++)
+						{
+							for (ind k = 0; k < j; k++)
+							{
+								regular = data_offset<REP::X>(i, j, k);
+								switched = data_offset<REP::X>(i, k, j);
+								psi[regular] -= psi[switched];
+								psi[switched] = -psi[regular];
+							}
+							psi[data_offset<REP::X>(i, j, j)] = 0.0;
+						}
+					}
+				}
+				else
+				{
+					if (psi_total == nullptr) psi_total = new cxd[m];
+				   // MPI_Gather(psi, m_l, MPI_CXX_DOUBLE_COMPLEX, psi_total, m_l, MPI_CXX_DOUBLE_COMPLEX, 0, MPI::rComm);
+					MPI_Allgather(psi, m_l, MPI_CXX_DOUBLE_COMPLEX, psi_total, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI::rComm);
+					ind regular;
+					for (ind i = 0; i < n_lx[0]; i++)
+					{
+						for (ind j = 0; j < n_lx[1]; j++)
+						{
+							regular = data_offset<REP::X>(i, j);// (i * n + j) * n + k;
+							psi[regular] -= psi_total[abs_data_offset(j, i + pos_lx.first)];
+						}
 					}
 				}
 			}
