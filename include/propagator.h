@@ -193,7 +193,6 @@ struct SplitPropagator : Config, PropagatorBase
 	{
 		using T = SUM<Op...>;
 		bo.template store<T>((bo.template getLastValue<Op>() + ...));
-
 		if constexpr (std::is_same_v<T, ENERGY_TOTAL>)
 			tot_energy = bo.template getLastValue<T>();
 	}
@@ -202,7 +201,6 @@ struct SplitPropagator : Config, PropagatorBase
 	{
 		static double last = 0;
 		using T = CHANGE<Op>;
-
 		double curr = bo.template getLastValue<Op>();
 		MPI::reduceImmediataly(&curr);
 		bo.template store<T>(curr - last);
