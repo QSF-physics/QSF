@@ -210,3 +210,4 @@ struct T2CAP :_Operator
 			PatchBi2j2k2(i, j, k, p_CAP, p_DT, p_CAP, p_DT, p_CAP));
 	}
 };
+

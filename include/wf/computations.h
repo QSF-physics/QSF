@@ -65,7 +65,8 @@ template <class ... Op> struct FLUX : COMPUTATION <double, true, Op...>
 	static constexpr std::string_view name = "FLX_";
 };
 
-
+using ZOA_FLUX_3D = FLUX<N2S, N2D, N2T, S2D, S2T, S2CAP, D2CAP, T2CAP>;
+using ZOA_FLUX_2D = FLUX<N2S, N2D, S2D, S2CAP, D2CAP>;
 
 
 template <uind dir, class Op> struct DERIVATIVE : COMPUTATION <double, true, Op>

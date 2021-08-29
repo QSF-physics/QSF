@@ -83,9 +83,9 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	cxd* psi = nullptr;      	// local ψ(x,t) on m_l grid
 
 	// Used in MPI calculations of currents
-	cxd* row_before;
-	cxd* row_after;
-	borVec<DIM>* curr;
+	cxd* row_before = nullptr;
+	cxd* row_after = nullptr;
+	borVec<DIM>* curr = nullptr;
 
 	const ind m = BaseGrid::m * Components;
 	const double inv_m = BaseGrid::inv_m / Components;
@@ -501,7 +501,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	template <REP R, uind dir>
 	inline void update_curr(ind counter) //imag(conj(psi))*∂psi
 	{
-		if (counter - stride<R, dir>() < 0 || counter + stride<R, dir>() > m_l)
+		if (counter - stride<R, dir>() < 0 || counter + stride<R, dir>() > m_l) //Boundries
 			curr[counter][dir] = 0.0;
 		else
 			curr[counter][dir] = inv_2dx[dir]
@@ -521,13 +521,13 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 
 		if (MPI::rSize > 1) //edge cases for MPI
 		{
-			if (MPI::pID < MPI::rSize - 1) // Recieve from higher MPI::rID
+			if (MPI::rID < MPI::rSize - 1) // Recieve from higher MPI::rID
 			{
 				for (ind j = 0; j < rowSize<R>(); j++)
 					curr[j][0] = inv_2dx[0]
 					* imag(conj(psi[j]) * (row_after[j] - psi[j - rowSize<R>()]));
 			}
-			if (MPI::pID > 0) // Recieved from lower MPI::rID
+			if (MPI::rID > 0) // Recieved from lower MPI::rID
 			{
 				for (ind j = 0; j < rowSize<R>(); j++)
 					curr[j][0] = inv_2dx[0]
@@ -538,13 +538,15 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	template <REP R>
 	inline void current_map()
 	{
+		//TODO: make it fail in P rep
 		if (curr == nullptr) //TODO: move to prepare
 		{
-			curr = (borVec<DIM>*)malloc(sizeof(borVec<DIM>) * m_l);
+			curr = new borVec<DIM>[m_l];
 			if (MPI::rSize > 1)
 			{
 				row_after = new cxd[rowSize<R>()];
 				row_before = new cxd[rowSize<R>()];
+				logALLOC("row_after & row_before allocated");
 			}
 		}
 		getNeighbouringNodes<R>();
@@ -553,18 +555,18 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 	template <REP R>
 	void getNeighbouringNodes()
 	{
+		//TODO: change to MPI_window
 		if (MPI::rSize > 1)
 		{
-			int tag = 1;
 			if (MPI::rID > 0) // Send up
-				MPI_Send(psi, int(rowSize<R>()), MPI_CXX_DOUBLE_COMPLEX, MPI::rID - 1, tag, MPI::rComm);
+				MPI_Send(psi, int(rowSize<R>()), MPI_CXX_DOUBLE_COMPLEX, MPI::rID - 1, 13, MPI::rComm);
 			if (MPI::rID < MPI::rSize - 1)	// Recieve
-				MPI_Recv(row_after, int(rowSize<R>()), MPI_CXX_DOUBLE_COMPLEX, MPI::rID + 1, tag, MPI::rComm, &MPI::status);
-			tag = 2;
+				MPI_Recv(row_after, int(rowSize<R>()), MPI_CXX_DOUBLE_COMPLEX, MPI::rID + 1, 13, MPI::rComm, &MPI::status);
+
 			if (MPI::rID < MPI::rSize - 1)	// Send down
-				MPI_Send(&(psi[(shape<R, 0>() - 1) * rowSize<R>()]), int(rowSize<R>()), MPI_CXX_DOUBLE_COMPLEX, MPI::rID + 1, tag, MPI::rComm);
+				MPI_Send(&(psi[(shape<R, 0>() - 1) * rowSize<R>()]), int(rowSize<R>()), MPI_CXX_DOUBLE_COMPLEX, MPI::rID + 1, 7, MPI::rComm);
 			if (MPI::rID > 0)			// Recieve 
-				MPI_Recv(row_before, int(rowSize<R>()), MPI_CXX_DOUBLE_COMPLEX, MPI::rID - 1, tag, MPI::rComm, &MPI::status);
+				MPI_Recv(row_before, int(rowSize<R>()), MPI_CXX_DOUBLE_COMPLEX, MPI::rID - 1, 7, MPI::rComm, &MPI::status);
 		}
 	}
 	template <REP R, class FLUX_TYPE, uind ... Is>
@@ -586,9 +588,10 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 		// return res * BaseGrid::template vol<R>();
 		return res * BaseGrid::template vol<R>() / dx[0];
 	}
-	template <REP R, class FLUX_TYPE, uind ... Is>
+	template <REP R, class FLUX_TYPE>
 	inline double flux()
 	{
+		// logUser("%s", typeid(FLUX_TYPE).name());
 		return flux_<R, FLUX_TYPE>(indices);
 	}
 
