@@ -10,7 +10,7 @@ project(QSF VERSION 0.9.0
 set(QSF_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 # message(STATUS "CMAKE_INSTALL_PREFIX: ${CMAKE_INSTALL_PREFIX}")
 # ::::::::::::::::::::::::::::: Define imports ::::::::::::::::::::::::::::::::
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/findFFTW")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 message(STATUS "CMAKE_MODULE_PATH= ${CMAKE_MODULE_PATH}")
 
 find_package(MPI REQUIRED)
