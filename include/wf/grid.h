@@ -380,20 +380,37 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, false> 
 						  DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false },
 						  bool mainRegionOnly = false)
 	{
-		gather();
-		if ((!mainRegionOnly && !MPI::rID) || (mainRegionOnly && !MPI::pID))
+		//TODO: check if path is available on all nodes
+		if (false)
 		{
-			FILE* file;
-			logWarning("%s =?= %s %d", path.parent_path().c_str(), IOUtils::target_path.c_str(), path.parent_path().compare(IOUtils::target_path));
+			MPI_File fh;
+			MPI_File_delete(path.c_str(), MPI_INFO_NULL);
+			MPI_File_open(MPI::rComm, path.c_str(),
+						  MPI_MODE_CREATE | MPI_MODE_WRONLY,
+						  MPI_INFO_NULL, &fh);
 
-			if ((path.has_parent_path() && path.parent_path().compare(IOUtils::target_path)) || path.has_extension()) file = fopen(path.c_str(), "wb");
-			else
-				file = IOUtils::openPsi< AFTER<>, REP::X, DIM, IOUtils::IO_ATTR::WRITE>(path.c_str(), 0, 0, true);
-		   // logDUMPS("Dumping " psi_symbol " in %s rep", (R == REP::X ? "X" : "P"));
+			MPI_File_set_view(fh, MPI::rID * m_l * sizeof(cxd), MPI_CXX_DOUBLE_COMPLEX,
+							  MPI_CXX_DOUBLE_COMPLEX, "native", MPI_INFO_NULL);
+			MPI_File_write(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE); MPI_File_close(&fh);
 
-			IOUtils::writePsiBinaryHeader(file, n, dx, mcomm.bounded, df);
-			fwrite(psi_total, sizeof(cxd), m, file);
-			fclose(file);
+		}
+		else
+		{
+			gather();
+			if ((!mainRegionOnly && !MPI::rID) || (mainRegionOnly && !MPI::pID))
+			{
+				FILE* file;
+				logWarning("%s =?= %s %d", path.parent_path().c_str(), IOUtils::target_path.c_str(), path.parent_path().compare(IOUtils::target_path));
+
+				if ((path.has_parent_path() && path.parent_path().compare(IOUtils::target_path)) || path.has_extension()) file = fopen(path.c_str(), "wb");
+				else
+					file = IOUtils::openPsi< AFTER<>, REP::X, DIM, IOUtils::IO_ATTR::WRITE>(path.c_str(), 0, 0, true);
+			   // logDUMPS("Dumping " psi_symbol " in %s rep", (R == REP::X ? "X" : "P"));
+
+				IOUtils::writePsiBinaryHeader(file, n, dx, mcomm.bounded, df);
+				fwrite(psi_total, sizeof(cxd), m, file);
+				fclose(file);
+			}
 		}
 		return IOUtils::fspath(IOUtils::file_path);
 	}

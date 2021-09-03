@@ -114,7 +114,7 @@ struct LocalGrid<Hamiltonian, BaseGrid, Components, MPI_GC, MPI::Slices, true> :
 			}
 			Base::reset();
 		}
-		fprintf(stderr, "---> region %d mpiFFTW %d extra_plans_count %d\n", MPI::region, mpiFFTW, extra_plans_count);
+		// fprintf(stderr, "---> region %d mpiFFTW %d extra_plans_count %d\n", MPI::region, mpiFFTW, extra_plans_count);
 		// _logMPI("Region %d MPI::pID: %d got %td nodes or %td rows [start row: %td end row: %td]", MPI::region, MPI::pID, m_l, n_lx[0], pos_lx.first, pos_lx.last);
 	}
 
