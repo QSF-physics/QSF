@@ -23,7 +23,7 @@ namespace QSF
 				logInfo("Spin0 init");
 			}
 
-			Spin0(GType gtype, V_Op potential, C_Op coupling = DipoleCoupling<VelocityGauge>()) :Base(gtype), _potential(potential), _coupling(coupling) {}
+			Spin0(GType gtype, V_Op potential, C_Op coupling = C_Op()) :Base(gtype), _potential(potential), _coupling(coupling) {}
 
 			// static constexpr REP rep = REP::BOTH;
 			// static constexpr string_view name = "Schrodinger";

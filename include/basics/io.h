@@ -13,6 +13,7 @@ namespace QSF
 
 		using namespace std::filesystem;
 		using namespace std::string_literals;
+		path root_dir;
 		const path home_dir{ std::getenv("HOME") };
 		const path project_dir = current_path();
 		const path project_name{ STRINGIFY(PROJNAME) };

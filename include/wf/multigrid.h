@@ -39,6 +39,7 @@ namespace QSF
 
 		LocalGrid(Base g) : Base(g), mpiFFTW(g.mcomm.bounded[0]) { init(); }
 		LocalGrid(Section& settings) :Base(settings), mpiFFTW(Base::mcomm.bounded[0]) { init(); }
+
 		void initExtraFFTW()
 		{
 			if (!mcomm.isMain)
@@ -220,8 +221,8 @@ namespace QSF
 		{
 			if constexpr (dirFree == 0)
 			{
-				printf("pID %d MPI initFFTWplans dirFree: [%td] howmany %td\n",
-					   MPI::pID, dirFree, m_slice / n[0]);
+				// printf("pID %d MPI initFFTWplans dirFree: [%td] howmany %td\n",
+					//    MPI::pID, dirFree, m_slice / n[0]);
 				transf_slice[0] =
 					fftw_mpi_plan_many_dft(1, n, m_slice / n[0],
 										   FFTW_MPI_DEFAULT_BLOCK, //block 
@@ -232,19 +233,19 @@ namespace QSF
 			}
 			else
 			{
-				printf("pID %d initFFTWplans dirFree: [%td] howmany %td\n", MPI::pID, dirFree, m_slice / n[0]);
+				// printf("pID %d initFFTWplans dirFree: [%td] howmany %td\n", MPI::pID, dirFree, m_slice / n[0]);
 				// The dimension we're going to transform
 				fftw_iodim64 dims[1] = { {n[dirFree] , stride_slice[dirFree][dirFree], stride_slice[dirFree][dirFree]} };
 				fftw_iodim64 howmany_dims[DIM - 1];
 				int index = 0;
-				if (MPI::pID == 1)
-					std::cout << "---:> pID:" << MPI::pID << " dirFree:" << dirFree << " dims: " << dims[0].n << " " << dims[0].is << std::endl;
+				// if (MPI::pID == 1)
+					// std::cout << "---:> pID:" << MPI::pID << " dirFree:" << dirFree << " dims: " << dims[0].n << " " << dims[0].is << std::endl;
 
 				([&] {if (dirs != dirFree) {
 					howmany_dims[index] = { sliceShape<dirFree, dirs>(), stride_slice[dirFree][dirs], stride_slice[dirFree][dirs] };
 					index++;
-					if (MPI::pID == 1)
-						std::cout << "---> pID:" << MPI::pID << " dirFree:" << dirFree << " dirs:" << dirs << "howmany_dims: " << howmany_dims[index - 1].n << " " << howmany_dims[index - 1].is << std::endl;
+					// if (MPI::pID == 1)
+						// std::cout << "---> pID:" << MPI::pID << " dirFree:" << dirFree << " dirs:" << dirs << "howmany_dims: " << howmany_dims[index - 1].n << " " << howmany_dims[index - 1].is << std::endl;
 				}}(), ...);
 
 				transf_slice[dirFree] = fftw_plan_guru64_dft(
@@ -254,7 +255,6 @@ namespace QSF
 					FFTW_FORWARD, MPI::plan_rigor);
 			}
 		}
-
 
 		template<uind ... dirFree>
 		void initSlice(seq<dirFree...>)
@@ -341,34 +341,43 @@ namespace QSF
 					count, //recv count
 					MPI_CXX_DOUBLE_COMPLEX, lessFreeWin);
 		}
-
-		std::string save(std::string_view common_name = "",
-						 DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false })
+		void backup(const ind step)
+		{
+			Base::_backup(step, IO::psi_ext + std::to_string(MPI::region));
+		}
+		void restore()
+		{
+			Base::_load("backup", IO::psi_ext + std::to_string(MPI::region));
+			logWarning("Restored the wf for all regions");
+		}
+		void remove_backups()
+		{
+			Base::remove_backups(IO::psi_ext + std::to_string(MPI::region));
+		}
+		std::string save(std::string common_name = "", DUMP_FORMAT df = { .dim = DIM })
 		{
 			if (df.rep == REP::P) fourier<REP::P>();
-			return Base::_save(common_name, df);
+			return Base::_save(common_name, df, IO::psi_ext + std::to_string(MPI::region));
 			if (df.rep == REP::P) fourier<REP::X>();
 		}
 
-		std::string saveJoined(std::string_view common_name = "",
-							   DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false })
+		std::string saveJoined(std::string common_name = "", DUMP_FORMAT df = { .dim = DIM })
 		{
 			if (df.rep == REP::P) fourier<REP::P>();
 			// MPI_Allreduce(MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, MPI::eComm);
 			MPI_Reduce((MPI::eID) ? psi : MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, 0, MPI::eComm);
-			return Base::_save(common_name, df, true);
+			if (MPI::region == 0) return Base::_save(common_name + "_joined", df);
 			if (df.rep == REP::P) fourier<REP::X>();
 		}
 
-		std::string saveIonizedJoined(std::string_view common_name = "",
-									  DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false })
+		std::string saveIonizedJoined(std::string common_name = "", DUMP_FORMAT df = { .dim = DIM })
 		{
 			if (df.rep == REP::P) fourier<REP::P>();
 			// MPI_Allreduce(MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, MPI::eComm);
 			if (MPI::region == 0) Base::reset(); //removing un-ionized part
 
 			MPI_Reduce((MPI::eID) ? psi : MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, 0, MPI::eComm);
-			return Base::_save(common_name, df, true);
+			return Base::_save(common_name + "_ionized_joined", df);
 			if (df.rep == REP::P) fourier<REP::X>();
 		}
 

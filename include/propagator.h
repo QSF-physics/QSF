@@ -3,6 +3,7 @@
 
 namespace QSF
 {
+#pragma region AvailableOperations
 	struct Step {
 		static constexpr REP rep = REP::NONE;
 		static constexpr bool late = false;
@@ -22,6 +23,8 @@ namespace QSF
 
 	using ENERGY_TOTAL = SUM<AVG<PotentialEnergy>, AVG<KineticEnergy>>;
 	using ENERGY_DIFFERENCE = CHANGE<SUM<AVG<PotentialEnergy>, AVG<KineticEnergy>>>;
+
+#pragma endregion AvailableOperations
 	struct PropagatorBase
 	{
 		double dt;
@@ -53,7 +56,6 @@ namespace QSF
 			step = 0; timer = 0;
 		}
 	};
-
 
 	template <MODE M, class SpType, class HamWF>
 	struct SplitPropagator : Config, PropagatorBase
@@ -88,8 +90,7 @@ namespace QSF
 		cxd* psi_copy = nullptr;    // backup ψ(x,t) on m_l grid
 		cxd* psi_acc = nullptr;     // accumulated ψ(x,t) on m_l grid
 
-	#pragma region Initialization
-
+	#pragma region Auto
 		void autosetTimestep()
 		{
 			if (dt == 0.0)
@@ -98,11 +99,13 @@ namespace QSF
 				logWarning("Timestep dt was 0, using automatic value dt=%g", dt);
 			}
 		}
+	#pragma endregion Auto
 
-		SplitPropagator(PropagatorBase pb, HamWF&& wf) : PropagatorBase(pb), wf(wf)
+	#pragma region Initialization
+		SplitPropagator(PropagatorBase pb, HamWF&& wf, std::string source_section = std::string(name))
+			: Config(source_section), PropagatorBase(pb), wf(wf)
 		{
 			logInfo("SplitPropagator init");
-			source_section = std::string(name);
 			if constexpr (M == MODE::RE)
 			{
 				max_steps = wf._coupling.maxPulseDuration() / dt + 1;
@@ -111,16 +114,16 @@ namespace QSF
 			}
 			init();
 		}
-		SplitPropagator(HamWF&& wf) : wf(wf)
-		{
-			logInfo("SplitPropagator init");
-			source_section = std::string(name);
-			max_steps = wf._coupling.maxPulseDuration() / dt + 1;
-			logSETUP("maxPulseDuration: %g, dt: %g => max_steps: %td", wf._coupling.maxPulseDuration(), dt, max_steps);
-			state_accuracy = 0;
-			init();
-		}
-		SplitPropagator(std::string source_section = name, std::string& config_file = "project.ini") :
+		// SplitPropagator(HamWF&& wf, std::string source_section = std::string(name))
+		// 	: Config(source_section), wf(wf)
+		// {
+		// 	logInfo("SplitPropagator init");
+		// 	max_steps = wf._coupling.maxPulseDuration() / dt + 1;
+		// 	logSETUP("maxPulseDuration: %g, dt: %g => max_steps: %td", wf._coupling.maxPulseDuration(), dt, max_steps);
+		// 	state_accuracy = 0;
+		// 	init();
+		// }
+		SplitPropagator(std::string source_section = std::string(name), std::string config_file = "project.ini") :
 			Config(source_section, config_file),
 			settings(ini.sections[source_section]),
 			wf(settings)
@@ -179,6 +182,7 @@ namespace QSF
 				using std::chrono::duration;
 				using std::chrono::duration_cast;
 				auto sec = duration_cast<seconds>(clock::now() - pass_start).count();
+				//TODO: use atstep
 				return (1.0 * max_steps / step - 1.0) * sec;
 			}
 			else if constexpr (!std::is_same_v<Step, Op> && !std::is_same_v<Time, Op>) return wf.template getValue<Op>();
@@ -330,6 +334,26 @@ namespace QSF
 				), ...);
 			step++;
 		}
+
+		template <uind chain, uind ... SI>
+		inline void chainFakeEvolve(seq<SI...>)
+		{
+			([&] {
+				constexpr REP rep = Chain<chain>::template rep<SI>;
+				if constexpr (REP::BOTH == HamWF::couplesInRep || rep == HamWF::couplesInRep)
+					wf.template precalc<rep, OPTIMS::NONE>(timer);
+				if constexpr (REP::BOTH == HamWF::couplesInRep)
+					incrementBy(Chain<chain>::mults[SI] * 0.5);
+				else if constexpr (rep == HamWF::couplesInRep)
+					incrementBy(Chain<chain>::mults[SI] * 1.0);
+			 }(), ...);
+		}
+		template <uind... chain>
+		inline void makeFakeStep(seq<chain...>)
+		{
+			((chainFakeEvolve<chain>(splits<chain>{})), ...);
+			step++;
+		}
 	#pragma endregion Evolution
 
 	#pragma region SplitChains
@@ -380,70 +404,86 @@ namespace QSF
 	#pragma region Runner
 
 		template <class OUTS, class Worker>
-		void run(OUTS&& outputs, Worker&& worker, uind pass = 0)
+		void run(OUTS&& outputs, Worker&& worker, bool restore = 0)
 		{
 			pass_start = clock::now();
-			outputs.template init<M>(pass, source_section);
-			worker(WHEN::AT_START, step, pass, wf);
-			computeEach<WHEN::AT_START>(outputs);
+
+			ind atstep = 0;
+			if (restore)
+			{
+				FILE* f = IO::fopen_with_check("backup.info", "rb");
+				fread(&atstep, sizeof(ind), 1, f);
+				fclose(f);
+				outputs.template init<M>(source_section, atstep);
+				//TODO: make this for gauges interacting with potentials (not fields)
+				while (step < atstep)
+					makeFakeStep(ChainExpander{});
+				logWarning("Fast forwarded computation to step %td", step);
+				wf.restore();
+			}
+			else
+			{
+				outputs.template init<M>(source_section, 0);
+				worker(WHEN::AT_START, step, 0, wf);
+				computeEach<WHEN::AT_START>(outputs);
+			}
 			while (shouldContinue())
 			{
 				makeStep(ChainExpander{});
 				computeEach<WHEN::DURING>(outputs);
 				wf.postCompute();
 				// logWarning("%d", HamWF::MPIGridComm::many);
-				worker(WHEN::DURING, step, pass, wf);
+				worker(WHEN::DURING, step, 0, wf);
 			}
 			makeStep(ChainExpander{});
 			computeEach<WHEN::AT_END>(outputs);
 			wf.postCompute();
-			worker(WHEN::AT_END, step, pass, wf);
+			worker(WHEN::AT_END, step, 0, wf);
 
-		   // HACK: This makes sure, the steps are always evenly spaced
-		   // step += (outputs.comp_interval - 1);
-		   // Evolution::incrementBy(outputs.comp_interval);
-		   /* if (imaginaryTimeQ)
-		   {
-			   Eigen::store<startREP>(state, PASS, energy);
-			   Eigen::saveEnergyInfo(RT::name, state, PASS, energy, dE);
-			   energy = 0;
-			   energy_prev = 0;
-			   dE = 0;
-		   }  */
+			if (!MPI::pID)
+			{
+				std::filesystem::remove("backup.info");
+				logInfo("backup.info file removed");
+			}
+			wf.remove_backups();
 		}
-
-		template <class OUTS>
-		void run(OUTS&& outputs, uind pass = 0)
-		{
-			run<OUTS>(std::forward<OUTS>(outputs), [](WHEN when, ind step, uind pass, const auto& wf) {}, pass);
-		}
-
-		template <class OUTS, class Worker>
-		void run(Worker&& worker, uind pass = 0)
-		{
-			run(std::move(OUTS{ settings }), std::forward<Worker>(worker), pass);
-		}
-
-		template <class OUTS>
-		void run(uind pass = 0)
-		{
-			run<OUTS>([](WHEN when, ind step, uind pass, const auto& wf) {}, pass);
-		}
-
-	#pragma endregion Runner
-	};
-
-	template <MODE M, class SpType, class HamWF>
-	auto SplitPropagate(HamWF wf)
-	{
-		return SplitPropagator<M, SpType, HamWF>(wf);
+	   // HACK: This makes sure, the steps are always evenly spaced
+	   // step += (outputs.comp_interval - 1);
+	   // Evolution::incrementBy(outputs.comp_interval);
+	   /* if (imaginaryTimeQ)
+	   {
+		   Eigen::store<startREP>(state, PASS, energy);
+		   Eigen::saveEnergyInfo(RT::name, state, PASS, energy, dE);
+		   energy = 0;
+		   energy_prev = 0;
+		   dE = 0;
+	   }  */
 	}
 
-	struct ADV_CONFIG
+	template <class OUTS>
+	void run(OUTS&& outputs, bool restore = 0)
 	{
-		bool discard_eigenstate_phase = true;
-		double fs_postpropagation = 0.0;
-		DATA_FORMAT data_format;
-		DUMP_FORMAT dump_format;
-	};
+		run<OUTS>(std::forward<OUTS>(outputs), [](WHEN when, ind step, uind pass, const auto& wf) {}, restore);
+	}
+
+	template <class OUTS, class Worker>
+	void run(Worker&& worker, bool restore = 0)
+	{
+		run(std::move(OUTS{ settings }), std::forward<Worker>(worker), restore);
+	}
+
+	template <class OUTS>
+	void run(bool restore = 0)
+	{
+		run<OUTS>([](WHEN when, ind step, uind pass, const auto& wf) {}, restore);
+	}
+
+#pragma endregion Runner
+};
+
+template <MODE M, class SpType, class HamWF>
+auto SplitPropagate(HamWF wf)
+{
+	return SplitPropagator<M, SpType, HamWF>(wf);
 }
+};

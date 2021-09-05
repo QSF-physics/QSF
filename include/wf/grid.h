@@ -78,9 +78,7 @@ namespace QSF
 
 		MPIGridComm mcomm; 			// MPI Grid Communicator
 		const bool canLeaveTransposed;
-
 		fftw_plan mpi_plans[2];
-
 
 		cxd* psi_total = nullptr; 	// total ψ on m grid (used for saving)
 		cxd* psi = nullptr;      	// local ψ(x,t) on m_l grid
@@ -236,7 +234,6 @@ namespace QSF
 		{
 			if (mcomm.isMain)
 			{
-
 				//make forward and backward mpi plans
 				for (int i = 0; i < 2; i++)
 					mpi_plans[i] =
@@ -267,8 +264,6 @@ namespace QSF
 			testFFTW();
 			//Ready to alloc
 			psi = (cxd*)fftw_malloc(sizeof(cxd) * m_l);
-
-
 			/* Main region transforms all directions using MPI FFTW, others only use it to transform X.
 			Transposing the first two dimensions in not all-dim cases would lead to problems */
 			// ind nd[1] = { n_lx };
@@ -375,78 +370,6 @@ namespace QSF
 		void postCompute()
 		{
 
-		}
-
-
-		IO::path _save(IO::path path = "",
-					   DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false },
-					   bool mainRegionOnly = false)
-		{
-			//TODO: check if path is available on all nodes
-			if (!mainRegionOnly || MPI::region == 0)
-			{
-				if (!path.has_extension())
-					path += IO::psi_ext;
-				if (df.binary)
-					path += "b";
-				path += MPI::rPostfix();
-
-				MPI_File fh;
-				MPI_File_delete(path.c_str(), MPI_INFO_NULL);
-				MPI_File_open(MPI::rComm, path.c_str(),
-							  MPI_MODE_CREATE | MPI_MODE_WRONLY,
-							  MPI_INFO_NULL, &fh);
-
-				if (MPI::rID == 0)
-				{
-					//TODO: save step at which it is for restart
-					MPI_File_write(fh, &df.dim, 1, MPI_UNSIGNED_CHAR, MPI_STATUS_IGNORE);
-					MPI_File_write(fh, &df.rep, 1, MPI_UNSIGNED_CHAR, MPI_STATUS_IGNORE);
-					MPI_File_write(fh, &df.unnormalized, 1, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
-					MPI_File_write(fh, &df.initial_wf_subtracted, 1, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
-					int size = true ? sizeof(cxd) : sizeof(double);
-					MPI_File_write(fh, &size, 1, MPI_INT32_T, MPI_STATUS_IGNORE);
-					MPI_File_write(fh, n, df.dim, MPI_INT64_T, MPI_STATUS_IGNORE);
-					MPI_File_write(fh, dx, df.dim, MPI_DOUBLE, MPI_STATUS_IGNORE);
-					MPI_File_write(fh, mcomm.bounded, df.dim, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
-					// IO::writePsiBinaryHeader(file, n, dx, mcomm.bounded, df);
-				}
-				int offset = sizeof(df.dim) + sizeof(df.rep) + sizeof(df.rep) + sizeof(df.initial_wf_subtracted);
-				offset += sizeof(int) + df.dim * (sizeof(ind) + sizeof(double) + sizeof(bool));
-				MPI_File_set_view(fh, offset + MPI::rID * m_l * sizeof(cxd), MPI_CXX_DOUBLE_COMPLEX,
-								  MPI_CXX_DOUBLE_COMPLEX, "native", MPI_INFO_NULL);
-				MPI_File_write_all(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
-				// MPI_File_seek(fh, offset + MPI::rID * m_l, MPI_SEEK_SET);
-				// MPI_File_write(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
-				MPI_File_close(&fh);
-			}
-			// else
-			// {
-			// 	gather();
-			// 	if ((!mainRegionOnly && !MPI::rID) || (mainRegionOnly && !MPI::pID))
-			// 	{
-			// 		FILE* file;
-			// 		logWarning("%s =?= %s %d", path.parent_path().c_str(), IO::target_path.c_str(), path.parent_path().compare(IO::target_path));
-
-			// 		if ((path.has_parent_path() && path.parent_path().compare(IO::target_path)) || path.has_extension()) file = fopen(path.c_str(), "wb");
-			// 		else
-			// 			file = IO::openPsi< AFTER<>, REP::X, DIM, IO::IO_ATTR::WRITE>(path.c_str(), 0, 0, true);
-			// 	   // logDUMPS("Dumping " psi_symbol " in %s rep", (R == REP::X ? "X" : "P"));
-
-			// 		IO::writePsiBinaryHeader(file, n, dx, mcomm.bounded, df);
-			// 		fwrite(psi_total, sizeof(cxd), m, file);
-			// 		fclose(file);
-			// }
-
-			return std::filesystem::current_path() / path;
-		}
-
-		IO::path save(IO::path path = "",
-					  DUMP_FORMAT df = { DIM, REP::X, true, true, true, true, false })
-		{
-			if (df.rep == REP::P) fourier<REP::P>();
-			return _save(path, df);
-			if (df.rep == REP::P) fourier<REP::X>();
 		}
 
 	#pragma region Computations
@@ -849,66 +772,171 @@ namespace QSF
 		{
 			add<F, R, false>(std::forward<F>(f), indices);
 		}
+	#pragma endregion InitialConditions
 
-		void load(IO::path input_path, int region_index = 0)
+	#pragma region IO
+		void _load(IO::path input_path, std::string ext = IO::psi_ext)
 		{
-			if (MPI::region == region_index)
+			input_path += ext;
+
+			MPI_File fh;
+			MPI_File_open(MPI::rComm, input_path.c_str(), MPI_MODE_RDONLY,
+						  MPI_INFO_NULL, &fh);
+			logIO("Opening [%s] file %s", "rb", input_path.c_str());
+
+			if (MPI::rID == 0)
 			{
-				if (!MPI::rID) //only node can load the file
-				{
-					if (psi_total == nullptr)
-					{
-						logALLOC("Allocating memory for psi_total (%td nodes) loading file %s", m, input_path.c_str());
-						psi_total = new cxd[m];
-					}
-						// auto out = PsiFile(M_FROM, )
-					FILE* fin = fopen(input_path.c_str(), "rb");
-					//IO::fopen_with_check<IO::IO_ATTR::READ>(input_path.c_str());
-					//openPsi<AFTER<>, REP::X, DIM, IO::ATTR::READ>(name, 0, 0, true);
-					bool is_complex = IO::readPsiBinaryHeader<DIM>(fin);
-
-					if (is_complex) fread(psi_total, sizeof(cxd), m, fin);
-					else for (ind i = 0; i < m; i++) fread(&psi_total[i], sizeof(double), 1, fin);
-					fclose(fin);
-
-
-					double qnorm = 0.0;
-					for (ind i = 0; i < m; i++) qnorm += std::norm(psi_total[i]);
-					logSETUP("State " psi_symbol "_%d loaded with norm %g", 0, BaseGrid::template vol<REP::X>() * qnorm);
-				}
-				scatter();
+				//TODO: verify
+				// MPI_File_read(fh, &df.dim, 1, MPI_UNSIGNED_CHAR, MPI_STATUS_IGNORE);
+				// MPI_File_read(fh, &df.rep, 1, MPI_UNSIGNED_CHAR, MPI_STATUS_IGNORE);
+				// MPI_File_read(fh, &df.unnormalized, 1, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
+				// MPI_File_read(fh, &df.initial_wf_subtracted, 1, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
+				// int size;
+				// MPI_File_read(fh, &size, 1, MPI_INT32_T, MPI_STATUS_IGNORE);
+				// MPI_File_read(fh, n, df.dim, MPI_INT64_T, MPI_STATUS_IGNORE);
+				// MPI_File_read(fh, dx, df.dim, MPI_DOUBLE, MPI_STATUS_IGNORE);
+				// MPI_File_read(fh, mcomm.bounded, df.dim, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
+				// IO::writePsiBinaryHeader(file, n, dx, mcomm.bounded, df);
 			}
+			int offset = sizeof(DIMS) + sizeof(REP) + sizeof(bool) + sizeof(bool);
+			offset += sizeof(int) + DIM * (sizeof(ind) + sizeof(double) + sizeof(bool));
+			MPI_File_set_view(fh, offset + MPI::rID * m_l * sizeof(cxd), MPI_CXX_DOUBLE_COMPLEX,
+							  MPI_CXX_DOUBLE_COMPLEX, "native", MPI_INFO_NULL);
+			MPI_File_read_all(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
+			// MPI_File_seek(fh, offset + MPI::rID * m_l, MPI_SEEK_SET);
+			// MPI_File_read(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
+			MPI_File_close(&fh);
+			if (MPI::rID == 0)
+			{
+				auto res = average<REP::X, Identity>();
+				MPI::reduceImmediataly(&res);
+				logSETUP("State " psi_symbol "_%d loaded with norm %g", 0, res);
+			}
+		// if (MPI::region == region_index)
+		// {
+		// 	if (!MPI::rID) //only node can load the file
+		// 	{
+		// 		if (psi_total == nullptr)
+		// 		{
+		// 			logALLOC("Allocating memory for psi_total (%td nodes) loading file %s", m, input_path.c_str());
+		// 			psi_total = new cxd[m];
+		// 		}
+		// 			// auto out = PsiFile(M_FROM, )
+		// 		FILE* fin = fopen(input_path.c_str(), "rb");
+		// 		//IO::fopen_with_check<IO::IO_ATTR::READ>(input_path.c_str());
+		// 		//openPsi<AFTER<>, REP::X, DIM, IO::ATTR::READ>(name, 0, 0, true);
+		// 		bool is_complex = IO::readPsiBinaryHeader<DIM>(fin);
+
+		// 		if (is_complex) fread(psi_total, sizeof(cxd), m, fin);
+		// 		else for (ind i = 0; i < m; i++) fread(&psi_total[i], sizeof(double), 1, fin);
+		// 		fclose(fin);
+
+
+		// 		double qnorm = 0.0;
+		// 		for (ind i = 0; i < m; i++) qnorm += std::norm(psi_total[i]);
+		// 		logSETUP("State " psi_symbol "_%d loaded with norm %g", 0, BaseGrid::template vol<REP::X>() * qnorm);
+		// 	}
+		// 	scatter();
+		// }
+		}
+		void load(IO::path input_path, std::string ext = IO::psi_ext)
+		{
+			_load(input_path, ext);
+		}
+		void restore() {
+			logWarning("Restored the wf");
+			_load("backup");
 		}
 
-		void restore(std::string input_path)
+		IO::path _save(IO::path input_path,
+					   DUMP_FORMAT df,
+					   std::string ext = IO::psi_ext)
 		{
+			input_path += ext;
 
-			// latest_backup0__aft_xyz.psib2
-			if (!MPI::rID) //only node can load the file
+			MPI_File fh;
+			// MPI_File_delete(input_path.c_str(), MPI_INFO_NULL);
+			MPI_File_open(MPI::rComm, input_path.c_str(),
+						  MPI_MODE_CREATE | MPI_MODE_WRONLY,
+						  MPI_INFO_NULL, &fh);
+			logIO("Opening [%s] file %s", "wb", input_path.c_str());
+
+			if (MPI::rID == 0)
 			{
-				if (psi_total == nullptr)
-				{
-					logALLOC("Allocating memory for psi_total (%td nodes)", m);
-					psi_total = new cxd[m];
-				}
-					// auto out = PsiFile(M_FROM, )
-				FILE* fin = IO::fopen_with_check(input_path, "r");
-				//openPsi<AFTER<>, REP::X, DIM, IO::ATTR::READ>(name, 0, 0, true);
-				bool is_complex = IO::readPsiBinaryHeader<DIM>(fin);
-
-				if (is_complex) fread(psi_total, sizeof(cxd), m, fin);
-				else for (ind i = 0; i < m; i++) fread(&psi_total[i], sizeof(double), 1, fin);
-				fclose(fin);
-
-
-				double qnorm = 0.0;
-				for (ind i = 0; i < m; i++) qnorm += std::norm(psi_total[i]);
-				logSETUP("State " psi_symbol "_%d loaded with norm %g", 0, BaseGrid::template vol<REP::X>() * qnorm);
+				//TODO: save step at which it is for restart
+				MPI_File_write(fh, &df.dim, 1, MPI_UNSIGNED_CHAR, MPI_STATUS_IGNORE);
+				MPI_File_write(fh, &df.rep, 1, MPI_UNSIGNED_CHAR, MPI_STATUS_IGNORE);
+				MPI_File_write(fh, &df.unnormalized, 1, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
+				MPI_File_write(fh, &df.initial_wf_subtracted, 1, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
+				int size = true ? sizeof(cxd) : sizeof(double);
+				MPI_File_write(fh, &size, 1, MPI_INT32_T, MPI_STATUS_IGNORE);
+				MPI_File_write(fh, n, df.dim, MPI_INT64_T, MPI_STATUS_IGNORE);
+				MPI_File_write(fh, dx, df.dim, MPI_DOUBLE, MPI_STATUS_IGNORE);
+				MPI_File_write(fh, mcomm.bounded, df.dim, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
+				// IO::writePsiBinaryHeader(file, n, dx, mcomm.bounded, df);
 			}
-			scatter();
+			int offset = sizeof(df.dim) + sizeof(df.rep) + sizeof(df.rep) + sizeof(df.initial_wf_subtracted);
+			offset += sizeof(int) + df.dim * (sizeof(ind) + sizeof(double) + sizeof(bool));
+			MPI_File_set_view(fh, offset + MPI::rID * m_l * sizeof(cxd), MPI_CXX_DOUBLE_COMPLEX,
+							  MPI_CXX_DOUBLE_COMPLEX, "native", MPI_INFO_NULL);
+			MPI_File_write_all(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
+			// MPI_File_seek(fh, offset + MPI::rID * m_l, MPI_SEEK_SET);
+			// MPI_File_write(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
+			MPI_File_close(&fh);
 
+		// else
+		// {
+		// 	gather();
+		// 	if ((!mainRegionOnly && !MPI::rID) || (mainRegionOnly && !MPI::pID))
+		// 	{
+		// 		FILE* file;
+		// 		logWarning("%s =?= %s %d", path.parent_path().c_str(), IO::target_path.c_str(), path.parent_path().compare(IO::target_path));
+
+		// 		if ((path.has_parent_path() && path.parent_path().compare(IO::target_path)) || path.has_extension()) file = fopen(path.c_str(), "wb");
+		// 		else
+		// 			file = IO::openPsi< AFTER<>, REP::X, DIM, IO::IO_ATTR::WRITE>(path.c_str(), 0, 0, true);
+		// 	   // logDUMPS("Dumping " psi_symbol " in %s rep", (R == REP::X ? "X" : "P"));
+
+		// 		IO::writePsiBinaryHeader(file, n, dx, mcomm.bounded, df);
+		// 		fwrite(psi_total, sizeof(cxd), m, file);
+		// 		fclose(file);
+		// }
+
+			return std::filesystem::current_path() / input_path;
 		}
 
+		IO::path save(IO::path path = "", DUMP_FORMAT df = { .dim = DIM })
+		{
+			if (df.rep == REP::P) fourier<REP::P>();
+			return _save(path, df);
+			if (df.rep == REP::P) fourier<REP::X>();
+		}
+		void _backup(const ind step, std::string ext = IO::psi_ext)
+		{
+			if (!MPI::pID) {
+				FILE* f = IO::fopen_with_check("backup.info", "wb");
+				fwrite(&step, sizeof(ind), 1, f);
+				fclose(f);
+			}
+			_save("backup", { .dim = DIM }, ext);
+			logInfo("Backup made at step %td", step);
+		}
+		void backup(const ind step)
+		{
+			_backup(step);
+		}
+		void remove_backups(std::string ext = IO::psi_ext)
+		{
+			if (!MPI::rID) //main node of each region removes
+				std::filesystem::remove("backup" + ext);
+		}
+		void snapshot(std::string extra_info)
+		{
+			static ind enter = 0;
+			save("snapshot_" + std::to_string(enter) + extra_info);
+			enter++;
+		}
+	#pragma endregion IO
 
 	#pragma region ArrayOperations
 		//BUNCH OF HELPFUL FUNCTIONS
@@ -971,8 +999,6 @@ namespace QSF
 		}
 
 	#pragma endregion ArrayOperations
-
-	#pragma endregion InitialConditions
 
 	#pragma region Tests
 

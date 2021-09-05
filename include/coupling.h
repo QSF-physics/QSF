@@ -99,8 +99,9 @@ Feel free to add more gauges recognized by the physics community. 			  */
 	struct DipoleCoupling<VelocityGauge, Fields...> :
 		CouplingBase<DipoleApprox, std::conditional_t<std::is_base_of_v<_VectorPotential, Fields>, Fields, PromoteFieldToA<Fields>>...>
 	{
-		using base = CouplingBase<DipoleApprox, std::conditional_t<std::is_base_of_v<_VectorPotential, Fields>, Fields, PromoteFieldToA<Fields>>...>;
-		// using base::precalc;
+		using base = CouplingBase<DipoleApprox,
+			std::conditional_t<std::is_base_of_v<_VectorPotential, Fields>, Fields, PromoteFieldToA<Fields>>...>;
+
 		static constexpr REP couplesInRep = REP::P;
 
 		DipoleCoupling(Section& settings) : base(settings) {}

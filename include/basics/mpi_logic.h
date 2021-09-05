@@ -36,12 +36,6 @@ namespace MPI
 	MPI_Group rGroup;
 	MPI_Group eGroup;
 
-	std::string rPostfix()
-	{
-		if (regionCount > 1) return std::to_string(rID);
-		else return "";
-	}
-
 	template <class T>
 	constexpr auto type()
 	{
@@ -51,6 +45,10 @@ namespace MPI
 		if constexpr (std::is_same_v<T, bool>) return MPI_CXX_BOOL;
 	}
 
+	void Barrier(MPI_Comm com = MPI_COMM_WORLD)
+	{
+		MPI_Barrier(com);
+	}
 	// All rigor opt: FFTW_ESTIMATE, FFTW_MEASURE, FFTW_PATIENT, FFTW_EXHAUSTIVE, FFTW_WISDOM_ONLY
 	int plan_rigor = FFTW_MEASURE;
 
@@ -155,7 +153,7 @@ namespace MPI
 			MPI_Comm_group(gComm, &gGroup);
 			_logMPI("[pID %3d/%3d] is in group %d [gID %3d/%3d]", pID, pSize, group, gID, gSize);
 
-			MPI_Barrier(MPI_COMM_WORLD);
+			Barrier();
 			logSETUP("Initiated %d groups", groupCount);
 
 			/* Other ideas: Interesting node local communicator:
@@ -167,7 +165,7 @@ namespace MPI
 			_logMPI("region %d: [rID %3d/%3d] is in group %d [gID %3d/%3d]", region, rID, rSize, group, gID, gSize);
 
 			logSETUP("Initiated %d regions, processes per region: %d", regionCount, rSize);
-			MPI_Barrier(MPI_COMM_WORLD);
+			Barrier();
 
 			//equivalence comm - for joining the wf
 			MPI_Comm_split(MPI_COMM_WORLD, rID, pID, &eComm);
@@ -176,7 +174,7 @@ namespace MPI
 			MPI_Comm_group(eComm, &eGroup);
 
 			_logMPI("pID %d belongs to equiv. class %d with eID %d/ %d", pID, rID, eID, eSize);
-			MPI_Barrier(MPI_COMM_WORLD);
+			Barrier();
 
 			logSETUP("Attempting to init %d inter-communicators linking groups", groupCount - 1);
 			// Determine number of members in each group (group is determined by freeCoordsCount)

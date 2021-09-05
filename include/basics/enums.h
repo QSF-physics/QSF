@@ -22,7 +22,7 @@ enum class MODE
 #ifndef MODES_ENABLED
 #define MODES_ENABLED MODE::ALL
 #endif
-#define MODE_FILTER_OPT(M) bool(M & MODES_ENABLED)
+#define MODE_FILTER_OPT(M) (bool(M & MODES_ENABLED))
 
 constexpr DIMS operator""_D(unsigned long long val)
 {
@@ -158,17 +158,10 @@ struct DUMP_FORMAT
 {
 	DIMS dim;
 	REP rep = REP::X;
-	bool binary = true;
 	bool complex = true;
-	bool unnormalized = false;
+	bool unnormalized = true;
 	bool no_coords = true;
 	bool initial_wf_subtracted = false;
-};
-
-struct DATA_FORMAT
-{
-	bool binary = true;
-	// constexpr DATA_FORMAT(bool binary = false) : binary(binary) {}
 };
 // //Return the flag for current DIM
 // // constexpr DIMS DIMflag = (DIM == 1 ? D1 : (DIM == 2 ? D2 : D3));

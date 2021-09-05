@@ -40,14 +40,24 @@ namespace QSF
 			  std::filesystem::path location = IO::project_dir / IO::results_dir)
 	{
 		MPI::init(argc, argv);
-		if (!MPI::rID) std::filesystem::create_directories(location);
+		IO::root_dir = location;
+		if (!MPI::pID)
+			bool success = std::filesystem::create_directories(location);
+		MPI::Barrier();
 		std::filesystem::current_path(location);
 		// We forward argc, argv arguments, but this is NOT part of the MPI standard!
 		// See W. Gropp et al. - Using MPI Portable Parallel Programming with the Message-Passing Interface (2014, The MIT Press), p.60
 		logImportant("PROJECT: [%s] MPI PROCESSES: [%d]", IO::project_name.c_str(), MPI::pSize);
 		logImportant("MAIN OUTPUT PATH: [%s]", location.c_str());
 	}
+	void subdirectory(std::filesystem::path sub)
+	{
+		if (!MPI::pID)
+			bool success = std::filesystem::create_directories(IO::root_dir / sub);
 
+		MPI::Barrier();
+		std::filesystem::current_path(IO::root_dir / sub);
+	}
 	void finalize()
 	{
 		MPI_Finalize();

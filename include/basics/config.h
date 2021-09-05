@@ -24,16 +24,16 @@ namespace QSF
 			ini.default_section(ini.sections["DEFAULT"]);
 			ini.interpolate();
 			logINI("Parsed & interpolated project.ini file:");
-			ini.generate(std::cout);
-
+			if (!MPI::pID)
+				ini.generate(std::cout);
 			// if (DEBUG & DEBUG_INI) ini.generate(std::cout);
 			// if (DEBUG & DEBUG_INI) MPI_Barrier(MPI_COMM_WORLD);
 		}
-		void subdirectory(std::filesystem::path sub)
+
+		explicit Config(std::string section)
 		{
-			if (!MPI::rID)
-				std::filesystem::create_directories(std::filesystem::current_path() / sub);
-			std::filesystem::current_path(std::filesystem::current_path() / sub);
+			source_section = section;
 		}
+
 	};
 };

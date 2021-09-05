@@ -60,7 +60,7 @@ namespace QSF
 
 
 		template <MODE M>
-		void init(uind PASS, std::string& name)
+		void init(std::string& name, ind atstep = 0)
 		{
 			logInfo("comp_interval %d", comp_interval);
 			logInfo("log_interval %d", log_interval);
@@ -76,13 +76,14 @@ namespace QSF
 			xbufferCurrentLine = xbufferLastLine;
 			logBUFFER("REDUCABLE BUFFER SIZE: %tdx%td, NORMAL BUFFER SIZE: %tdx%td", sizeInBuffer<true>, bufferHeight, sizeInBuffer<false>, bufferHeight);
 			if (rbufferSize > 0) rbuffer = new double[rbufferSize];
-			if (!MPI::pID)
-			{
-				if (xbufferSize > 0) xbuffer = new double[xbufferSize];
-			}
+			if (!MPI::pID && xbufferSize > 0)
+				xbuffer = new double[xbufferSize];
 
 			if (comp_interval > 0) file_dat =
-				IO::fopen_with_check(name + IO::dat_ext + (binary ? "b" : "") + MPI::rPostfix(), "wb");
+				IO::fopen_with_check(name + IO::dat_ext, atstep ? (binary ? "rb+" : "r+") :
+									 (binary ? "wb" : "w"));
+			if (atstep) //to restore writting from the point where the wf was last saved 
+				fseek(file_dat, (rbufferSize + xbufferSize) * atstep / comp_interval, SEEK_SET);
 		}
 
 		BufferedOutputs(Section& settings)
