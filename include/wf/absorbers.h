@@ -1,51 +1,54 @@
-struct AbsorberType {};
-
-struct NoAbsorber : AbsorberType {};
-
-template <class GridType>
-struct CAP;
-
-template <DIMS size, class MPIRegions>
-struct CAP<CartesianGrid_<size, MPIRegions>> : AbsorberType, CartesianGrid_<size, MPIRegions>
+namespace QSF
 {
-	using Base = CartesianGrid_<size, MPIRegions>;
-	using Base::n2;
 
-	ind nCAP;
-	double eta;
+	struct AbsorberType {};
 
-	CAP(Base base, ind nCAP) : Base(base), nCAP(nCAP), eta(Power(3.0 / double(nCAP), 4)) {}
-	CAP(Section& settings) : Base(settings)
+	struct NoAbsorber : AbsorberType {};
+
+	template <class GridType>
+	struct CAP;
+
+	template <DIMS size, class MPIRegions>
+	struct CAP<CartesianGrid_<size, MPIRegions>> : AbsorberType, CartesianGrid_<size, MPIRegions>
 	{
-		inipp::get_value(settings, "nCAP", nCAP);
-		eta = Power(3.0 / double(nCAP), 4);
-	}
+		using Base = CartesianGrid_<size, MPIRegions>;
+		using Base::n2;
 
-	//Takes negative distance from the corresponding edge
-	template <uind ... dirs, typename ...Nodes>
-	inline double absorb(double delta, Nodes ... nodes)
-	{
-		([&] {nodes = nCAP + ind(nodes);}(), ...);
-		if (((nodes < 0) && ...)) return 1.0;
-		else return exp(-delta * double(((nodes > 0 ? Power(nodes, 4) : 0.0) + ...)) * eta);
-	}
+		ind nCAP;
+		double eta;
 
-	template <uind ... dirs, typename ...Nodes>
-	inline double mask(Nodes ... nodes)
-	{
-		([&] {nodes = nCAP + ind(nodes);}(), ...);
-		if (((nodes < 0) && ...)) return 1.0;
-		else return exp(-double(((nodes > 0 ? Power(nodes, 4) : 0.0) + ... + 0)) * eta);
-	}
+		CAP(Base base, ind nCAP) : Base(base), nCAP(nCAP), eta(Power(3.0 / double(nCAP), 4)) {}
+		CAP(Section& settings) : Base(settings)
+		{
+			inipp::get_value(settings, "nCAP", nCAP);
+			eta = Power(3.0 / double(nCAP), 4);
+		}
 
-	template <uind ... dirs, typename ...Nodes>
-	inline double inv_mask(Nodes ... nodes)
-	{
-		return 1.0 - mask<dirs...>(nodes...);
-	}
+		//Takes negative distance from the corresponding edge
+		template <uind ... dirs, typename ...Nodes>
+		inline double absorb(double delta, Nodes ... nodes)
+		{
+			([&] {nodes = nCAP + ind(nodes);}(), ...);
+			if (((nodes < 0) && ...)) return 1.0;
+			else return exp(-delta * double(((nodes > 0 ? Power(nodes, 4) : 0.0) + ...)) * eta);
+		}
 
-};
+		template <uind ... dirs, typename ...Nodes>
+		inline double mask(Nodes ... nodes)
+		{
+			([&] {nodes = nCAP + ind(nodes);}(), ...);
+			if (((nodes < 0) && ...)) return 1.0;
+			else return exp(-double(((nodes > 0 ? Power(nodes, 4) : 0.0) + ... + 0)) * eta);
+		}
 
+		template <uind ... dirs, typename ...Nodes>
+		inline double inv_mask(Nodes ... nodes)
+		{
+			return 1.0 - mask<dirs...>(nodes...);
+		}
+
+	};
+}
 // void correct(ind n, double L)
 // 	{
 // 		logTest((n % nCAP) == 0, "n (%td) mod (nCAP (%td)) == 0", n, nCAP);

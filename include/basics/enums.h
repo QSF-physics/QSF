@@ -22,12 +22,13 @@ enum class MODE
 #ifndef MODES_ENABLED
 #define MODES_ENABLED MODE::ALL
 #endif
-#define SHOULD_RUN(M) bool(M & MODES_ENABLED)
+#define MODE_FILTER_OPT(M) bool(M & MODES_ENABLED)
 
 constexpr DIMS operator""_D(unsigned long long val)
 {
 	return static_cast<DIMS>(val);
 }
+
 
 static constexpr auto modeName(MODE M) { return M == MODE::IM ? "IM" : "RE"; }
 enum class REP : DIMS
@@ -64,6 +65,20 @@ constexpr AXIS Axis = AXIS(1 << dir);
 
 constexpr AXIS getAxis(uind dir) { return AXIS(1 << dir); }
 
+std::string axisName(AXIS ax)
+{
+	switch (ax)
+	{
+	case AXIS::X:
+		return "X";
+	case AXIS::Y:
+		return "Y";
+	case AXIS::Z:
+		return "Z";
+	default:
+		return std::to_string((uind)ax);
+	}
+}
 
 enum class WHEN : ind
 {

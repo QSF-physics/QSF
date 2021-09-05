@@ -36,6 +36,20 @@ namespace MPI
 	MPI_Group rGroup;
 	MPI_Group eGroup;
 
+	std::string rPostfix()
+	{
+		if (regionCount > 1) return std::to_string(rID);
+		else return "";
+	}
+
+	template <class T>
+	constexpr auto type()
+	{
+		if constexpr (std::is_same_v<T, int>) return MPI_INT;
+		if constexpr (std::is_same_v<T, double>) return MPI_DOUBLE;
+		if constexpr (std::is_same_v<T, cxd>) return MPI_CXX_DOUBLE_COMPLEX;
+		if constexpr (std::is_same_v<T, bool>) return MPI_CXX_BOOL;
+	}
 
 	// All rigor opt: FFTW_ESTIMATE, FFTW_MEASURE, FFTW_PATIENT, FFTW_EXHAUSTIVE, FFTW_WISDOM_ONLY
 	int plan_rigor = FFTW_MEASURE;

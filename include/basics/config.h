@@ -1,29 +1,39 @@
 #include <fstream>
-using Section = inipp::Ini<char>::Section;
-struct Config
-{
-	inipp::Ini<char> ini;
-	char config[100];
 
-	Config() = default;
-	explicit Config(std::string_view name, int DIMS, int ELEC)
+namespace QSF
+{
+	using Section = inipp::Ini<char>::Section;
+
+	struct Config
 	{
-		logInfo("Parsing %s", name.data());
-		// if (MPI::pID)
-		std::ifstream is(name.data());
-		// ini.clear();
-		ini.parse(is);
-		// logINI("Raw INI file:");
-		// if (DEBUG & DEBUG_INI) ini.generate(std::cout);
-		ini.strip_trailing_comments();
-		sprintf(config, "%de%dd", DIMS, ELEC);
-		// constexpr auto dimelec = STRINGIFY(ELEC) "e" STRINGIFY(DIM) "d";
-		ini.default_section(ini.sections[config]);
-		ini.default_section(ini.sections["DEFAULT"]);
-		ini.interpolate();
-		// logINI("Parsed & interpolated project.ini file:");
-		// ini.generate(std::cout);
-		// if (DEBUG & DEBUG_INI) ini.generate(std::cout);
-		// if (DEBUG & DEBUG_INI) MPI_Barrier(MPI_COMM_WORLD);
-	}
+		std::string source_section;
+		inipp::Ini<char> ini;
+		char config[100];
+
+		Config() = default;
+		explicit Config(std::string section, std::string_view name)
+		{
+			logInfo("Parsing %s", name.data());
+			source_section = section;
+			// if (MPI::pID)
+			std::ifstream is(IO::project_dir / std::string(name));
+			// ini.clear();
+			ini.parse(is);
+			// if (DEBUG & DEBUG_INI) ini.generate(std::cout);
+			ini.strip_trailing_comments();
+			ini.default_section(ini.sections["DEFAULT"]);
+			ini.interpolate();
+			logINI("Parsed & interpolated project.ini file:");
+			ini.generate(std::cout);
+
+			// if (DEBUG & DEBUG_INI) ini.generate(std::cout);
+			// if (DEBUG & DEBUG_INI) MPI_Barrier(MPI_COMM_WORLD);
+		}
+		void subdirectory(std::filesystem::path sub)
+		{
+			if (!MPI::rID)
+				std::filesystem::create_directories(std::filesystem::current_path() / sub);
+			std::filesystem::current_path(std::filesystem::current_path() / sub);
+		}
+	};
 };
