@@ -458,32 +458,32 @@ namespace QSF
 		   energy_prev = 0;
 		   dE = 0;
 	   }  */
-	}
 
-	template <class OUTS>
-	void run(OUTS&& outputs, bool restore = 0)
+
+		template <class OUTS>
+		void run(OUTS&& outputs, bool restore = 0)
+		{
+			run<OUTS>(std::forward<OUTS>(outputs), [](WHEN when, ind step, uind pass, const auto& wf) {}, restore);
+		}
+
+		template <class OUTS, class Worker>
+		void run(Worker&& worker, bool restore = 0)
+		{
+			run(std::move(OUTS{ settings }), std::forward<Worker>(worker), restore);
+		}
+
+		template <class OUTS>
+		void run(bool restore = 0)
+		{
+			run<OUTS>([](WHEN when, ind step, uind pass, const auto& wf) {}, restore);
+		}
+
+	#pragma endregion Runner
+	};
+
+	template <MODE M, class SpType, class HamWF>
+	auto SplitPropagate(HamWF wf)
 	{
-		run<OUTS>(std::forward<OUTS>(outputs), [](WHEN when, ind step, uind pass, const auto& wf) {}, restore);
+		return SplitPropagator<M, SpType, HamWF>(wf);
 	}
-
-	template <class OUTS, class Worker>
-	void run(Worker&& worker, bool restore = 0)
-	{
-		run(std::move(OUTS{ settings }), std::forward<Worker>(worker), restore);
-	}
-
-	template <class OUTS>
-	void run(bool restore = 0)
-	{
-		run<OUTS>([](WHEN when, ind step, uind pass, const auto& wf) {}, restore);
-	}
-
-#pragma endregion Runner
-};
-
-template <MODE M, class SpType, class HamWF>
-auto SplitPropagate(HamWF wf)
-{
-	return SplitPropagator<M, SpType, HamWF>(wf);
-}
 };

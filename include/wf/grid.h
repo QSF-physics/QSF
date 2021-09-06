@@ -806,7 +806,7 @@ namespace QSF
 			// MPI_File_seek(fh, offset + MPI::rID * m_l, MPI_SEEK_SET);
 			// MPI_File_read(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
 			MPI_File_close(&fh);
-			if (MPI::rID == 0)
+			if (MPI::region == 0)
 			{
 				auto res = average<REP::X, Identity>();
 				MPI::reduceImmediataly(&res);
