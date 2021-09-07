@@ -47,7 +47,7 @@ namespace QSF
 
 				if (mpiFFTW)
 				{
-					printf("pID %d: is not main makes mpiFFTW plans\n", MPI::pID);
+					// printf("pID %d: is not main makes mpiFFTW plans\n", MPI::pID);
 					//make forward and backward mpi plans
 					for (int i = 0; i < 2; i++)
 						Base::mpi_plans[i] =
@@ -203,7 +203,7 @@ namespace QSF
 		{
 			stride_slice[dirFree][DIM - 1] = 1;
 			((stride_slice[dirFree][dirs] = sliceShape<dirFree, dirs + 1>() * stride_slice[dirFree][dirs + 1]), ...);
-			std::cout << MPI::pID << " dirFree: " << dirFree << " stride_slice[dirFree][..]" << stride_slice[dirFree][0] << " " << stride_slice[dirFree][1] << " " << stride_slice[dirFree][2] << " " << std::endl;
+			// std::cout << MPI::pID << " dirFree: " << dirFree << " stride_slice[dirFree][..]" << stride_slice[dirFree][0] << " " << stride_slice[dirFree][1] << " " << stride_slice[dirFree][2] << " " << std::endl;
 		}
 		// Here we initialize the slices (temp wf containers used for wf transfering)
 		// By design we want them to be universal, i.e. hold pieces of the wf coming 
@@ -262,7 +262,7 @@ namespace QSF
 			m_slice = DIM == 3 ? m / n[2] * nCAP : m;
 			m_lslice = m_slice / MPI::rSize;
 			slice = (cxd*)fftw_malloc(sizeof(cxd) * m_lslice);
-			printf("%d initSlice m_slice [%td] m_lslice [%td]\n", MPI::pID, m_slice, m_lslice);
+			// printf("%d initSlice m_slice [%td] m_lslice [%td]\n", MPI::pID, m_slice, m_lslice);
 
 			(initSliceStrides<dirFree>(rev_seq<DIM - 1>), ...);
 			(initFFTWplans<dirFree>(n_seq<DIM>), ...);
@@ -273,7 +273,7 @@ namespace QSF
 			isTopX = pos_lx.last > n[0] - 1 - nCAP;
 			startX = Max(0, n[0] - nCAP - pos_lx.first);
 
-			printf("pID: %d  startX[%td] (sizeX[%td] isBottomX %d) isTopX %d \n", MPI::pID, startX, sizeX, isBottomX, isTopX);
+			// printf("pID: %d  startX[%td] (sizeX[%td] isBottomX %d) isTopX %d \n", MPI::pID, startX, sizeX, isBottomX, isTopX);
 			// if (transf_slice[0] == NULL) logInfo("fftw_mpi_plan... (slice) returned NULL");
 		}
 
