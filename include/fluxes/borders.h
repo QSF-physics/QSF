@@ -27,13 +27,13 @@
 // static ind p_NS = 10;
 // static ind p_SD, p_DT, p_CAP = 10;
 // p_NS: position of borders between N and S regions (standard: 12.5)
-static ind p_NS = (ind)(12.5 / 0.5);
+ind p_NS = (ind)(12.5 / 0.5);
 // p_SD: position of borders between S and D regions (standard: 7)
-static ind p_SD = (ind)(7. / 0.5);
+ind p_SD = (ind)(7. / 0.5);
 // p_DT: position of borders between D and T regions (standard: 5)
-static ind p_DT = (ind)(5. / 0.5);
+ind p_DT = (ind)(5. / 0.5);
 // p_CAP = (ind)(n2 - 1.0 * PROP::CAPlength / 0.5);// CAP_nodes;
-static ind p_CAP = (ind)(20.0 / 0.5);
+ind p_CAP = (ind)(20.0 / 0.5);
 
 // Simplest flux border, takes size [au] 
 template <int size>

@@ -111,69 +111,8 @@ template <typename ... Args> struct OPERATION : COMPUTATION<double, false>
 {
 };
 
-/*
-template <typename...Ts>
-struct Dumps
-{
-	static constexpr auto size = sizeof...(Ts);
-	using type = Dumps;
-
-	template <REP R, typename WHEN>
-	static inline void run()
-	{
-		(runEach<Ts, R, WHEN>(), ...);
-	}
-
-	template <typename T, REP R, typename WHEN>
-	static inline void runEach()
-	{
-
-	}
-}; */
 
 
-/*
-template <size_t pos, class RetT = COMP, typename  typename COMP::returnT>
-	inline void storeInBuffer(RetT val)
-	{
-		// logInfo("would store %s at %td", typeid(COMP).name(), pos);
-		constexpr bool usingReduceBuffer = usesReduceBuffer<M, COMP>;
-		// logInfo("About to stack... %td %d %g", pos, usingReduceBuffer, val);
-
-		if constexpr (std::is_same_v<std::remove_const_t<RetT>, double> || std::is_convertible_v<RetT, double>)
-		{
-			// logInfo("here %d", xbufferCurrentLine);
-			if constexpr (usingReduceBuffer) rbuffer[rbufferCurrentLine + pos] = val;
-			else if (!MPI::pID)
-			{
-				// logInfo("Stacked at %td ", xbufferCurrentLine + pos);
-				xbuffer[xbufferCurrentLine + pos] = val;
-			}
-			// logInfo("here2");
-		}
-		else if constexpr (std::is_same_v<std::remove_const_t<RetT>, cxd>)
-		{
-			if constexpr (usingReduceBuffer)
-			{
-				rbuffer[rbufferCurrentLine + pos] = val.real();
-				rbuffer[rbufferCurrentLine + pos + 1] = val.imag();
-			}
-			else if (!MPI::pID)
-			{
-				xbuffer[xbufferCurrentLine + pos] = val.real();
-				xbuffer[xbufferCurrentLine + pos + 1] = val.imag();
-			}
-		}
-		else
-		{
-			constexpr size_t RetTsize = sizeof(RetT) / sizeof(double);
-			for (int i = 0; i < RetTsize; i++)
-			{
-				if constexpr (usingReduceBuffer)rbuffer[rbufferCurrentLine + pos + i] = val[i];
-				else if (!MPI::pID)  xbuffer[xbufferCurrentLine + pos + i] = val[i];
-			}
-		}
-	} */
 // template <typename...T>
 // struct Run :TypeBox<T...>
 // {

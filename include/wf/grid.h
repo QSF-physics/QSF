@@ -484,7 +484,7 @@ namespace QSF
 				(update_curr<R, Is>(counter), ...);
 				counter++;
 			}
-
+			///WHAT FOLLOWS LEADS TO CRASH
 			if (MPI::rSize > 1) //edge cases for MPI
 			{
 				if (MPI::rID < MPI::rSize - 1) // Recieve from higher MPI::rID
@@ -507,16 +507,18 @@ namespace QSF
 			//TODO: make it fail in P rep
 			if (curr == nullptr) //TODO: move to prepare
 			{
+				fprintf(stderr, "ENTER %d\n", MPI::rID);
 				curr = new borVec<DIM>[m_l];
 				if (MPI::rSize > 1)
 				{
 					row_after = new cxd[rowSize<R>()];
 					row_before = new cxd[rowSize<R>()];
 					logALLOC("row_after & row_before allocated");
+					fprintf(stderr, "ALLOC %d\n", MPI::rID);
 				}
 			}
 			getNeighbouringNodes<R>();
-			current_map_<R>(indices);
+			current_map_<R>(indices); // likely BUG
 		}
 		template <REP R>
 		void getNeighbouringNodes()
@@ -541,8 +543,6 @@ namespace QSF
 			ind counters[DIM + 1]{ 0 };
 			double res = 0.0;
 			do {
-				// logWarning("%g", FLUX_TYPE::border((counters[Is] - n2[Is])...)[0]);
-				// logWarning("%g %g %g", curr[counters[DIM]][Is]..., FLUX_TYPE::border((counters[Is] - n2[Is])...)[0], res);
 				res += curr[counters[DIM]]
 					* FLUX_TYPE::border((abs_centered_index<R, Is>(counters[Is]))...);
 
@@ -557,7 +557,6 @@ namespace QSF
 		template <REP R, class FLUX_TYPE>
 		inline double flux()
 		{
-			// logUser("%s", typeid(FLUX_TYPE).name());
 			return flux_<R, FLUX_TYPE>(indices);
 		}
 

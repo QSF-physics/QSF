@@ -262,7 +262,7 @@ namespace QSF
 			  : ditch()),
 			 ...);
 
-			//Check if work in inverse fourier space is needed
+						//Check if work in inverse fourier space is needed
 			if constexpr ((false || ... || (bool(COMP::rep & invREP))))
 			{
 				fourier<invREP>();

@@ -35,7 +35,6 @@
 #include "routines.h"
 namespace QSF
 {
-
 	void init(int argc, char* argv[],
 			  std::filesystem::path location = IO::project_dir / IO::results_dir)
 	{
@@ -50,6 +49,7 @@ namespace QSF
 		logImportant("PROJECT: [%s] MPI PROCESSES: [%d]", IO::project_name.c_str(), MPI::pSize);
 		logImportant("MAIN OUTPUT PATH: [%s]", location.c_str());
 	}
+
 	void subdirectory(std::filesystem::path sub)
 	{
 		if (!MPI::pID)
