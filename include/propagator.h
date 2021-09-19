@@ -241,6 +241,7 @@ namespace QSF
 			using T = FLUX<Op...>;
 			// wf.template current_map<R>();
 			// bo.template store <T>((wf.template flux<R, Op>())...);
+
 		}
 
 		//If no match here is found pass to the wavefunction with buffer
