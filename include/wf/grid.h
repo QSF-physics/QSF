@@ -779,8 +779,7 @@ namespace QSF
 			input_path += ext;
 
 			MPI_File fh;
-			MPI_File_open(MPI::rComm, input_path.c_str(), MPI_MODE_RDONLY,
-						  MPI_INFO_NULL, &fh);
+			MPI_File_open(MPI::rComm, input_path.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
 			logIO("Opening [%s] file %s", "rb", input_path.c_str());
 
 			if (MPI::rID == 0)

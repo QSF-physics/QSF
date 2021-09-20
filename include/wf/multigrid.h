@@ -420,7 +420,6 @@ namespace QSF
 		{
 			// std::cout << " -->box dispatch" << rank << " " << boxIndex << " fc:" << uind(fc) << " pID" << MPI::pID << std::endl;
 			// Same nodes in each region talk to each other
-			// getXBox(renk)
 			switch (fc)
 			{
 			case AXIS::X:
