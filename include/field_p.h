@@ -40,13 +40,13 @@ namespace QSF
 	struct EmptyPulse :PulsePrototype
 	{
 		static constexpr std::string_view name = "EMPTY";
-		EmptyPulse() = default;
+		// EmptyPulse() = default;
 		EmptyPulse(_FieldConfig p) : PulsePrototype(p) {}
 	};
 	struct SinPulse :PulsePrototype
 	{
 		static constexpr std::string_view name = "SIN";
-		SinPulse() = default;
+		// SinPulse() = default;
 		SinPulse(_FieldConfig p) :PulsePrototype(p) {}
 		inline double operator()(double time) const
 		{
@@ -56,7 +56,7 @@ namespace QSF
 	struct ConstantPulse :PulsePrototype
 	{
 		static constexpr std::string_view name = "--";
-		ConstantPulse() = default;
+		// ConstantPulse() = default;
 		ConstantPulse(_FieldConfig p) :PulsePrototype(p) {}
 		inline double operator()(double time) const
 		{
@@ -67,7 +67,7 @@ namespace QSF
 	{
 		static constexpr std::string_view name = "CHEM";
 		double env_mult;
-		ChemPhysPulse() = default;
+		// ChemPhysPulse() = default;
 		ChemPhysPulse(_FieldConfig p) :PulsePrototype(p),
 			env_mult(p.omega / (2.0 * p.ncycles)) {}
 		inline double operator()(double time) const
@@ -86,7 +86,7 @@ namespace QSF
 		static constexpr std::string_view _name = "ENV_";
 		static constexpr std::string_view name = join_v<_name, Pulse::name>;
 		double env_mult;
-		ChemPhysEnvelope() = default;
+		// ChemPhysEnvelope() = default;
 		ChemPhysEnvelope(_FieldConfig p) : Pulse{ p }, env_mult(p.omega / (2.0 * p.ncycles)){}
 		inline double operator()(double time) const
 		{
@@ -103,7 +103,7 @@ namespace QSF
 		static constexpr std::string_view _name = "SIN2_";
 		static constexpr std::string_view name = join_v<_name, Pulse::name>;
 		double env_mult;
-		Sin2Envelope() = default;
+		// Sin2Envelope() = default;
 		Sin2Envelope(_FieldConfig p) : Pulse{ p }, env_mult(p.omega / (2.0 * p.ncycles)) {
 			//TODO: Warn if FWHM >0
 		}
@@ -122,7 +122,7 @@ namespace QSF
 		double leftEdge;
 		double rightEdge;
 		double ramp;
-		RampEnvelope() = default;
+		// RampEnvelope() = default;
 		RampEnvelope(_FieldConfig p) : Pulse{ p },
 			leftEdge((-2.0 * (-1.0 + p.FWHM_percent))* Pulse::pulse_time),
 			rightEdge((-1.0 + 2.0 * p.FWHM_percent)* Pulse::pulse_time),
@@ -156,7 +156,7 @@ namespace QSF
 		static constexpr std::string_view name = join_v<_name, Pulse::name>;
 		double sin_pow;
 		double env_mult;
-		SinEnvelope() = default;
+		// SinEnvelope() = default;
 		SinEnvelope(_FieldConfig p) : Pulse{ p },
 			env_mult(p.omega / (2.0 * p.ncycles)),
 			sin_pow(log(2) / log(1 / sin(0.5 * pi * (1 - p.FWHM_percent)))){
@@ -176,7 +176,7 @@ namespace QSF
 		static constexpr std::string_view _name = "GAUSS_";
 		static constexpr std::string_view name = join_v<_name, Pulse::name>;
 		double gauss_pow;
-		GaussianEnvelope() = default;
+		// GaussianEnvelope() = default;
 		GaussianEnvelope(_FieldConfig p) :
 			Pulse{ p },
 			gauss_pow(-4.0 * log(2) / Power(p.FWHM_percent * Pulse::pulse_time, 2))

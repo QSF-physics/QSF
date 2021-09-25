@@ -102,7 +102,7 @@ namespace QSF
 	#pragma endregion Auto
 
 	#pragma region Initialization
-		SplitPropagator(PropagatorBase pb, HamWF&& wf, std::string source_section = std::string(name))
+		explicit SplitPropagator(PropagatorBase pb, HamWF&& wf, std::string source_section = std::string(name))
 			: Config(source_section), PropagatorBase(pb), wf(wf)
 		{
 			logInfo("SplitPropagator init");
