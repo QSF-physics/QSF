@@ -415,6 +415,7 @@ namespace QSF
 				FILE* f = IO::fopen_with_check("backup.info", "rb");
 				fread(&atstep, sizeof(ind), 1, f);
 				fclose(f);
+				printf("pID %d, Read step: %td\n", MPI::pID, atstep);
 				outputs.template init<M>(source_section, atstep);
 				//TODO: make this for gauges interacting with potentials (not fields)
 				while (step < atstep)

@@ -82,8 +82,12 @@ namespace QSF
 			if (comp_interval > 0) file_dat =
 				IO::fopen_with_check(name + IO::dat_ext, atstep ? (binary ? "rb+" : "r+") :
 									 (binary ? "wb" : "w"));
-			if (atstep) //to restore writting from the point where the wf was last saved 
+			if (atstep)
+			{ //to restore writting from the point where the wf was last saved 
+				rbufferCurrentLine = 0;
+				xbufferCurrentLine = 0;
 				fseek(file_dat, (rbufferSize + xbufferSize) * atstep / comp_interval, SEEK_SET);
+			}
 		}
 
 		BufferedOutputs(Section& settings)

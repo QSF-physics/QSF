@@ -780,7 +780,7 @@ namespace QSF
 
 			MPI_File fh;
 			MPI_File_open(MPI::rComm, input_path.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
-			logIO("Opening [%s] file %s", "rb", input_path.c_str());
+			logIO("[_load] Opening [%s] file %s", "rb", input_path.c_str());
 
 			if (MPI::rID == 0)
 			{
@@ -800,15 +800,15 @@ namespace QSF
 			offset += sizeof(int) + DIM * (sizeof(ind) + sizeof(double) + sizeof(bool));
 			MPI_File_set_view(fh, offset + MPI::rID * m_l * sizeof(cxd), MPI_CXX_DOUBLE_COMPLEX,
 							  MPI_CXX_DOUBLE_COMPLEX, "native", MPI_INFO_NULL);
-			MPI_File_read_all(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
+			// MPI_File_read_all(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
 			// MPI_File_seek(fh, offset + MPI::rID * m_l, MPI_SEEK_SET);
-			// MPI_File_read(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
+			MPI_File_read(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
 			MPI_File_close(&fh);
-			if (MPI::region == 0)
+			// if (MPI::region == 0)
 			{
 				auto res = average<REP::X, Identity>();
 				MPI::reduceImmediataly(&res);
-				logSETUP("State " psi_symbol "_%d loaded with norm %g", 0, res);
+				__logMPI("pID %d, State " psi_symbol "_%d loaded with norm %g\n", MPI::pID, 0, res);
 			}
 		// if (MPI::region == region_index)
 		// {
@@ -877,7 +877,7 @@ namespace QSF
 			offset += sizeof(int) + df.dim * (sizeof(ind) + sizeof(double) + sizeof(bool));
 			MPI_File_set_view(fh, offset + MPI::rID * m_l * sizeof(cxd), MPI_CXX_DOUBLE_COMPLEX,
 							  MPI_CXX_DOUBLE_COMPLEX, "native", MPI_INFO_NULL);
-			MPI_File_write_all(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
+			MPI_File_write(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
 			// MPI_File_seek(fh, offset + MPI::rID * m_l, MPI_SEEK_SET);
 			// MPI_File_write(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
 			MPI_File_close(&fh);
