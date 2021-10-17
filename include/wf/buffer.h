@@ -107,10 +107,7 @@ namespace QSF
 		}
 
 		template < class COMP>
-		double getLastValue()
-		{
-			return *(record<COMP>() + offset<COMP>());
-		}
+		double getLastValue() { return *(record<COMP>() + offset<COMP>()); }
 
 
 		template < class COMP, class...Op>

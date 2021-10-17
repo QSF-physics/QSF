@@ -40,7 +40,6 @@ namespace QSF
 	};
 #pragma endregion AvailableOperations
 
-
 	template <class Hamiltonian, class BaseGrid, uind Components, class MPI_GC = typename BaseGrid::MPIGridComm, class MPIDiv = typename MPI_GC::MPIDivision, bool many = MPI_GC::many>
 	struct LocalGrid;
 
