@@ -108,7 +108,6 @@ struct Routine<seq<PASS...>, PROP, Worker>
 		// if (PROP::calcsEnabled())
 		// {
 		// 	// setupInitialState<PASS, REP::X, mode>();
-		// 	// outputs.setupComputations();
 		// }
 		// // if constexpr (startREP == REP::P)
 		// // {

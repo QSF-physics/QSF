@@ -191,7 +191,6 @@ namespace QSF
 		inline void compute(BO& bo, VALUE<Op...>&&)
 		{
 			using T = VALUE<Op...>;
-			// bo.template store <T>(getValue(Op{}) ...);
 			bo.template store <T>(getValue<Op>()...);
 		}
 
@@ -203,6 +202,7 @@ namespace QSF
 			if constexpr (std::is_same_v<T, ENERGY_TOTAL>)
 				tot_energy = bo.template getLastValue<T>();
 		}
+
 		template <REP R, class BO, class Op>
 		inline void compute(BO& bo, CHANGE<Op>&&)
 		{
@@ -263,7 +263,7 @@ namespace QSF
 			  : ditch()),
 			 ...);
 
-						//Check if work in inverse fourier space is needed
+			//Check if work in inverse fourier space is needed
 			if constexpr ((false || ... || (bool(COMP::rep & invREP))))
 			{
 				fourier<invREP>();

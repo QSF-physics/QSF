@@ -52,12 +52,9 @@ namespace QSF
 		template < typename T>
 		double* record()
 		{
-			if constexpr (usesReduceBuffer<T>)
-				return rbuffer + rbufferCurrentLine;
+			if constexpr (usesReduceBuffer<T>) return rbuffer + rbufferCurrentLine;
 			else return xbuffer + xbufferCurrentLine;
 		}
-
-
 
 		template <MODE M>
 		void init(std::string& name, ind atstep = 0)
@@ -160,49 +157,18 @@ namespace QSF
 				pos += COMP::returnTypeSize;
 			 }(), ...);
 		}
-		// template <typename WHEN, REP R, class PROP>
-		// inline void compute(const PROP& propagator)
-		// {
-		// 	((Ts::template canRun<R, WHEN> ?
-		// 	  computeEach<PROP, WHEN, R, Ts, typename Ts::returnT>
-		// 	  (propagator, Ts{}, (typename Ts::types) {}, pos<Ts>{}) : ditch()), ...);
-		// }
-
-
-
 
 		// template <class PROP, typename WHEN, REP R, typename T, typename retT, typename... COMP, size_t...Is>
 		// inline void computeEach(const PROP& propagator, T&& comp, COMPUTATION<retT, Op...>&&, seq<	// Is...>&&)
 		// {
-		   // 	// T::template forerunner<R, opt>();
-		   // 	// logInfo("compute:");
-		   // 	// Timings::measure::start(comp.name);
-		   // 	(storeInBuffer < Is, usesReduceBuffer<T>, retT>(
-		   // 		propagator->template calc<R, Op>()), ...);
-		   // 		// comp.template calc<R, opt, Op>()), ...);
-		   // 		// Timings::measure::stop(comp.name);
-
-		   // 	// runEach<R, opt, >(T{});
-		   // }
-
-		static inline void setupComputations()
-		{
-			// if (optims & PRECOMP_COORDS) precomputeCoords();
-
-			// ForEach(comps, [&](auto index)
-			// 		{
-			// 			// constexpr auto comps = getComputations<RI, _COMPUTATION>();
-			// 			constexpr auto x = get<index>(comps);
-
-			// 			if constexpr (x.template canRun<getPropagator<RI>.startsIn, EARLY>())
-			// 				x.template prepare<mode, REP::X, optims>();
-
-			// 			if constexpr (x.template canRun<(REP::BOTH ^ getPropagator<RI>.startsIn), LATE>())
-			// 				x.template prepare<mode, REP::P, optims>();
-
-			// 		});
-		}
-
+		// 	// T::template forerunner<R, opt>();
+		// 	// Timings::measure::start(comp.name);
+		// 	(storeInBuffer < Is, usesReduceBuffer<T>, retT>(
+		// 		propagator->template calc<R, Op>()), ...);
+		// 		// comp.template calc<R, opt, Op>()), ...);
+		// 		// Timings::measure::stop(comp.name);
+		// 	// runEach<R, opt, >(T{});
+		// }
 
 		template <typename ...T>
 		void logQuick(const std::string_view format, T... data)
@@ -210,10 +176,8 @@ namespace QSF
 			LOG_INLINE(format.data(), data...);
 		}
 
-
 		void writeCaptions()
 		{
-
 			// auto names = logNames<RI>();
 			// logInfo("%s", names.data());
 			// constexpr auto comps = getComputations<RI>();
@@ -255,15 +219,11 @@ namespace QSF
 		// } // }
 		}
 
-
-
 		template <typename T, size_t ... I>
 		inline void log(seq <I...>)
 		{
 			LOG_INLINE(T::format.data(), *(record<T>() + I)...);
 		}
-		// template <typename T>
-		// inline void log(seq<I...>)
 
 		// template <typename T>
 		// inline void log()
@@ -361,10 +321,8 @@ namespace QSF
 		{
 			if (rbufferSize > 0)
 			{
-				if (!MPI::pID) MPI_Reduce(MPI_IN_PLACE, rbuffer, rbufferSize,
-										  MPI_DOUBLE, MPI_SUM, 0, MPI::rComm);
-				else MPI_Reduce(rbuffer, rbuffer, rbufferSize,
-								MPI_DOUBLE, MPI_SUM, 0, MPI::rComm);
+				if (!MPI::pID) MPI_Reduce(MPI_IN_PLACE, rbuffer, rbufferSize, MPI_DOUBLE, MPI_SUM, 0, MPI::rComm);
+				else MPI_Reduce(rbuffer, rbuffer, rbufferSize, MPI_DOUBLE, MPI_SUM, 0, MPI::rComm);
 			}
 		}
 
