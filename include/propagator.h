@@ -255,7 +255,6 @@ namespace QSF
 			if constexpr (HamWF::couplesInRep == REP::P)
 				velocityGaugeCorrection(currents, HamWF::indices);
 			bo.template store <T>((wf.template flux<R, Op>())...);
-
 		}
 
 		//If no match here is found pass to the wavefunction with buffer
