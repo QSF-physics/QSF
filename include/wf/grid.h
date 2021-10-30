@@ -463,26 +463,26 @@ namespace QSF
 		}
 
 
-		template <REP R, uind dir>
+		template <uind dir>
 		inline void update_curr(ind counter) //imag(conj(psi))*∂psi
 		{
 			cxd tmp;
-			if ((counter - stride<R, dir>() > 0) && (counter + stride<R, dir>() < m_l)) //Boundries
+			if ((counter - stride<REP::X, dir>() > 0) && (counter + stride<REP::X, dir>() < m_l)) //Boundries
 			{
 				// fprintf(stderr, "%d %td %td %p %p %p\n", MPI::pID, stride<R, dir>(), counter, &psi[counter], &psi[counter + stride<R, dir>()], &psi[counter - stride<R, dir>()]);
-				tmp = psi[counter + stride<R, dir>()] - psi[counter - stride<R, dir>()];
+				tmp = psi[counter + stride<REP::X, dir>()] - psi[counter - stride<REP::X, dir>()];
 				curr[counter][dir] = inv_2dx[dir] * imag(conj(psi[counter]) * tmp);
 			}
 			else curr[counter][dir] = 0.0;
 		}
-		template <REP R, uind ... Is>
+		template <uind ... Is>
 		inline void current_map_(seq<Is...>)
 		{
 			ind counter = 0;
 			// printf("SIZES: [%td %td]\n", m, m_l);
 			while (counter < m_l)
 			{
-				(update_curr<R, Is>(counter), ...);
+				(update_curr<Is>(counter), ...);
 				counter++;
 			}
 
@@ -490,46 +490,48 @@ namespace QSF
 			{
 				if (MPI::rID < MPI::rSize - 1) // Recieve from higher MPI::rID
 				{
-					for (ind j = 0; j < rowSize<R>(); j++)
+					ind lastRow = m_l - rowSize<REP::X>();
+					for (ind j = 0; j < rowSize<REP::X>(); j++)
 					{
 						// fprintf(stderr, "%d %td %td %p %p %p\n", MPI::pID, rowSize<R>(), j, &psi[j], &psi[j - rowSize<R>()], &row_after[j]);
-						curr[j][0] = inv_2dx[0]
-							* imag(conj(psi[j]) * (row_after[j] - psi[m_l - rowSize<R>() + j]));
+						curr[lastRow + j][0] = inv_2dx[0]
+							* imag(conj(psi[lastRow + j]) * (row_after[j] - psi[lastRow - rowSize<REP::X>() + j]));
 					}
 				}
 				if (MPI::rID > 0) // Recieved from lower MPI::rID
 				{
-					for (ind j = 0; j < rowSize<R>(); j++)
+					for (ind j = 0; j < rowSize<REP::X>(); j++)
 					{
 						// fprintf(stderr, "%d %td %td %p %p %p\n", MPI::pID, rowSize<R>(), j, &psi[j], &psi[j + rowSize<R>()], &row_before[j]);
 						curr[j][0] = inv_2dx[0]
-							* imag(conj(psi[j]) * (psi[j + rowSize<R>()] - row_before[j]));
+							* imag(conj(psi[j]) * (psi[j + rowSize<REP::X>()] - row_before[j]));
 					}
 				}
 			}
 		}
-		template <REP R>
-		inline void current_map()
+
+		inline borVec<DIM>* current_map()
 		{
 			//TODO: make it fail in P rep
 			if (curr == nullptr) //TODO: move to prepare
 			{
-				fprintf(stderr, "ALLOC curr %d %td\n", MPI::rID, m_l);
+				// fprintf(stderr, "ALLOC curr %d %td\n", MPI::rID, m_l);
 				curr = new borVec<DIM>[m_l];
 				if (MPI::rSize > 1)
 				{
-					row_after = new cxd[rowSize<R>()];
-					row_before = new cxd[rowSize<R>()];
-					fprintf(stderr, "ALLOC rows %d %td\n", MPI::rID, rowSize<R>());
+					row_after = new cxd[rowSize<REP::X>()];
+					row_before = new cxd[rowSize<REP::X>()];
+					// fprintf(stderr, "ALLOC rows %d %td\n", MPI::rID, rowSize<REP::X>());
 				}
 			}
-			getNeighbouringNodes<R>();
-			current_map_<R>(indices); // likely BUG
+			getNeighbouringNodes();
+			current_map_(indices);
+			return curr;
 		}
-		template <REP R>
+
 		void getNeighbouringNodes()
 		{
-			int size = int(rowSize<R>());
+			int size = int(rowSize<REP::X>());
 			//TODO: change to MPI_window
 			if (MPI::rSize > 1)
 			{
@@ -539,7 +541,7 @@ namespace QSF
 					MPI_Recv(row_after, size, MPI_CXX_DOUBLE_COMPLEX, MPI::rID + 1, 13, MPI::rComm, &MPI::status);
 
 				if (MPI::rID < MPI::rSize - 1)	// Send down
-					MPI_Send(&(psi[(shape<R, 0>() - 1) * rowSize<R>()]), size, MPI_CXX_DOUBLE_COMPLEX, MPI::rID + 1, 7, MPI::rComm);
+					MPI_Send(&(psi[(shape<REP::X, 0>() - 1) * rowSize<REP::X>()]), size, MPI_CXX_DOUBLE_COMPLEX, MPI::rID + 1, 7, MPI::rComm);
 				if (MPI::rID > 0)			// Recieve 
 					MPI_Recv(row_before, size, MPI_CXX_DOUBLE_COMPLEX, MPI::rID - 1, 7, MPI::rComm, &MPI::status);
 			}

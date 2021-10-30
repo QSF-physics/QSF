@@ -235,11 +235,25 @@ namespace QSF
 			using T = AVG<DERIVATIVE<dir, Op>>;
 			bo.template store <T>((wf.template average_der<R, dir, Op>()));
 		}
+
+		template <uind ... Is>
+		inline void velocityGaugeCorrection(borVec<HamWF::DIM>* curr, seq<Is...>)
+		{
+			ind counter = 0;
+			while (counter < wf.m_l)
+			{
+				((curr[counter][Is] += wf._coupling[Axis<Is>] * norm(wf[counter])), ...);
+				counter++;
+			}
+		}
+
 		template <REP R, class BO, class ... Op>
 		inline void compute(BO& bo, FLUX<Op...>&& c)
 		{
 			using T = FLUX<Op...>;
-			wf.template current_map<R>();
+			borVec<HamWF::DIM>* currents = wf.template current_map();
+			if constexpr (HamWF::couplesInRep == REP::P)
+				velocityGaugeCorrection(currents, HamWF::indices);
 			bo.template store <T>((wf.template flux<R, Op>())...);
 
 		}

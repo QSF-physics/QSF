@@ -70,7 +70,6 @@ Feel free to add more gauges recognized by the physics community. 			  */
 		// void reset() { last_values{ 0 }; last_values_backup{ 0 }; }
 		double operator[](AXIS ax)
 		{
-
 			return ((bool(Fields::axis & ax) ? std::get<Fields>(fields).lastVal : 0) + ...);
 		}
 	};
