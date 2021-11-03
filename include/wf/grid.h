@@ -344,7 +344,6 @@ namespace QSF
 
 		inline void reset() { resetArray(psi); }
 
-
 		inline void normalizeAfterTwoFFT()
 		{
 			multiplyArray(psi, inv_m);
@@ -353,8 +352,8 @@ namespace QSF
 		template <REP R>
 		inline void fourier()
 		{
+			// logInfo("FT %d", int(R));
 		// Timings::measure::start("FFTW");
-			// fprintf(stderr, "normal fourier\n");
 			static_assert(R == REP::X || R == REP::P, "Can only transform to X or P, unambigously.");
 			constexpr DIMS back = R == REP::P ? 0 : 1;
 			fftw_execute(mpi_plans[back]);
@@ -847,6 +846,37 @@ namespace QSF
 		// }
 		}
 
+
+		void orthogonalizeWith(IO::path input_path, std::string ext = IO::psi_ext)
+		{
+			input_path += ext;
+
+			MPI_File fh;
+			MPI_File_open(MPI::rComm, input_path.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
+			logIO("[orthogonalizeWith] Opening [%s] file %s", "rb", input_path.c_str());
+
+
+			int offset = sizeof(DIMS) + sizeof(REP) + sizeof(bool) + sizeof(bool);
+			offset += sizeof(int) + DIM * (sizeof(ind) + sizeof(double) + sizeof(bool));
+			MPI_File_set_view(fh, offset + MPI::rID * m_l * sizeof(cxd), MPI_CXX_DOUBLE_COMPLEX,
+							  MPI_CXX_DOUBLE_COMPLEX, "native", MPI_INFO_NULL);
+			// MPI_File_read_all(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
+			// MPI_File_seek(fh, offset + MPI::rID * m_l, MPI_SEEK_SET);
+			cxd* tmp = new cxd[m_l];
+			MPI_File_read(fh, tmp, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
+			MPI_File_close(&fh);
+			cxd scalarProduct = 0.0;
+			for (ind i = 0; i < m_l; i++)
+				scalarProduct += conj(tmp[i]) * psi[i];
+			scalarProduct *= BaseGrid::template vol<REP::X>();
+			logIO("before-reduce scalarProduct=%g", norm(scalarProduct));
+			MPI::reduceImmediataly(&scalarProduct);
+			logIO("after-reduce scalarProduct=%g", norm(scalarProduct));
+			for (ind i = 0; i < m_l; i++)
+				psi[i] -= scalarProduct * tmp[i];
+			delete[] tmp;
+		}
+
 		void load(IO::path input_path, std::string ext = IO::psi_ext)
 		{
 			_load(input_path, ext);
@@ -867,6 +897,7 @@ namespace QSF
 			MPI_File_open(MPI::rComm, input_path.c_str(),
 						  MPI_MODE_CREATE | MPI_MODE_WRONLY,
 						  MPI_INFO_NULL, &fh);
+
 			logIO("Opening [%s] file %s", "wb", input_path.c_str());
 
 			if (MPI::rID == 0)
@@ -913,11 +944,37 @@ namespace QSF
 			return std::filesystem::current_path() / input_path;
 		}
 
+		template <uind ... Is>
+		void phaseShiftTrick(seq<Is...>)
+		{
+			ind counters[DIM + 1]{ 0 };
+			bool odd = 0;
+			do {
+				odd = (counters[Is] + ...) % 2;
+				if (odd)
+					psi[counters[DIM]] *= -1;
+			} while (!(...&&
+					   ((counters[rev<Is>]++, counters[rev<Is>] < shape<REP::X, rev<Is>>())
+						? (counters[DIM]++, false)
+						: (counters[rev<Is>] = 0, true))
+					   ));
+		}
 		IO::path save(IO::path path = "", DUMP_FORMAT df = { .dim = DIM })
 		{
-			if (df.rep == REP::P) fourier<REP::P>();
-			return _save(path, df);
-			if (df.rep == REP::P) fourier<REP::X>();
+			if (df.rep == REP::P)
+			{
+				logIO("Applying phaseShiftTrick to move to centered P representation");
+				phaseShiftTrick(indices);
+				logIO("Transforming to P representation");
+				fourier<REP::P>();
+			}
+			auto ret = _save(path, df);
+			if (df.rep == REP::P)
+			{
+				logIO("Transforming back to X representation");
+				fourier<REP::X>();
+			}
+			return ret;
 		}
 		void _backup(const ind step, std::string ext = IO::psi_ext)
 		{
@@ -938,10 +995,10 @@ namespace QSF
 			if (!MPI::rID) //main node of each region removes
 				std::filesystem::remove("backup" + ext);
 		}
-		void snapshot(std::string extra_info)
+		void snapshot(std::string extra_info, DUMP_FORMAT df = { .dim = DIM })
 		{
 			static ind enter = 0;
-			save("snapshot_" + std::to_string(enter) + extra_info);
+			save("snapshot_" + std::to_string(enter) + extra_info, df);
 			enter++;
 		}
 	#pragma endregion IO
