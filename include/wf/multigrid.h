@@ -377,8 +377,9 @@ namespace QSF
 			if (MPI::region == 0) Base::reset(); //removing un-ionized part
 
 			MPI_Reduce((MPI::eID) ? psi : MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, 0, MPI::eComm);
-			return Base::_save(common_name + "_ionized_joined", df);
+			auto ret = Base::_save(common_name + "_ionized_joined", df);
 			if (df.rep == REP::P) fourier<REP::X>();
+			return ret;
 		}
 
 
