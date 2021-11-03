@@ -53,24 +53,20 @@ Feel free to add more gauges recognized by the physics community. 			  */
 		CouplingBase(Fields&&...fields) :fields(fields...) {}
 		double maxPulseDuration() { return Max(0.0, std::get<Fields>(fields).maxPulseDuration()...); }
 
-		template <class F> double getValue()
-		{
-			if constexpr ((std::is_same_v<F, Fields> || ...))
-			{
-				return std::get<F>(fields).lastVal;
-			}
-			else return -1;
-		}
 		inline void precalc(double time)
 		{
 			(std::get < Fields>(fields)(time), ...);
-			// logInfo("precalc! %g %g", time, std::get<Fields>(fields).lastVal...);
-			// logInfo("vla %g", ((bool(Fields::axis & ax) ? std::get<Fields>(fields).lastVal : 0) + ...));
 		}
 		// void reset() { last_values{ 0 }; last_values_backup{ 0 }; }
 		double operator[](AXIS ax)
 		{
 			return ((bool(Fields::axis & ax) ? std::get<Fields>(fields).lastVal : 0) + ...);
+		}
+		template <class F> double getValue()
+		{
+			if constexpr ((std::is_same_v<F, Fields> || ...))
+				return std::get<F>(fields).lastVal;
+			else return -1; //TODO: log meaningful error 
 		}
 	};
 
@@ -108,14 +104,26 @@ Feel free to add more gauges recognized by the physics community. 			  */
 
 		template <class F> double getValue()
 		{
-			if constexpr ((std::is_same_v<F, Fields> || ...))
-			{
-				if constexpr ((std::is_base_of_v<_VectorPotential, Fields> || ...))
-					return std::get<F>(base::fields).lastVal;
-				else return std::get<PromoteFieldToA<F>>(base::fields).lastVal;
-			}
-			else return -1; //TODO: log meaningful error 
+			// if constexpr ((std::is_same_v<F, Fields> || ...))
+			// {
+			if constexpr ((std::is_base_of_v<_VectorPotential, Fields> || ...))
+				return base::template getValue<F>();
+			else
+				return base::template getValue<PromoteFieldToA<F>>();
+		// 	return std::get<F>(base::fields).lastVal;
+		// else
+		// 	return std::get<PromoteFieldToA<F>>(base::fields).lastVal;
+
+		// }
+	// 	else return -1; //TODO: log meaningful error 
 		}
+		// double operator[](AXIS ax)
+		// {
+		// 	if constexpr ((std::is_base_of_v<_VectorPotential, Fields> || ...))
+		// 		return ((bool(Fields::axis & ax) ? std::get<Fields>(base::fields).lastVal : 0) + ...);
+		// 	else
+		// 		return ((bool(Fields::axis & ax) ? std::get<PromoteFieldToA<Fields>>(base::fields).lastVal : 0) + ...);
+		// }
 		// DipoleCoupling(const DipoleCoupling&) = default;
 		// A(t) = -int_0^t E(t) dt
 		// template <REP R, OPTIMS opt>
