@@ -80,7 +80,6 @@ namespace QSF
 		{
 			prevVal = lastVal;
 			F::operator()(time);
-			// Fval = lastVal;
 			// logInfo("%g %g dt: %g", lastVal, prevVal, (prevTime - time));
 			lastVal = prevVal + (prevTime - time) * lastVal;//includes the minus in A(t)=int_0^t -F(t) dt
 			prevTime = time;

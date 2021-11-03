@@ -310,7 +310,6 @@ namespace QSF
 		template <REP R>
 		void fourier()
 		{
-			// logInfo("calling FFTW from propagator %d ", int(invREP));
 			wf.template fourier<R>();
 		}
 
