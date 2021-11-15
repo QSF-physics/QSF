@@ -58,14 +58,21 @@ Feel free to add more gauges recognized by the physics community. 			  */
 			(std::get < Fields>(fields)(time), ...);
 		}
 		// void reset() { last_values{ 0 }; last_values_backup{ 0 }; }
+
+		// Returns all fields acting on axis ax
 		double operator[](AXIS ax)
 		{
+			// logInfo("operator[]=%g", ((bool(Fields::axis & ax) ? std::get<Fields>(fields).lastVal : 0) + ...));
 			return ((bool(Fields::axis & ax) ? std::get<Fields>(fields).lastVal : 0) + ...);
 		}
+
 		template <class F> double getValue()
 		{
 			if constexpr ((std::is_same_v<F, Fields> || ...))
+			{
+				// logInfo("getValue=%g", std::get<F>(fields).lastVal);
 				return std::get<F>(fields).lastVal;
+			}
 			else return -1; //TODO: log meaningful error 
 		}
 	};
@@ -90,6 +97,7 @@ Feel free to add more gauges recognized by the physics community. 			  */
 	template <class GaugeType, class ... Fields>
 	struct DipoleCoupling;
 
+	//Allows for field auto-promotion to vector potential
 	template <class ... Fields>
 	struct DipoleCoupling<VelocityGauge, Fields...> :
 		CouplingBase<DipoleApprox, std::conditional_t<std::is_base_of_v<_VectorPotential, Fields>, Fields, PromoteFieldToA<Fields>>...>
@@ -104,18 +112,8 @@ Feel free to add more gauges recognized by the physics community. 			  */
 
 		template <class F> double getValue()
 		{
-			// if constexpr ((std::is_same_v<F, Fields> || ...))
-			// {
-			if constexpr ((std::is_base_of_v<_VectorPotential, Fields> || ...))
-				return base::template getValue<F>();
-			else
-				return base::template getValue<PromoteFieldToA<F>>();
-		// 	return std::get<F>(base::fields).lastVal;
-		// else
-		// 	return std::get<PromoteFieldToA<F>>(base::fields).lastVal;
-
-		// }
-	// 	else return -1; //TODO: log meaningful error 
+			using target = std::conditional_t<std::is_base_of_v<_VectorPotential, F>, F, PromoteFieldToA<F>>;
+			return base::template getValue<target>();
 		}
 		// double operator[](AXIS ax)
 		// {

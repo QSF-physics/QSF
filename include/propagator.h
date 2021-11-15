@@ -82,7 +82,6 @@ namespace QSF
 		static constexpr std::string_view name = modeName(M);// == MODE::IM ? "IM" : "RE";
 
 		// static constexpr std::string_view name = SplitType::name;
-		// static constexpr REP couplesInRep = C::couplesInRep;
 		Section settings;
 		HamWF wf;
 		double tot_energy;
@@ -99,6 +98,18 @@ namespace QSF
 				logWarning("Timestep dt was 0, using automatic value dt=%g", dt);
 			}
 		}
+		//TODO
+		// IO::path save(IO::path path = "", DUMP_FORMAT df = { .dim = DIM, .rep = firstREP })
+		// {
+
+		// }
+		// void load(IO::path input_path)
+		// {
+		// 	if (!input_path.has_extension())
+		// 		input_path += IO::psi_ext;
+		// 	wf._load(input_path);
+
+		// }
 	#pragma endregion Auto
 
 	#pragma region Initialization
@@ -326,7 +337,7 @@ namespace QSF
 				wf.template evolve<M, rep>(dt * Chain<chain>::mults[SI]);
 				// Timings::measure::stop(op.name);
 				// if (step == 4)
-				// 	logInfo("SplitGroup %td Evolving in REP %td with delta=%g", chain, ind(rep), Chain<chain>::mults[SI]);
+				// logInfo("SplitGroup %td Evolving in REP %td with delta=%g dt=%g", chain, ind(rep), Chain<chain>::mults[SI], dt);
 				if constexpr (REP::BOTH == HamWF::couplesInRep)
 					incrementBy(Chain<chain>::mults[SI] * 0.5);
 				else if constexpr (rep == HamWF::couplesInRep)
