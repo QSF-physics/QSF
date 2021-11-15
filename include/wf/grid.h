@@ -346,6 +346,7 @@ namespace QSF
 
 		inline void normalizeAfterTwoFFT()
 		{
+			// logInfo("%g", inv_m);
 			multiplyArray(psi, inv_m);
 		}
 
@@ -386,10 +387,11 @@ namespace QSF
 		{
 			ind counters[DIM + 1] = { 0 };
 			do {
-				// logInfo("pos [%g %g] val: %g delta: %g rep: %d", abs_pos<R, Is>(counters[Is])..., static_cast<Hamiltonian*>(this)->template operator() < R, Is... > (abs_pos<R, Is>(counters[Is])...), delta, ind(R));
-				// if (mcomm.isMain)
+				// if (((counters[rev<Is>] == 511) && ...))
+					// logInfo("pos [0,0] = [%g %g] val: %g delta: %g rep: %d", abs_pos<R, Is>(counters[Is])..., static_cast<Hamiltonian*>(this)->template operator() < R, Is... > (abs_pos<R, Is>(counters[Is])...), delta, ind(R));
+					// if (mcomm.isMain)
 				psi[counters[DIM]] *=
-					static_cast<Hamiltonian*>(this)->template expOp < M, R>(delta * static_cast<Hamiltonian*>(this)->template operator() < R, Is... > (abs_pos<R, Is>(counters[Is])...));
+					static_cast<Hamiltonian*>(this)->template expOp <M, R>(delta * static_cast<Hamiltonian*>(this)->template operator() < R, Is... > (abs_pos<R, Is>(counters[Is])...));
 
 				if constexpr (hasAbsorber && R == REP::X && !MPIGridComm::many)
 				{
@@ -406,6 +408,7 @@ namespace QSF
 		template <MODE M, REP R>
 		inline void evolve(double delta)
 		{
+			// logInfo("evolve %d", int(R));
 			evolve_<M, R>(delta, indices);
 		}
 
@@ -424,7 +427,7 @@ namespace QSF
 						? (counters[DIM]++, false)
 						: (counters[rev<Is>] = 0, true))
 					   ));
-
+			// logInfo("norm^2: %g", res * BaseGrid::template vol<R>());
 			return res * BaseGrid::template vol<R>();
 		}
 		template <REP R, class Op>
@@ -512,39 +515,35 @@ namespace QSF
 		inline borVec<DIM>* current_map()
 		{
 			//TODO: make it fail in P rep
-			if (curr == nullptr) //TODO: move to prepare
-			{
-				// fprintf(stderr, "ALLOC curr %d %td\n", MPI::rID, m_l);
-				curr = new borVec<DIM>[m_l];
-				if (MPI::rSize > 1)
-				{
-					row_after = new cxd[rowSize<REP::X>()];
-					row_before = new cxd[rowSize<REP::X>()];
-					// fprintf(stderr, "ALLOC rows %d %td\n", MPI::rID, rowSize<REP::X>());
-				}
-			}
-			getNeighbouringNodes();
+			//TODO: move to prepare 
+			if (curr == nullptr) curr = new borVec<DIM>[m_l];
+
+			getNeighbouringNodes(psi, rowSize<REP::X>(), shape<REP::X, 0>());
 			current_map_(indices);
 			return curr;
 		}
 
-		void getNeighbouringNodes()
+		void getNeighbouringNodes(cxd* source, ind rowSize, ind rowCount)
 		{
-			int size = int(rowSize<REP::X>());
+
 			//TODO: change to MPI_window
 			if (MPI::rSize > 1)
 			{
+				if (row_after == nullptr) row_after = new cxd[rowSize];
+				if (row_before == nullptr) row_before = new cxd[rowSize];
+
 				if (MPI::rID > 0) // Send up
-					MPI_Send(psi, size, MPI_CXX_DOUBLE_COMPLEX, MPI::rID - 1, 13, MPI::rComm);
+					MPI_Send(source, rowSize, MPI_CXX_DOUBLE_COMPLEX, MPI::rID - 1, 13, MPI::rComm);
 				if (MPI::rID < MPI::rSize - 1)	// Recieve
-					MPI_Recv(row_after, size, MPI_CXX_DOUBLE_COMPLEX, MPI::rID + 1, 13, MPI::rComm, &MPI::status);
+					MPI_Recv(row_after, rowSize, MPI_CXX_DOUBLE_COMPLEX, MPI::rID + 1, 13, MPI::rComm, &MPI::status);
 
 				if (MPI::rID < MPI::rSize - 1)	// Send down
-					MPI_Send(&(psi[(shape<REP::X, 0>() - 1) * rowSize<REP::X>()]), size, MPI_CXX_DOUBLE_COMPLEX, MPI::rID + 1, 7, MPI::rComm);
+					MPI_Send(&(source[(rowCount - 1) * rowSize]), rowSize, MPI_CXX_DOUBLE_COMPLEX, MPI::rID + 1, 7, MPI::rComm);
 				if (MPI::rID > 0)			// Recieve 
-					MPI_Recv(row_before, size, MPI_CXX_DOUBLE_COMPLEX, MPI::rID - 1, 7, MPI::rComm, &MPI::status);
+					MPI_Recv(row_before, rowSize, MPI_CXX_DOUBLE_COMPLEX, MPI::rID - 1, 7, MPI::rComm, &MPI::status);
 			}
 		}
+
 		template <REP R, class FLUX_TYPE, uind ... Is>
 		inline double flux_(seq<Is...>)
 		{
@@ -787,23 +786,27 @@ namespace QSF
 			input_path += ext;
 
 			MPI_File fh;
+			DUMP_FORMAT df;
 			MPI_File_open(MPI::rComm, input_path.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
 			logIO("[_load] Opening [%s] file %s", "rb", input_path.c_str());
 
-			if (MPI::rID == 0)
-			{
 				//TODO: verify
-				// MPI_File_read(fh, &df.dim, 1, MPI_UNSIGNED_CHAR, MPI_STATUS_IGNORE);
-				// MPI_File_read(fh, &df.rep, 1, MPI_UNSIGNED_CHAR, MPI_STATUS_IGNORE);
-				// MPI_File_read(fh, &df.unnormalized, 1, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
-				// MPI_File_read(fh, &df.initial_wf_subtracted, 1, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
-				// int size;
-				// MPI_File_read(fh, &size, 1, MPI_INT32_T, MPI_STATUS_IGNORE);
-				// MPI_File_read(fh, n, df.dim, MPI_INT64_T, MPI_STATUS_IGNORE);
-				// MPI_File_read(fh, dx, df.dim, MPI_DOUBLE, MPI_STATUS_IGNORE);
-				// MPI_File_read(fh, mcomm.bounded, df.dim, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
-				// IO::writePsiBinaryHeader(file, n, dx, mcomm.bounded, df);
+			MPI_File_read(fh, &df.dim, 1, MPI_UNSIGNED_CHAR, MPI_STATUS_IGNORE);
+			if (df.dim != DIM)
+			{
+				logError("Dimensionality of the input file is not the same as the one choosen for evolution");
 			}
+			MPI_File_read(fh, &df.rep, 1, MPI_UNSIGNED_CHAR, MPI_STATUS_IGNORE);
+
+			MPI_File_read(fh, &df.unnormalized, 1, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
+			MPI_File_read(fh, &df.initial_wf_subtracted, 1, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
+			int size;
+			MPI_File_read(fh, &size, 1, MPI_INT32_T, MPI_STATUS_IGNORE);
+			MPI_File_read(fh, n, df.dim, MPI_INT64_T, MPI_STATUS_IGNORE);
+			MPI_File_read(fh, dx, df.dim, MPI_DOUBLE, MPI_STATUS_IGNORE);
+			// MPI_File_read(fh, mcomm.bounded, df.dim, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
+			// IO::writePsiBinaryHeader(file, n, dx, mcomm.bounded, df);
+
 			int offset = sizeof(DIMS) + sizeof(REP) + sizeof(bool) + sizeof(bool);
 			offset += sizeof(int) + DIM * (sizeof(ind) + sizeof(double) + sizeof(bool));
 			MPI_File_set_view(fh, offset + MPI::rID * m_l * sizeof(cxd), MPI_CXX_DOUBLE_COMPLEX,
@@ -817,6 +820,10 @@ namespace QSF
 				auto res = average<REP::X, Identity>();
 				MPI::reduceImmediataly(&res);
 				__logMPI("pID %d, State " psi_symbol "_%d loaded with norm %g\n", MPI::pID, 0, res);
+			}
+			for (ind i = 0; i < m_l; i++)
+			{
+				psi[i] = { std::abs(psi[i]),0 };
 			}
 		// if (MPI::region == region_index)
 		// {
@@ -846,6 +853,39 @@ namespace QSF
 		// }
 		}
 
+		void croossOut()
+		{
+			ind ip4 = n[0] / 2 + (ind)(50.0 / dx[0]);
+			ind ip3 = n[0] / 2 - (ind)(50.0 / dx[0]);
+			logInfo("crossOut");
+			ind intemp2 = ip4 - ip3;
+			ind intemp;
+			// y-direction
+			for (ind i = ip3;i < ip4;i++) {
+				double temp = 0.5 * (1. + cos(2. * pi * (i - ip3) / intemp2));
+				for (ind j = 0;j < n[0];j++)
+				{
+					if (i >= pos_lx.first && i <= pos_lx.last)
+					{
+						intemp = (i - pos_lx.first) * n[0] + j;
+						psi[intemp] = temp * psi[intemp];
+						// logInfo("x-crossout %td %td %td %g", intemp, i, j, psi[intemp]);
+					}
+				}
+			}
+			// x-direction
+			for (ind j = ip3;j < ip4;j++) {
+				double temp = 0.5 * (1. + cos(2. * pi * (j - ip3) / intemp2));
+				for (ind i = 0;i < n[0];i++) {
+					if (i >= pos_lx.first && i <= pos_lx.last)
+					{
+						intemp = (i - pos_lx.first) * n[0] + j;
+						psi[intemp] = temp * psi[intemp];
+						// logInfo("y-crossout %td %td %td %g", intemp, i, j, psi[intemp]);
+					}
+				}
+			}
+		}
 
 		void orthogonalizeWith(IO::path input_path, std::string ext = IO::psi_ext)
 		{
@@ -869,11 +909,17 @@ namespace QSF
 			for (ind i = 0; i < m_l; i++)
 				scalarProduct += conj(tmp[i]) * psi[i];
 			scalarProduct *= BaseGrid::template vol<REP::X>();
-			logIO("before-reduce scalarProduct=%g", norm(scalarProduct));
 			MPI::reduceImmediataly(&scalarProduct);
-			logIO("after-reduce scalarProduct=%g", norm(scalarProduct));
+			logIO("|<psi_0|psi>|^2 =%g", std::norm(scalarProduct));
+			double _norm = 0;
 			for (ind i = 0; i < m_l; i++)
+			{
 				psi[i] -= scalarProduct * tmp[i];
+				_norm += std::norm(psi[i]);
+			}
+			_norm *= BaseGrid::template vol<REP::X>();
+			MPI::reduceImmediataly(&_norm);
+			logIO("After orthogonalization |<psi|psi>|^2 =%g", _norm);
 			delete[] tmp;
 		}
 
@@ -973,6 +1019,7 @@ namespace QSF
 			{
 				logIO("Transforming back to X representation");
 				fourier<REP::X>();
+				phaseShiftTrick(indices);
 			}
 			return ret;
 		}
@@ -997,9 +1044,18 @@ namespace QSF
 		}
 		void snapshot(std::string extra_info, DUMP_FORMAT df = { .dim = DIM })
 		{
-			static ind enter = 0;
-			save("snapshot_" + std::to_string(enter) + extra_info, df);
-			enter++;
+			static ind x_count = 0;
+			static ind p_count = 0;
+			if (df.rep == REP::X)
+			{
+				save("snapshot_" + std::to_string(x_count) + extra_info, df);
+				x_count++;
+			}
+			else
+			{
+				save("snapshot_" + std::to_string(p_count) + extra_info, df);
+				p_count++;
+			}
 		}
 	#pragma endregion IO
 
