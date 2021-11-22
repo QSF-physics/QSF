@@ -1,16 +1,16 @@
 #pragma once
 namespace QSF
 {
-	template <DIMS size>
+	template <DIMS dims>
 	struct CoordinateSystem {
-		double dx[size];
-		ind n[size];
-		static constexpr DIMS DIM = size;
+		double dx[dims];
+		ind n[dims];
+		static constexpr DIMS DIM = dims;
 	};
 
 
-	template <DIMS size, class MPIRegions>
-	struct CartesianGrid_ :CoordinateSystem<size>
+	template <DIMS dims, class MPIRegions>
+	struct CartesianGrid_ :CoordinateSystem<dims>
 	{
 		// static_assert(std::is_base_of_v< AbsorberType, AT>,
 		// "Second CartesianGrid template argument must be type derived from AbsorberType");
@@ -19,28 +19,29 @@ namespace QSF
 		using MPIDivision = typename MPIRegions::MPIDivision;
 		/* Init of the above part is postponed to the wf */
 
-		using CoordinateSystem<size>::n;
-		using CoordinateSystem<size>::dx;
-		using CoordinateSystem<size>::DIM;
-
-		ind n2[size];
-		ind nn[size];
+		using CoordinateSystem<dims>::n;
+		using CoordinateSystem<dims>::dx;
+		using CoordinateSystem<dims>::DIM;
+		// Read n/2, holds counts of half-grid nodes
+		ind n2[dims];
+		// Read n*n, holds squares counts (n) of grid nodes
+		ind nn[dims];
+		// Total count of grid nodes
 		ind m;
-		// double inv_nn;
 
 		double inv_m;
 		double dV;
 		double dVm;
-		double L[size];
-		double xmin[size];
-		double inv_dx[size];
-		double inv_2dx[size];
-		double inv_n[size];
+		double L[dims];
+		double xmin[dims];
+		double inv_dx[dims];
+		double inv_2dx[dims];
+		double inv_n[dims];
 
-		double dp[size];
-		double pmin[size];
-		double pmax[size];
-		double kin_scale[size];
+		double dp[dims];
+		double pmin[dims];
+		double pmax[dims];
+		double kin_scale[dims];
 		double dVP;
 
 		template <REP R>
@@ -79,7 +80,7 @@ namespace QSF
 			dVm = dV * inv_m;
 
 			// logSETUP("CartesianGrid init");
-			// logSETUP("Total number of nodes m: %td, n: %td, grid size L: %g", m, m, L);
+			logSETUP("Total number of nodes m: %td, n: %td, grid dims L: %g", m, n[0], L[0]);
 			// logSETUP("Grid spacing dx: %g, dp: %g", dx, dp);
 			// logSETUP("pmin:%g kin_scale: %g", pmin, kin_scale);
 			// logSETUP("inv_m:%g inv_nn: %g", inv_m, inv_nn);
@@ -91,27 +92,27 @@ namespace QSF
 			ind def_n;
 			inipp::get_value(settings, "dx", def_dx);
 			inipp::get_value(settings, "n", def_n);
-			for (DIMS i = 0; i < size; i++)
+			for (DIMS i = 0; i < dims; i++)
 			{
-				(CoordinateSystem<size>::dx)[i] = def_dx;
-				(CoordinateSystem<size>::n)[i] = def_n;
+				(CoordinateSystem<dims>::dx)[i] = def_dx;
+				(CoordinateSystem<dims>::n)[i] = def_n;
 			}
-			init(n_seq<size>);
+			init(n_seq<dims>);
 
 		}
 
-		CartesianGrid_(CoordinateSystem<size> cs) : CoordinateSystem<size>(cs)
+		CartesianGrid_(CoordinateSystem<dims> cs) : CoordinateSystem<dims>(cs)
 		{
-			init(n_seq<size>);
+			init(n_seq<dims>);
 		}
 		CartesianGrid_(double dx, ind n)
 		{
-			for (DIMS i = 0; i < size; i++)
+			for (DIMS i = 0; i < dims; i++)
 			{
-				(CoordinateSystem<size>::dx)[i] = dx;
-				(CoordinateSystem<size>::n)[i] = n;
+				(CoordinateSystem<dims>::dx)[i] = dx;
+				(CoordinateSystem<dims>::n)[i] = n;
 			}
-			init(n_seq<size>);
+			init(n_seq<dims>);
 			// absorber = AT(this);
 		}
 
@@ -127,14 +128,14 @@ namespace QSF
 		constexpr double pos(ind index)
 		{
 			if constexpr (R == REP::X) return xmin[dir] + index * dx[dir];
-			else return dp[dir] * (index >= n2[dir] ? index - n[dir] : index); //after FFTW 0 freq is at 0 index
+			else return dp[dir] * (index < n2[dir] ? index : index - n[dir]); //after FFTW 0 freq is at 0 index
 		}
 	};
 
 
-	template <DIMS size, class MPIDivision = MPI::Slices>
-	using CartesianGrid = CartesianGrid_<size, MPI::SingleRegion<size, MPIDivision>>;
+	template <DIMS dims, class MPIDivision = MPI::Slices>
+	using CartesianGrid = CartesianGrid_<dims, MPI::SingleRegion<dims, MPIDivision>>;
 
-	template <DIMS size, class MPIDivision = MPI::Slices>
-	using MultiCartesianGrid = CartesianGrid_<size, MPI::MultiRegionsReduced<size, MPIDivision>>;
+	template <DIMS dims, class MPIDivision = MPI::Slices>
+	using MultiCartesianGrid = CartesianGrid_<dims, MPI::MultiRegionsReduced<dims, MPIDivision>>;
 }

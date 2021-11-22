@@ -159,9 +159,7 @@ struct DUMP_FORMAT
 	DIMS dim;
 	REP rep = REP::X;
 	bool complex = true;
-	bool unnormalized = true;
-	bool no_coords = true;
-	bool initial_wf_subtracted = false;
+	ind downscale = 1;
 };
 // //Return the flag for current DIM
 // // constexpr DIMS DIMflag = (DIM == 1 ? D1 : (DIM == 2 ? D2 : D3));

@@ -63,19 +63,17 @@ namespace QSF
 		using BaseGrid::nn;
 		using BaseGrid::n2;
 		using BaseGrid::xmin;
-		using BaseGrid::dx, BaseGrid::dp;
+		using BaseGrid::dx, BaseGrid::dp, BaseGrid::dV;
 		using MPIGridComm = MPI_GC;
 
+		// Dimension indices for dimension DIM
 		static constexpr auto indices = n_seq<DIM>;
+		// Determines whether the grid is embedded (is a template parameter) in an absorber
 		static constexpr bool hasAbsorber = std::is_base_of_v<AbsorberType, BaseGrid>;
-		/* Due to FFTW flag FFTW_MPI_TRANSPOSED_OUT we need to
-		switch x<->y for DIM>1 if working on opossite rep */
-		template <uind Is>
-		uind static constexpr swap01 = Is == 0 ? 1 : (Is == 1 ? 0 : Is);
-		/* The N-dim loop passes indices in normal order, but increments in reverse */
+		// The N-dim loop passes indices in normal order, but increments in reverse
 		template <ind Is> ind static constexpr rev = DIM - 1 - Is;
-
-		MPIGridComm mcomm; 			// MPI Grid Communicator
+		// MPI Grid Communicator
+		MPIGridComm mcomm;
 		const bool canLeaveTransposed;
 		fftw_plan mpi_plans[2];
 
@@ -140,6 +138,7 @@ namespace QSF
 			MPI_Scatter(psi_total, m_l, MPI_CXX_DOUBLE_COMPLEX, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, 0, MPI::rComm);
 		}
 
+		// Returns absolute grid index - as opposed to (smaller) local MPI-related one 
 		template <REP R, ind Is> ind constexpr abs_index(ind index) const noexcept
 		{
 			if constexpr (Is == 0)
@@ -149,16 +148,24 @@ namespace QSF
 			}
 			else return index;
 		}
+
+		// Returns center-shifted absolute grid index
+		// Note: in X rep the real grid 0 coord is between -1 and 0 returned by this function
+		// Note2: in P rep the real grid 0 coord is indeed at 0 returned by this function, but
+		// the returned values are not monotonic, i.e. move from 0 ... n2-1, -n2, -n2+1,..., -1
 		template <REP R, ind dir> ind constexpr abs_centered_index(ind index) const noexcept
 		{
-			return abs_index<R, dir>(index) - n2[dir];
+			if constexpr (R == REP::X) return abs_index<R, dir>(index) - n2[dir];
+			else return (abs_index<R, dir>(index) < n2[dir]) ? abs_index<R, dir>(index) : abs_index<R, dir>(index) - n[dir];
 		}
-		//only for X rep
+
+		// Returns absolute negative index as counted from the real grid edge 
+		// Useful in absorber calculations
 		template <ind dir> ind constexpr neg_dist_from_edge(ind index) const noexcept
 		{
-			return abs_index<REP::X, dir>(index) >= n2[dir]
-				? abs_index<REP::X, dir>(index) - n[dir] + 1
-				: -abs_index<REP::X, dir>(index);
+			return abs_index<REP::X, dir>(index) < n2[dir]
+				? -abs_index<REP::X, dir>(index)
+				: abs_index<REP::X, dir>(index) - n[dir] + 1;
 		}
 
 
@@ -781,46 +788,55 @@ namespace QSF
 	#pragma endregion InitialConditions
 
 	#pragma region IO
-		void _load(IO::path input_path, std::string ext = IO::psi_ext)
+		void _load(IO::path input_path)
 		{
-			input_path += ext;
+			input_path += IO::psi_ext;
 
 			MPI_File fh;
 			DUMP_FORMAT df;
 			MPI_File_open(MPI::rComm, input_path.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
 			logIO("[_load] Opening [%s] file %s", "rb", input_path.c_str());
 
-				//TODO: verify
 			MPI_File_read(fh, &df.dim, 1, MPI_UNSIGNED_CHAR, MPI_STATUS_IGNORE);
+			MPI_File_read(fh, &df.rep, 1, MPI_UNSIGNED_CHAR, MPI_STATUS_IGNORE);
+			MPI_File_read(fh, &df.complex, 1, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
+			MPI_File_read(fh, &df.downscale, 1, MPI_INT64_T, MPI_STATUS_IGNORE);
+
 			if (df.dim != DIM)
 			{
-				logError("Dimensionality of the input file is not the same as the one choosen for evolution");
+				logError("Dimensionality of the input file [%s] is not the same as the one choosen for evolution", input_path.c_str());
 			}
-			MPI_File_read(fh, &df.rep, 1, MPI_UNSIGNED_CHAR, MPI_STATUS_IGNORE);
-
-			MPI_File_read(fh, &df.unnormalized, 1, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
-			MPI_File_read(fh, &df.initial_wf_subtracted, 1, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
-			int size;
-			MPI_File_read(fh, &size, 1, MPI_INT32_T, MPI_STATUS_IGNORE);
-			MPI_File_read(fh, n, df.dim, MPI_INT64_T, MPI_STATUS_IGNORE);
-			MPI_File_read(fh, dx, df.dim, MPI_DOUBLE, MPI_STATUS_IGNORE);
-			// MPI_File_read(fh, mcomm.bounded, df.dim, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
-			// IO::writePsiBinaryHeader(file, n, dx, mcomm.bounded, df);
-
-			int offset = sizeof(DIMS) + sizeof(REP) + sizeof(bool) + sizeof(bool);
-			offset += sizeof(int) + DIM * (sizeof(ind) + sizeof(double) + sizeof(bool));
-			MPI_File_set_view(fh, offset + MPI::rID * m_l * sizeof(cxd), MPI_CXX_DOUBLE_COMPLEX,
-							  MPI_CXX_DOUBLE_COMPLEX, "native", MPI_INFO_NULL);
-			// MPI_File_read_all(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
-			// MPI_File_seek(fh, offset + MPI::rID * m_l, MPI_SEEK_SET);
-			MPI_File_read(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
-			MPI_File_close(&fh);
-			// if (MPI::region == 0)
+			ind n_new[DIM] = { 0 };
+			double dx_new[DIM] = { 0.0 };
+			MPI_File_read(fh, n_new, df.dim, MPI_INT64_T, MPI_STATUS_IGNORE);
+			MPI_File_read(fh, dx_new, df.dim, MPI_DOUBLE, MPI_STATUS_IGNORE);
+			for (DIMS i = 0;i < DIM;i++)
 			{
-				auto res = average<REP::X, Identity>();
-				MPI::reduceImmediataly(&res);
-				__logMPI("pID %d, State " psi_symbol "_%d loaded with norm %g\n", MPI::pID, 0, res);
+				if (n_new[i] != n[i])
+					logWarning("File has different number of nodes at n_new[%d]=%td", i, n_new[i]);
+				if (dx_new[i] != dx[i])
+					logWarning("File has different grid density at dx[%d]", i);
 			}
+			MPI_File_read(fh, mcomm.bounded, df.dim, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
+
+			if (!df.complex)
+			{
+				logWarning("File hold doubles, i.e. the phase information is absent, hence it will be interpreted as probability.");
+			}
+			logIO("Header: [dim]=%d, [rep]=%d, [complex]=%d, [n[0]]=%td, [dx[0]]=%g", df.dim, int(df.rep), df.complex, n_new[0], dx_new[0]);
+
+			MPI_Offset offset;
+			MPI_File_get_position(fh, &offset);
+			MPI_File_set_view(fh, offset + MPI::rID * m_l *
+							  (df.complex ? sizeof(cxd) : sizeof(double)),
+							  df.complex ? MPI_CXX_DOUBLE_COMPLEX : MPI_DOUBLE,
+							  df.complex ? MPI_CXX_DOUBLE_COMPLEX : MPI_DOUBLE, "native", MPI_INFO_NULL);
+			MPI_File_read(fh, psi, m_l, df.complex ? MPI_CXX_DOUBLE_COMPLEX : MPI_DOUBLE, MPI_STATUS_IGNORE);
+			MPI_File_close(&fh);
+
+			auto res = average<REP::X, Identity>();
+			MPI::reduceImmediataly(&res);
+			__logMPI("pID %d, State " psi_symbol "_%d loaded with norm %g\n", MPI::pID, 0, res);
 			for (ind i = 0; i < m_l; i++)
 			{
 				psi[i] = { std::abs(psi[i]),0 };
@@ -853,38 +869,86 @@ namespace QSF
 		// }
 		}
 
-		void croossOut()
+		// Returns a multielectron filter passing through [from-to] dimensional electron ionization
+		// ex1: from=3, to=3 returns a filter passing through triple ionization events
+		// ex2: from=1, to=3 returns a filter passing through all ionization events
+		// NOTE: works only on uniform grids
+		template <DIMS from, DIMS to, typename ...Nodes>
+		double multiIonizationFilter(ind nodesFromCenter, ind ramp, Nodes ...nodes)
 		{
-			ind ip4 = n[0] / 2 + (ind)(50.0 / dx[0]);
-			ind ip3 = n[0] / 2 - (ind)(50.0 / dx[0]);
-			logInfo("crossOut");
-			ind intemp2 = ip4 - ip3;
-			ind intemp;
-			// y-direction
-			for (ind i = ip3;i < ip4;i++) {
-				double temp = 0.5 * (1. + cos(2. * pi * (i - ip3) / intemp2));
-				for (ind j = 0;j < n[0];j++)
-				{
-					if (i >= pos_lx.first && i <= pos_lx.last)
-					{
-						intemp = (i - pos_lx.first) * n[0] + j;
-						psi[intemp] = temp * psi[intemp];
-						// logInfo("x-crossout %td %td %td %g", intemp, i, j, psi[intemp]);
-					}
-				}
+			static_assert(from <= to, "arg [from] must be smaller or equal than arg [to]");
+			static_assert(from > 0, "arg [from] must be greater than 0");
+
+			ind nodesFromBoundary = n2[0] - nodesFromCenter;
+			auto count = 0;
+			double dist = 0;
+			([&] {
+				nodes += nodesFromBoundary;
+				count += ((nodes > 0) ? 1 : 0);
+				dist += ((nodes > 0) ? nodes : 0);
+			 }(), ...);
+
+			if (count >= from && count <= to) return 1.0;
+			else
+			{
+				double minVal = (nodes, ...);
+				(((count == 0 && from != DIM ? nodes > minVal:nodes < minVal) ? minVal = nodes : 0), ...);
+				minVal = abs(minVal) > ramp ? ramp : abs(minVal);
+				return 0.5 * (1. + cos(pi * minVal / ramp));
 			}
-			// x-direction
-			for (ind j = ip3;j < ip4;j++) {
-				double temp = 0.5 * (1. + cos(2. * pi * (j - ip3) / intemp2));
-				for (ind i = 0;i < n[0];i++) {
-					if (i >= pos_lx.first && i <= pos_lx.last)
-					{
-						intemp = (i - pos_lx.first) * n[0] + j;
-						psi[intemp] = temp * psi[intemp];
-						// logInfo("y-crossout %td %td %td %g", intemp, i, j, psi[intemp]);
-					}
-				}
-			}
+		}
+
+		void croossOut(double au_distance = 50.0)
+		{
+			croossOut_<REP::X>(indices, au_distance);
+		}
+
+		template <REP R, uind ... Is>
+		void croossOut_(seq<Is...>, double au_distance = 50.0)
+		{
+			ind ramp = 30;
+			ind nodesFromCenter = (ind)(au_distance / dx[0]);
+			ind counters[DIM + 1] = { 0 };
+			do
+			{
+				psi[counters[DIM]] *= multiIonizationFilter<2_D, 2_D>(au_distance + 2 * ramp, ramp, neg_dist_from_edge<Is>(counters[Is])...);
+				// logWarning("Calling with %g", BaseGrid::template operator() < Is... > (abs_centered_index<R, Is>(counters[Is])...));
+
+			} while (!(...&&
+					   ((counters[rev<Is>]++, counters[rev<Is>] < shape<R, rev<Is>>())
+						? (counters[DIM]++, false)
+						: (counters[rev<Is>] = 0, true))
+					   ));
+
+
+			// ind ip4 = n[0] / 2 + nodesFromCenter;
+			// ind ip3 = n[0] / 2 - nodesFromCenter;
+			// logInfo("crossOut");
+			// ind intemp2 = ip4 - ip3;
+			// ind intemp;
+			// // y-direction
+			// for (ind i = ip3;i < ip4;i++) {
+			// 	double temp = 0.5 * (1. + cos(2. * pi * (i - ip3) / intemp2));
+			// 	for (ind j = 0; j < n[0];j++)
+			// 	{
+			// 		if (i >= pos_lx.first && i <= pos_lx.last)
+			// 		{
+			// 			intemp = (i - pos_lx.first) * n[0] + j;
+			// 			psi[intemp] = temp * psi[intemp];
+			// 		}
+			// 	}
+			// }
+			// // x-direction
+			// for (ind j = ip3;j < ip4;j++) {
+			// 	double temp = 0.5 * (1. + cos(2. * pi * (j - ip3) / intemp2));
+			// 	for (ind i = 0;i < n[0];i++) {
+			// 		if (i >= pos_lx.first && i <= pos_lx.last)
+			// 		{
+			// 			intemp = (i - pos_lx.first) * n[0] + j;
+			// 			psi[intemp] = temp * psi[intemp];
+			// 		}
+			// 	}
+			// }
 		}
 
 		void orthogonalizeWith(IO::path input_path, std::string ext = IO::psi_ext)
@@ -923,52 +987,127 @@ namespace QSF
 			delete[] tmp;
 		}
 
-		void load(IO::path input_path, std::string ext = IO::psi_ext)
+		void load(IO::path input_path)
 		{
-			_load(input_path, ext);
+			_load(input_path);
 		}
 		void restore() {
 			logWarning("Restored the wf");
 			_load("backup");
 		}
 
-		IO::path _save(IO::path input_path,
-					   DUMP_FORMAT df,
-					   std::string ext = IO::psi_ext)
+		template <REP R, uind ... Is>
+		void coarse(seq<Is...>, MPI_File& fh, DUMP_FORMAT& df)
 		{
-			input_path += ext;
+			if (df.downscale > 1) logWarning("Coarsening...");
+			// getNeighbouringNodes(psi, rowSize<REP::X>(), shape<REP::X, 0>());
+			ind counters[DIM] = { 0 };
+			const double p_scale = dV / pow(sqrt(2 * pi), DIM);
+			double tmp;
+			cxd ctmp;
+			double downscale_div = double(Power(df.downscale, DIM));
+			do
+			{
+				if (df.complex)
+				{
+					ctmp = psi[data_offset<REP::X>(counters[Is]...)];
+					if (df.rep == REP::P) ctmp *= p_scale;
+					MPI_File_write(fh, &ctmp, 1, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
+								// p_scale = dV / pow(sqrt(2 * pi), DIM);
+			// 	// wf[] * sqrt(dV/m) = psi_p * sqrt(dVP)
+					// wf[] * dx sqrt(dx / m)sqrt(dx / pi) = psi_p
+					//  x * sqrt(2 pi/L)^DIM = (L/(n-1))^DIM / n^DIM
+					// wf * sqrt(dV/m/dVP)
+					// 	if (!xrepQ) { premultiplyFullArray(psiR, p_scale); }
+					// 	// for regions with free coords additional division is needed
+					// 	double permaP = 1.0 / sqrt(pow(n, MPI::group));
+					// 	if (!df.unnormalized) premultiplyFullArray(psiR, xrepQ ? (sqrt_dV * permaP) : sqrt_dVP);
+				}
+				else
+				{
+					tmp = 0;
+					ind ofs[DIM] = { 0 };
+					do
+					{
+						// logWarning("Calling with %td %td", (counters[Is] + ofs[Is])...);
+						tmp += std::norm(psi[data_offset<REP::X>((counters[Is] + ofs[Is])...)]);
+					} while (!(...&&
+							   ((ofs[rev<Is>]++, ofs[rev<Is>] < df.downscale)
+								? false : (ofs[rev<Is>] = 0, true))
+							   ));
+
+					if (df.rep == REP::P) tmp *= p_scale * p_scale;
+					MPI_File_write(fh, &tmp, 1, MPI_DOUBLE, MPI_STATUS_IGNORE);
+				}
+
+			} while (!(...&&
+					   ((counters[rev<Is>] += df.downscale, counters[rev<Is>] < shape<REP::X, rev<Is>>())
+						? false : (counters[rev<Is>] = 0, true))
+					   ));
+		}
+
+		// template <class ... Fpre>
+		IO::path _save(IO::path input_path, DUMP_FORMAT df)
+		{
+			if (df.downscale > 1)
+			{
+				df.complex = false;
+				input_path += "_scale" + std::to_string(df.downscale);
+			}
+
+			input_path += df.rep == REP::X ? "_repX" : "_repP";
+			input_path += IO::psi_ext;
+
+			//Remove the file if already exists to avoid partial overwrite
+			if (MPI::rID == 0) MPI_File_delete(input_path.c_str(), MPI_INFO_NULL);
+			MPI::Barrier();
 
 			MPI_File fh;
-			// MPI_File_delete(input_path.c_str(), MPI_INFO_NULL);
 			MPI_File_open(MPI::rComm, input_path.c_str(),
 						  MPI_MODE_CREATE | MPI_MODE_WRONLY,
 						  MPI_INFO_NULL, &fh);
 
-			logIO("Opening [%s] file %s", "wb", input_path.c_str());
-
+			MPI_Offset offset;
 			if (MPI::rID == 0)
 			{
-				//TODO: save step at which it is for restart
 				MPI_File_write(fh, &df.dim, 1, MPI_UNSIGNED_CHAR, MPI_STATUS_IGNORE);
 				MPI_File_write(fh, &df.rep, 1, MPI_UNSIGNED_CHAR, MPI_STATUS_IGNORE);
-				MPI_File_write(fh, &df.unnormalized, 1, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
-				MPI_File_write(fh, &df.initial_wf_subtracted, 1, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
-				int size = true ? sizeof(cxd) : sizeof(double);
-				MPI_File_write(fh, &size, 1, MPI_INT32_T, MPI_STATUS_IGNORE);
-				MPI_File_write(fh, n, df.dim, MPI_INT64_T, MPI_STATUS_IGNORE);
-				MPI_File_write(fh, dx, df.dim, MPI_DOUBLE, MPI_STATUS_IGNORE);
-				MPI_File_write(fh, mcomm.bounded, df.dim, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
-				// IO::writePsiBinaryHeader(file, n, dx, mcomm.bounded, df);
-			}
-			int offset = sizeof(df.dim) + sizeof(df.rep) + sizeof(df.rep) + sizeof(df.initial_wf_subtracted);
-			offset += sizeof(int) + df.dim * (sizeof(ind) + sizeof(double) + sizeof(bool));
-			MPI_File_set_view(fh, offset + MPI::rID * m_l * sizeof(cxd), MPI_CXX_DOUBLE_COMPLEX,
-							  MPI_CXX_DOUBLE_COMPLEX, "native", MPI_INFO_NULL);
-			MPI_File_write(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
-			// MPI_File_seek(fh, offset + MPI::rID * m_l, MPI_SEEK_SET);
-			// MPI_File_write(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
-			MPI_File_close(&fh);
+				MPI_File_write(fh, &df.complex, 1, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
+				MPI_File_write(fh, &df.downscale, 1, MPI_INT64_T, MPI_STATUS_IGNORE);
 
+				ind n_new[DIM] = { 0 };
+
+				double dx_new[DIM] = { 0.0 };
+				for (DIMS i = 0;i < DIM;i++)
+				{
+					n_new[i] = n[i];
+					dx_new[i] = dx[i];//(df.rep == REP::X) ? dx[i] : dp[i];
+				}
+
+				MPI_File_write(fh, n_new, df.dim, MPI_INT64_T, MPI_STATUS_IGNORE);
+				MPI_File_write(fh, dx_new, df.dim, MPI_DOUBLE, MPI_STATUS_IGNORE);
+				MPI_File_write(fh, mcomm.bounded, df.dim, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
+				MPI_File_get_position(fh, &offset);
+
+				logIO("Header: [dim]=%d, [rep]=%d, [complex]=%d, [n[0]]=%td, [dx[0]]=%g", df.dim, int(df.rep), df.complex, ind(n_new[0]), dx_new[0]);
+			}
+
+
+			MPI_Bcast(&offset, 1, MPI_OFFSET, 0, MPI::rComm);
+			logIO("Opening [%s] file [%s] to write [%s], header offset [%td]", "wb", input_path.c_str(), (df.complex ? "complexes" : "doubles"), offset);
+
+			// handle, disp[bytes], basicunit[bytes], unit[b]
+			MPI_File_set_view(fh, offset + MPI::rID * (m_l / Power(df.downscale, DIM)) *
+							  (df.complex ? sizeof(cxd) : sizeof(double)),
+							  (df.complex) ? MPI_CXX_DOUBLE_COMPLEX : MPI_DOUBLE,
+							  (df.complex) ? MPI_CXX_DOUBLE_COMPLEX : MPI_DOUBLE,
+							  "native", MPI_INFO_NULL);
+
+			if (df.downscale == 1 && df.complex && df.rep == REP::X) MPI_File_write(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
+			else coarse<REP::X>(indices, fh, df);
+				// MPI_File_seek(fh, offset + MPI::rID * m_l, MPI_SEEK_SET);
+				// MPI_File_write(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
+			MPI_File_close(&fh);
 		// else
 		// {
 		// 	gather();
@@ -986,7 +1125,6 @@ namespace QSF
 		// 		fwrite(psi_total, sizeof(cxd), m, file);
 		// 		fclose(file);
 		// }
-
 			return std::filesystem::current_path() / input_path;
 		}
 
@@ -997,15 +1135,16 @@ namespace QSF
 			bool odd = 0;
 			do {
 				odd = (counters[Is] + ...) % 2;
-				if (odd)
-					psi[counters[DIM]] *= -1;
+				if (odd) psi[counters[DIM]] *= -1;
 			} while (!(...&&
 					   ((counters[rev<Is>]++, counters[rev<Is>] < shape<REP::X, rev<Is>>())
 						? (counters[DIM]++, false)
 						: (counters[rev<Is>] = 0, true))
 					   ));
 		}
-		IO::path save(IO::path path = "", DUMP_FORMAT df = { .dim = DIM })
+
+		// template <class ... Fpre>
+		IO::path save(IO::path path = "", DUMP_FORMAT df = { .dim = DIM })//, Fpre... applyBefore)
 		{
 			if (df.rep == REP::P)
 			{
@@ -1014,7 +1153,7 @@ namespace QSF
 				logIO("Transforming to P representation");
 				fourier<REP::P>();
 			}
-			auto ret = _save(path, df);
+			auto ret = _save(path, df);//, applyBefore...);
 			if (df.rep == REP::P)
 			{
 				logIO("Transforming back to X representation");
@@ -1030,7 +1169,7 @@ namespace QSF
 				fwrite(&step, sizeof(ind), 1, f);
 				fclose(f);
 			}
-			_save("backup", { .dim = DIM }, ext);
+			_save("backup", { .dim = DIM });
 			logInfo("Backup made at step %td", step);
 		}
 		void backup(const ind step)
@@ -1138,6 +1277,7 @@ namespace QSF
 					logWarning("Row size (m/n[0]=%td) should be divisible by the number of MPI processes (%d) (FFTW req)", m / n[0], MPI::rSize);
 			}
 			logSETUP("Setting up " psi_symbol "(x,t) arrays and plans...");
+			for (DIMS i = 0; i < DIM; i++) logSETUP("Sizes n[%d]=%td", i, n[i]);
 			for (DIMS i = 0; i < DIM; i++) logSETUP("Sizes n_lx[%d]=%td", i, n_lx[i]);
 			for (DIMS i = 0; i < DIM; i++) logSETUP("Sizes n_lp[%d]=%td", i, n_lp[i]);
 			for (DIMS i = 0; i < DIM; i++) logSETUP("Sizes strides_lx[%d]=%td", i, strides_lx[i]);

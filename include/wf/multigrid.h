@@ -356,14 +356,24 @@ namespace QSF
 		}
 		std::string save(std::string common_name = "", DUMP_FORMAT df = { .dim = DIM })
 		{
-			if (df.rep == REP::P) fourier<REP::P>();
-			return Base::_save(common_name, df, IO::psi_ext + std::to_string(MPI::region));
-			if (df.rep == REP::P) fourier<REP::X>();
+			if (df.rep == REP::P)
+			{
+				logIO("Transforming to P representation");
+				fourier<REP::P>();
+			}
+			auto ret = Base::_save(common_name, df, IO::psi_ext + std::to_string(MPI::region));
+			if (df.rep == REP::P)
+			{
+				logIO("Transforming back to X representation");
+				fourier<REP::X>();
+			}
+			return ret;
 		}
 
 		std::string saveJoined(std::string common_name = "", DUMP_FORMAT df = { .dim = DIM })
 		{
 			if (df.rep == REP::P) fourier<REP::P>();
+
 			// MPI_Allreduce(MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, MPI::eComm);
 			MPI_Reduce((MPI::eID) ? psi : MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, 0, MPI::eComm);
 			if (MPI::region == 0) return Base::_save(common_name + "_joined", df);
@@ -373,9 +383,9 @@ namespace QSF
 		std::string saveIonizedJoined(std::string common_name = "", DUMP_FORMAT df = { .dim = DIM })
 		{
 			if (df.rep == REP::P) fourier<REP::P>();
-			// MPI_Allreduce(MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, MPI::eComm);
 			if (MPI::region == 0) Base::reset(); //removing un-ionized part
 
+			// MPI_Allreduce(MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, MPI::eComm);
 			MPI_Reduce((MPI::eID) ? psi : MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, 0, MPI::eComm);
 			auto ret = Base::_save(common_name + "_ionized_joined", df);
 			if (df.rep == REP::P) fourier<REP::X>();
