@@ -15,8 +15,9 @@ namespace QSF
 		using Base::m_l, Base::m, Base::xmin, Base::dx, Base::strides_lx;
 		using Base::mcomm, Base::psi, Base::mask, Base::inv_m, Base::inv_n;
 		static_assert(Base::hasAbsorber, "Absorber is required for multigrid computations");
-		static inline constexpr cxd zero = { 0.0, 0.0 };
-		template <ind Is> ind static constexpr rev = DIM - 2 - Is; //when iterating over n-1 dims
+
+		//Reverse indices order. Used when iterating over n-1 dims
+		template <ind Is> ind static constexpr rev = DIM - 2 - Is;
 
 		MPI_Win lessFreeWin = NULL;
 		MPI_Win moreFreeWin = NULL;

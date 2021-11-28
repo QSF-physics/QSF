@@ -103,10 +103,12 @@ namespace MPI
 	template <DIMS DIM, AXIS ... freeAxes>
 	struct Regions<Slices, DIM, freeAxes...>
 	{
-		// static_assert(Power(2, DIM) >= sizeof...(freeAxes), "Number of regions must be less than 2^DIM");
 		using MPIDivision = Slices;
-		bool isMain; //Whether the current wf interacts in all spatial directions
-		//marks whether a direction is bounded (not free)
+		static_assert(Power(2, DIM) >= sizeof...(freeAxes), "Number of regions must be less than 2^DIM");
+
+		// Whether the current wf interacts in all spatial directions
+		bool isMain;
+		// Marks whether a direction is bounded (not free)
 		bool bounded[DIM];
 		AXIS freeCoord;
 		int boundedCoordDim;
@@ -126,15 +128,14 @@ namespace MPI
 
 		static inline MPI_Comm lessFree = NULL; //region inter-comms
 		static inline MPI_Comm moreFree = NULL; //region inter-comms
-		template <ind ...Is>
 
 		Regions()
 		{
+			logSETUP("Attempting to init %d groups and %d regions", groupCount, regionCount);
 			regionCount = sizeof...(freeAxes);
 			groupCount = uniq<freeAxisCount<freeAxes>...>::size;
 
 			// assertm(MPI::rSize > regionCount, "Number of MPI processes too small");
-			logSETUP("Attempting to init %d groups and %d regions", groupCount, regionCount);
 			// logTestFatal(pSize % regionCount == 0, "Number of MPI processes pSize (%d) should be divisible by the number of regions regionCount (%d)", pSize, regionCount);
 
 			//The following should work, but needs to be tested
@@ -227,9 +228,10 @@ namespace MPI
 				// __logMPI("Process %d, local group size %d, Remote group (moreFree) size %d and should %d, minFree %d maxFree %d\n", pID, gMembers[freeCoordsCount[region]], size, gMembers[freeCoordsCount[region] + 1], minFree, maxFree);
 
 				MPI_Intercomm_merge(moreFreeInter, 0, &moreFree);
-				// int rank;
-				// MPI_Comm_rank(moreFree, &rank);
-				// _logMPI("[group %d region %d] rank of process %d is %d\n", group, region, pID, rank);
+
+				int rank;
+				MPI_Comm_rank(moreFree, &rank);
+				__logMPI("[group %d region %d] rank of process %d is %d\n", group, region, pID, rank);
 			}
 		}
 
