@@ -290,12 +290,12 @@ namespace QSF
 			//Check if work in inverse fourier space is needed
 			if constexpr ((false || ... || (bool(COMP::rep & invREP))))
 			{
-				fourier<invREP>();
+				wf.template fourier<invREP>();
 				((bool(COMP::rep & invREP)
 				  ? compute<invREP>(bo, COMP{})
 				  : ditch()),
 				 ...);
-				fourier<firstREP>();
+				wf.template fourier<firstREP>();
 			}
 
 			//Check if any "late" operations are required
@@ -318,18 +318,12 @@ namespace QSF
 			else return fabs(dif_energy) > state_accuracy && step != max_steps;
 		}
 
-		template <REP R>
-		void fourier()
-		{
-			wf.template fourier<R>();
-		}
-
 		template <uind chain, uind ... SI>
 		inline void chainEvolve(seq<SI...>)
 		{
 			([&] {
 				constexpr REP rep = Chain<chain>::template rep<SI>;
-				if (SI > 0) fourier<rep>();
+				if (SI > 0) wf.template fourier<rep>();
 
 				if constexpr (REP::BOTH == HamWF::couplesInRep || rep == HamWF::couplesInRep)
 					wf.template precalc<rep, OPTIMS::NONE>(timer);

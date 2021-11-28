@@ -106,7 +106,8 @@ namespace MPI
 		// static_assert(Power(2, DIM) >= sizeof...(freeAxes), "Number of regions must be less than 2^DIM");
 		using MPIDivision = Slices;
 		bool isMain; //Whether the current wf interacts in all spatial directions
-		bool bounded[DIM]; //marks whether a direction is bounded (not free)
+		//marks whether a direction is bounded (not free)
+		bool bounded[DIM];
 		AXIS freeCoord;
 		int boundedCoordDim;
 
@@ -210,7 +211,7 @@ namespace MPI
 									 &lessFreeInter);
 
 				MPI_Comm_remote_size(lessFreeInter, &size);
-				// __logMPI("Process %d, local group size %d, Remote group (lessFree) size %d and should %d\n", pID, gMembers[freeCoordsCount[region]], size, gMembers[freeCoordsCount[region] - 1]);
+				// __logMPI("Process %d, local group size %d, Remote group (lessFree) size %d and should %d, minFree %d maxFree %d\n", pID, gMembers[freeCoordsCount[region]], size, gMembers[freeCoordsCount[region] - 1], minFree, maxFree);
 
 				MPI_Intercomm_merge(lessFreeInter, 1, &lessFree);
 			}
@@ -223,15 +224,13 @@ namespace MPI
 									 &moreFreeInter);
 
 				MPI_Comm_remote_size(moreFreeInter, &size);
-				// __logMPI("Process %d, local group size %d, Remote group (moreFree) size %d and should %d\n", pID, gMembers[freeCoordsCount[region]], size, gMembers[freeCoordsCount[region] + 1]);
+				// __logMPI("Process %d, local group size %d, Remote group (moreFree) size %d and should %d, minFree %d maxFree %d\n", pID, gMembers[freeCoordsCount[region]], size, gMembers[freeCoordsCount[region] + 1], minFree, maxFree);
 
 				MPI_Intercomm_merge(moreFreeInter, 0, &moreFree);
 				// int rank;
 				// MPI_Comm_rank(moreFree, &rank);
 				// _logMPI("[group %d region %d] rank of process %d is %d\n", group, region, pID, rank);
 			}
-
-
 		}
 
 		static bool calcsEnabled() { return group == 0; }

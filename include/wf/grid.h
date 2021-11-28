@@ -105,7 +105,6 @@ namespace QSF
 
 		LocalGrid(Section& settings) : BaseGrid(settings), mcomm(),
 			canLeaveTransposed(DIM > 1 && mcomm.isMain),
-			// mpiFFTW(mcomm.bounded[0]),
 			m_l(m / MPI::rSize)
 		{
 			init();
@@ -114,7 +113,6 @@ namespace QSF
 
 		LocalGrid(BaseGrid g) : BaseGrid(g), mcomm(),
 			canLeaveTransposed(DIM > 1 && mcomm.isMain),
-			// mpiFFTW(mcomm.bounded[0]),
 			m_l(m / MPI::rSize)
 		{
 			init();
@@ -360,7 +358,7 @@ namespace QSF
 		template <REP R>
 		inline void fourier()
 		{
-			// logInfo("FT %d", int(R));
+			printf("grid FT %d\n", int(R));
 		// Timings::measure::start("FFTW");
 			static_assert(R == REP::X || R == REP::P, "Can only transform to X or P, unambigously.");
 			constexpr DIMS back = R == REP::P ? 0 : 1;
@@ -788,9 +786,9 @@ namespace QSF
 	#pragma endregion InitialConditions
 
 	#pragma region IO
-		void _load(IO::path input_path)
+		void _load(IO::path input_path, IO::path ext = IO::psi_ext)
 		{
-			input_path += IO::psi_ext;
+			input_path += ext;
 
 			MPI_File fh;
 			DUMP_FORMAT df;
@@ -1047,7 +1045,7 @@ namespace QSF
 		}
 
 		// template <class ... Fpre>
-		IO::path _save(IO::path input_path, DUMP_FORMAT df)
+		IO::path _save(IO::path input_path, DUMP_FORMAT df, IO::path ext = IO::psi_ext)
 		{
 			if (df.downscale > 1)
 			{
@@ -1056,11 +1054,11 @@ namespace QSF
 			}
 
 			input_path += df.rep == REP::X ? "_repX" : "_repP";
-			input_path += IO::psi_ext;
+			input_path += ext;
 
 			//Remove the file if already exists to avoid partial overwrite
 			if (MPI::rID == 0) MPI_File_delete(input_path.c_str(), MPI_INFO_NULL);
-			MPI::Barrier();
+			// MPI::Barrier(MPI::rComm);
 
 			MPI_File fh;
 			MPI_File_open(MPI::rComm, input_path.c_str(),
@@ -1187,12 +1185,16 @@ namespace QSF
 			static ind p_count = 0;
 			if (df.rep == REP::X)
 			{
-				save("snapshot_" + std::to_string(x_count) + extra_info, df);
+				_save("snapshot_" + std::to_string(x_count) + extra_info, df, IO::psi_ext + std::to_string(MPI::region));
 				x_count++;
 			}
 			else
 			{
-				save("snapshot_" + std::to_string(p_count) + extra_info, df);
+				phaseShiftTrick(indices);
+				fourier<REP::P>();
+				_save("snapshot_" + std::to_string(p_count) + extra_info, df, IO::psi_ext + std::to_string(MPI::region));
+				fourier<REP::X>();
+				phaseShiftTrick(indices);
 				p_count++;
 			}
 		}
