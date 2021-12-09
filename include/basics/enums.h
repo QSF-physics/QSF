@@ -160,6 +160,7 @@ struct DUMP_FORMAT
 	REP rep = REP::X;
 	bool complex = true;
 	ind downscale = 1;
+	bool evo_backup = false;
 };
 // //Return the flag for current DIM
 // // constexpr DIMS DIMflag = (DIM == 1 ? D1 : (DIM == 2 ? D2 : D3));

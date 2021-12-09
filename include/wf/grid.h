@@ -236,23 +236,23 @@ namespace QSF
 		}
 		void initFFTW()
 		{
-			if (mcomm.isMain)
-			{
+			// if (mcomm.isMain)
+			// {
 				//make forward and backward mpi plans
-				for (int i = 0; i < 2; i++)
-					mpi_plans[i] =
-					fftw_mpi_plan_many_dft(DIM, n, 1, 	//rank, dims,howmany
-										   FFTW_MPI_DEFAULT_BLOCK, //block 
-										   FFTW_MPI_DEFAULT_BLOCK, //tblock
-										   reinterpret_cast<fftw_complex*>(psi),
-										   reinterpret_cast<fftw_complex*>(psi),
-										   MPI::rComm, for_back[i], MPI::plan_rigor | transpose_f[i]);
-				reset();
-			}
-			// logSETUP("FFTW will be performed in one step");
-			// logSETUP("Main Forward/backward plans for " psi_symbol " are initialized");
-			// fftw_print_plan(transf_x2p);
-			// fftw_print_plan(transf_p2x);
+			for (int i = 0; i < 2; i++)
+				mpi_plans[i] =
+				fftw_mpi_plan_many_dft(DIM, n, 1, 	//rank, dims,howmany
+									   FFTW_MPI_DEFAULT_BLOCK, //block 
+									   FFTW_MPI_DEFAULT_BLOCK, //tblock
+									   reinterpret_cast<fftw_complex*>(psi),
+									   reinterpret_cast<fftw_complex*>(psi),
+									   MPI::rComm, for_back[i], MPI::plan_rigor | transpose_f[i]);
+			reset();
+		// }
+		// logSETUP("FFTW will be performed in one step");
+		// logSETUP("Main Forward/backward plans for " psi_symbol " are initialized");
+		// fftw_print_plan(transf_x2p);
+		// fftw_print_plan(transf_p2x);
 		}
 		void init()
 		{
@@ -358,7 +358,7 @@ namespace QSF
 		template <REP R>
 		inline void fourier()
 		{
-			printf("grid FT %d\n", int(R));
+			// printf("grid FT %d\n", int(R));
 		// Timings::measure::start("FFTW");
 			static_assert(R == REP::X || R == REP::P, "Can only transform to X or P, unambigously.");
 			constexpr DIMS back = R == REP::P ? 0 : 1;
@@ -793,16 +793,15 @@ namespace QSF
 			MPI_File fh;
 			DUMP_FORMAT df;
 			MPI_File_open(MPI::rComm, input_path.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
-			logIO("[_load] Opening [%s] file %s", "rb", input_path.c_str());
+			logIO("[_load] Opening [%s] file %s, expecting %d dimensions", "rb", input_path.c_str(), DIM);
 
 			MPI_File_read(fh, &df.dim, 1, MPI_UNSIGNED_CHAR, MPI_STATUS_IGNORE);
 			MPI_File_read(fh, &df.rep, 1, MPI_UNSIGNED_CHAR, MPI_STATUS_IGNORE);
 			MPI_File_read(fh, &df.complex, 1, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
 			MPI_File_read(fh, &df.downscale, 1, MPI_INT64_T, MPI_STATUS_IGNORE);
-
 			if (df.dim != DIM)
 			{
-				logError("Dimensionality of the input file [%s] is not the same as the one choosen for evolution", input_path.c_str());
+				logError("Dimensionality of the input (%d) file [%s] is not the same as the one choosen for evolution (%s)", input_path.c_str(), df.dim, DIM);
 			}
 			ind n_new[DIM] = { 0 };
 			double dx_new[DIM] = { 0.0 };
@@ -815,7 +814,8 @@ namespace QSF
 				if (dx_new[i] != dx[i])
 					logWarning("File has different grid density at dx[%d]", i);
 			}
-			MPI_File_read(fh, mcomm.bounded, df.dim, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
+			bool bounded[DIM];
+			MPI_File_read(fh, bounded, df.dim, MPI_CXX_BOOL, MPI_STATUS_IGNORE);
 
 			if (!df.complex)
 			{
@@ -835,36 +835,8 @@ namespace QSF
 			auto res = average<REP::X, Identity>();
 			MPI::reduceImmediataly(&res);
 			__logMPI("pID %d, State " psi_symbol "_%d loaded with norm %g\n", MPI::pID, 0, res);
-			for (ind i = 0; i < m_l; i++)
-			{
-				psi[i] = { std::abs(psi[i]),0 };
-			}
-		// if (MPI::region == region_index)
-		// {
-		// 	if (!MPI::rID) //only node can load the file
-		// 	{
-		// 		if (psi_total == nullptr)
-		// 		{
-		// 			logALLOC("Allocating memory for psi_total (%td nodes) loading file %s", m, input_path.c_str());
-		// 			psi_total = new cxd[m];
-		// 		}
-		// 			// auto out = PsiFile(M_FROM, )
-		// 		FILE* fin = fopen(input_path.c_str(), "rb");
-		// 		//IO::fopen_with_check<IO::IO_ATTR::READ>(input_path.c_str());
-		// 		//openPsi<AFTER<>, REP::X, DIM, IO::ATTR::READ>(name, 0, 0, true);
-		// 		bool is_complex = IO::readPsiBinaryHeader<DIM>(fin);
-
-		// 		if (is_complex) fread(psi_total, sizeof(cxd), m, fin);
-		// 		else for (ind i = 0; i < m; i++) fread(&psi_total[i], sizeof(double), 1, fin);
-		// 		fclose(fin);
-
-
-		// 		double qnorm = 0.0;
-		// 		for (ind i = 0; i < m; i++) qnorm += std::norm(psi_total[i]);
-		// 		logSETUP("State " psi_symbol "_%d loaded with norm %g", 0, BaseGrid::template vol<REP::X>() * qnorm);
-		// 	}
-		// 	scatter();
-		// }
+			if (!df.complex)
+				for (ind i = 0; i < m_l; i++) psi[i] = { std::abs(psi[i]),0 };
 		}
 
 		// Returns a multielectron filter passing through [from-to] dimensional electron ionization
@@ -1011,15 +983,6 @@ namespace QSF
 					ctmp = psi[data_offset<REP::X>(counters[Is]...)];
 					if (df.rep == REP::P) ctmp *= p_scale;
 					MPI_File_write(fh, &ctmp, 1, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
-								// p_scale = dV / pow(sqrt(2 * pi), DIM);
-			// 	// wf[] * sqrt(dV/m) = psi_p * sqrt(dVP)
-					// wf[] * dx sqrt(dx / m)sqrt(dx / pi) = psi_p
-					//  x * sqrt(2 pi/L)^DIM = (L/(n-1))^DIM / n^DIM
-					// wf * sqrt(dV/m/dVP)
-					// 	if (!xrepQ) { premultiplyFullArray(psiR, p_scale); }
-					// 	// for regions with free coords additional division is needed
-					// 	double permaP = 1.0 / sqrt(pow(n, MPI::group));
-					// 	if (!df.unnormalized) premultiplyFullArray(psiR, xrepQ ? (sqrt_dV * permaP) : sqrt_dVP);
 				}
 				else
 				{
@@ -1047,13 +1010,16 @@ namespace QSF
 		// template <class ... Fpre>
 		IO::path _save(IO::path input_path, DUMP_FORMAT df, IO::path ext = IO::psi_ext)
 		{
-			if (df.downscale > 1)
+			if (!df.evo_backup)
 			{
-				df.complex = false;
-				input_path += "_scale" + std::to_string(df.downscale);
-			}
+				if (df.downscale > 1)
+				{
+					df.complex = false;
+					input_path += "_scale" + std::to_string(df.downscale);
+				}
 
-			input_path += df.rep == REP::X ? "_repX" : "_repP";
+				input_path += df.rep == REP::X ? "_repX" : "_repP";
+			}
 			input_path += ext;
 
 			//Remove the file if already exists to avoid partial overwrite
@@ -1101,28 +1067,10 @@ namespace QSF
 							  (df.complex) ? MPI_CXX_DOUBLE_COMPLEX : MPI_DOUBLE,
 							  "native", MPI_INFO_NULL);
 
-			if (df.downscale == 1 && df.complex && df.rep == REP::X) MPI_File_write(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
+			if (df.evo_backup || (df.downscale == 1 && df.complex && df.rep == REP::X))
+				MPI_File_write(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
 			else coarse<REP::X>(indices, fh, df);
-				// MPI_File_seek(fh, offset + MPI::rID * m_l, MPI_SEEK_SET);
-				// MPI_File_write(fh, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_STATUS_IGNORE);
 			MPI_File_close(&fh);
-		// else
-		// {
-		// 	gather();
-		// 	if ((!mainRegionOnly && !MPI::rID) || (mainRegionOnly && !MPI::pID))
-		// 	{
-		// 		FILE* file;
-		// 		logWarning("%s =?= %s %d", path.parent_path().c_str(), IO::target_path.c_str(), path.parent_path().compare(IO::target_path));
-
-		// 		if ((path.has_parent_path() && path.parent_path().compare(IO::target_path)) || path.has_extension()) file = fopen(path.c_str(), "wb");
-		// 		else
-		// 			file = IO::openPsi< AFTER<>, REP::X, DIM, IO::IO_ATTR::WRITE>(path.c_str(), 0, 0, true);
-		// 	   // logDUMPS("Dumping " psi_symbol " in %s rep", (R == REP::X ? "X" : "P"));
-
-		// 		IO::writePsiBinaryHeader(file, n, dx, mcomm.bounded, df);
-		// 		fwrite(psi_total, sizeof(cxd), m, file);
-		// 		fclose(file);
-		// }
 			return std::filesystem::current_path() / input_path;
 		}
 
@@ -1141,8 +1089,7 @@ namespace QSF
 					   ));
 		}
 
-		// template <class ... Fpre>
-		IO::path save(IO::path path = "", DUMP_FORMAT df = { .dim = DIM })//, Fpre... applyBefore)
+		IO::path _save_centered(IO::path path = "", DUMP_FORMAT df = { .dim = DIM }, IO::path ext = IO::psi_ext)
 		{
 			if (df.rep == REP::P)
 			{
@@ -1151,15 +1098,23 @@ namespace QSF
 				logIO("Transforming to P representation");
 				fourier<REP::P>();
 			}
-			auto ret = _save(path, df);//, applyBefore...);
+			auto ret = _save(path, df, ext);
 			if (df.rep == REP::P)
 			{
 				logIO("Transforming back to X representation");
 				fourier<REP::X>();
+				logIO("Undoing phaseShiftTrick to move to centered P representation");
 				phaseShiftTrick(indices);
 			}
 			return ret;
 		}
+
+		IO::path save(IO::path path = "", DUMP_FORMAT df = { .dim = DIM })
+		{
+			return _save_centered(path, df);
+		}
+
+
 		void _backup(const ind step, std::string ext = IO::psi_ext)
 		{
 			if (!MPI::pID) {
@@ -1167,7 +1122,7 @@ namespace QSF
 				fwrite(&step, sizeof(ind), 1, f);
 				fclose(f);
 			}
-			_save("backup", { .dim = DIM });
+			_save("backup", { .dim = DIM, .evo_backup = true }, ext);
 			logInfo("Backup made at step %td", step);
 		}
 		void backup(const ind step)
@@ -1185,16 +1140,12 @@ namespace QSF
 			static ind p_count = 0;
 			if (df.rep == REP::X)
 			{
-				_save("snapshot_" + std::to_string(x_count) + extra_info, df, IO::psi_ext + std::to_string(MPI::region));
+				_save_centered("snapshot_" + std::to_string(x_count) + extra_info, df, IO::psi_ext + std::to_string(MPI::region));
 				x_count++;
 			}
 			else
 			{
-				phaseShiftTrick(indices);
-				fourier<REP::P>();
-				_save("snapshot_" + std::to_string(p_count) + extra_info, df, IO::psi_ext + std::to_string(MPI::region));
-				fourier<REP::X>();
-				phaseShiftTrick(indices);
+				_save_centered("snapshot_" + std::to_string(p_count) + extra_info, df, IO::psi_ext + std::to_string(MPI::region));
 				p_count++;
 			}
 		}

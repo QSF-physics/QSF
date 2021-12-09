@@ -331,7 +331,7 @@ namespace QSF
 				wf.template evolve<M, rep>(dt * Chain<chain>::mults[SI]);
 				// Timings::measure::stop(op.name);
 				// if (step == 4)
-				// logInfo("SplitGroup %td Evolving in REP %td with delta=%g dt=%g", chain, ind(rep), Chain<chain>::mults[SI], dt);
+					// printf("SplitGroup %td Evolving in REP %td with delta=%g dt=%g pID:%d\n", chain, ind(rep), Chain<chain>::mults[SI], dt, MPI::pID);
 				if constexpr (REP::BOTH == HamWF::couplesInRep)
 					incrementBy(Chain<chain>::mults[SI] * 0.5);
 				else if constexpr (rep == HamWF::couplesInRep)

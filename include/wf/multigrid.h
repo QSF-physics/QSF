@@ -49,7 +49,7 @@ namespace QSF
 			{
 				if (mpiFFTW)
 				{
-					// printf("pID %d: is not main makes mpiFFTW plans\n", MPI::pID);
+					printf("PARTIAL_FFTW[0]: pID %d: makes mpiFFTW plans of rank 1, howmany %td\n", MPI::pID, m / n[0]);
 					//make forward and backward mpi plans
 					for (int i = 0; i < 2; i++)
 						mpi_plans_partial[i] =
@@ -68,7 +68,6 @@ namespace QSF
 				// together if involve consecutive directions (case for 1-3D)
 				for (DIMS i = 1; i <= DIM; i++)
 				{
-					logWarning("FFTW extra steps");
 					if (i == DIM || !mcomm.bounded[i])
 					{
 						if (fftw_rank)
@@ -77,7 +76,7 @@ namespace QSF
 							for (int j = 0; j < fftw_rank; j++)
 							{
 								dims[j] = { n_lx[start_dim + j], strides_lx[start_dim + j],strides_lx[start_dim + j] };
-								// __logMPI("region %d start_dim %d j %d n_lx[start_dim+j]=%td strides_lx[start_dim+j]=%td\n", MPI::region, start_dim, j, n_lx[start_dim + j], strides_lx[start_dim + j]);
+								// __logMPI("PARTIAL_FFTW[1]: pID %d region %d start_dim %d j %d n_lx[start_dim+j]=%td strides_lx[start_dim+j]=%td\n", MPI::pID, MPI::region, start_dim, j, n_lx[start_dim + j], strides_lx[start_dim + j]);
 							}
 
 							//define a loop over all howmany_dims (free) dimensions
@@ -90,7 +89,7 @@ namespace QSF
 								{
 									howmany_dims[index] = { n_lx[j], strides_lx[j], strides_lx[j] };
 									index++;
-									// __logMPI("region %d start_dim %d index %d j %d n_lx[j]=%td dist[j]=%td\n", MPI::region, start_dim, index, j, n_lx[j], strides_lx[j]);
+									// __logMPI("PARTIAL_FFTW[2]: pID %d region %d start_dim %d index %d j %d n_lx[j]=%td dist[j]=%td\n", MPI::pID, MPI::region, start_dim, index, j, n_lx[j], strides_lx[j]);
 								}
 							};
 							for (int k = 0; k < 2; k++)
@@ -104,7 +103,7 @@ namespace QSF
 							delete[] dims;
 							delete[] howmany_dims;
 							plans_partial_count++;
-							// __logMPI("region %d mpiFFTW %d plans_partial_count %d dim %d/%d fftw_rank %d howmany_rank %d\n", MPI::region, mpiFFTW, plans_partial_count, start_dim, i - 1, fftw_rank, howmany_rank);
+							// __logMPI("PARTIAL_FFTW[3]: pID %d region %d mpiFFTW %d plans_partial_count %d dim %d/%d fftw_rank %d howmany_rank %d\n", MPI::pID, MPI::region, mpiFFTW, plans_partial_count, start_dim, i - 1, fftw_rank, howmany_rank);
 						}
 						fftw_rank = 0;
 					}
@@ -130,20 +129,27 @@ namespace QSF
 				{
 					switch (mcomm.freeCoord ^ mcomm.freeCoords[i])
 					{
-					case AXIS::X: sourceRegions.push_back({ index * MPI::rSize + MPI::rID,AXIS::X }); break;
-					case AXIS::Y: sourceRegions.push_back({ index * MPI::rSize + MPI::rID,AXIS::Y }); break;
-					case AXIS::Z: sourceRegions.push_back({ index * MPI::rSize + MPI::rID,AXIS::Z }); break;
+					case AXIS::X: sourceRegions.push_back({ index * MPI::rSize + MPI::rID,AXIS::X });
+						// printf("[[[%d is X source for %d]]]\n", index * MPI::rSize + MPI::rID, MPI::pID);
+						break;
+					case AXIS::Y: sourceRegions.push_back({ index * MPI::rSize + MPI::rID,AXIS::Y });
+						// printf("[[[%d is Y source for %d]]]\n", index * MPI::rSize + MPI::rID, MPI::pID);
+						break;
+					case AXIS::Z: sourceRegions.push_back({ index * MPI::rSize + MPI::rID,AXIS::Z });
+						// printf("[[[%d is Z source for %d]]]\n", index * MPI::rSize + MPI::rID, MPI::pID);
+						break;
 					default: break;
 					}
 					index++;
 				}
 			}
-			//Used for normalization after two FFT
+			//Used for normalization after partial FFT done two times
 			partial_inv_m = 1.0;
 			for (DIMS i = 0; i < DIM; i++)
-				partial_inv_m *= mcomm.boundedCoordDim ? inv_n[0] : 1.0;
+				partial_inv_m *= mcomm.bounded[i] ? inv_n[i] : 1.0;
 
-			_logMPI("[group %d region %d pID %d] has %td sources, [isMain:%d]", MPI::group, MPI::region, MPI::pID, sourceRegions.size(), mcomm.isMain);
+
+			// _logMPI("[group %d region %d pID %d] has %td sources, [isMain:%d]", MPI::group, MPI::region, MPI::pID, sourceRegions.size(), mcomm.isMain);
 
 	/* 		if (n % nCAP)
 			{
@@ -223,12 +229,12 @@ namespace QSF
 		// all the processes in the region. In 3D case the nCAP cuts are NEVER made 
 		// along the X dir (which is split by fftw_mpi anyway).
 		template <uind dirFree, uind ...dirs>
-		void initFFTWplans(seq<dirs...>)
+		void initSliceFFTWplans(seq<dirs...>)
 		{
 			if constexpr (dirFree == 0)
 			{
-				// printf("pID %d MPI initFFTWplans dirFree: [%td] howmany %td\n",
-					//    MPI::pID, dirFree, m_slice / n[0]);
+				printf("SLICE_FFTW[0] pID %d MPI initSliceFFTWplans dirFree: [%td] howmany %td\n",
+					   MPI::pID, dirFree, m_slice / n[0]);
 				transf_slice[0] =
 					fftw_mpi_plan_many_dft(1, n, m_slice / n[0],
 										   FFTW_MPI_DEFAULT_BLOCK, //block 
@@ -239,7 +245,7 @@ namespace QSF
 			}
 			else
 			{
-				// printf("pID %d initFFTWplans dirFree: [%td] howmany %td\n", MPI::pID, dirFree, m_slice / n[0]);
+				printf("SLICE_FFTW[1] pID %d initSliceFFTWplans dirFree: [%td] howmany %td\n", MPI::pID, dirFree, m_slice / n[0]);
 				// The dimension we're going to transform
 				fftw_iodim64 dims[1] = { {n[dirFree] , stride_slice[dirFree][dirFree], stride_slice[dirFree][dirFree]} };
 				fftw_iodim64 howmany_dims[DIM - 1];
@@ -274,7 +280,7 @@ namespace QSF
 
 				// Base::initFFTW();
 				(initSliceStrides<dirFree>(rev_seq<DIM - 1>), ...);
-				(initFFTWplans<dirFree>(n_seq<DIM>), ...);
+				(initSliceFFTWplans<dirFree>(n_seq<DIM>), ...);
 
 				isBottomX = pos_lx.first < nCAP;
 				sizeX = Min(n_lx[0], nCAP - pos_lx.first);
@@ -282,7 +288,7 @@ namespace QSF
 				isTopX = pos_lx.last > n[0] - 1 - nCAP;
 				startX = Max(0, n[0] - nCAP - pos_lx.first);
 
-				// __logMPI("pID: %d  startX[%td] (sizeX[%td] isBottomX %d) isTopX %d \n", MPI::pID, startX, sizeX, isBottomX, isTopX);
+				// __logMPI("[xSLICE] pID: %d  startX[%td] (sizeX[%td] isBottomX %d) isTopX %d \n", MPI::pID, startX, sizeX, isBottomX, isTopX);
 				if (transf_slice[0] == NULL) logInfo("fftw_mpi_plan... (slice) returned NULL");
 			}
 		}
@@ -325,7 +331,8 @@ namespace QSF
 		inline constexpr ind sliceLimited()
 		{
 			if constexpr (dirFree == dir && dirFree) return nCAP;
-			else return sliceShape<dirFree, dir>();
+			else
+				return sliceShape<dirFree, dir>();
 		}
 		template <uind dirFree, uind dir>
 		inline ind top()
@@ -344,6 +351,10 @@ namespace QSF
 				printf("ERROR %d slice[%td/%td/%td]", MPI::pID, slice_off, count, m_lslice);
 			if (wf_offset<0 || wf_offset + count >m_l)
 				printf("ERROR %d wf[% td / % td / % td] \n", MPI::pID, wf_offset, count, m_l);
+			// static int a = 0;
+			// if (a < 1000)
+			// 	__logMPI("[pID:%d [%d]] [slice_off:%td] [count:%td] [rank:%d] [wf_offset:%td]\n", MPI::pID, a, slice_off, count, rank, wf_offset);
+			// a++;
 			MPI_Get(&slice[slice_off], //pos in slice
 					count, //send count
 					MPI_CXX_DOUBLE_COMPLEX, rank,
@@ -353,6 +364,7 @@ namespace QSF
 		}
 		void backup(const ind step)
 		{
+			logIO("Multiregion backup");
 			Base::_backup(step, IO::psi_ext + std::to_string(MPI::region));
 		}
 		void restore()
@@ -364,43 +376,60 @@ namespace QSF
 		{
 			Base::remove_backups(IO::psi_ext + std::to_string(MPI::region));
 		}
+
+		// On multiregion grid some directions are never transformed to X representation
+		// hence in order to save them in homogenous (P or X) rep we first need to transform
+		// them to P rep using multigrid::fourier_partial, then to X using (single) grid::fourier
+		// and leave the rest of work to grid::snapshot
+		void snapshot(std::string extra_info, DUMP_FORMAT df = { .dim = DIM })
+		{
+			logIO("multireg snapshot");
+			if (!mcomm.isMain)
+			{
+				fourier<REP::P>();
+				Base::template fourier<REP::X>();
+			}
+			Base::snapshot(extra_info, df);
+			if (!mcomm.isMain)
+			{
+				Base::template fourier<REP::P>();
+				fourier<REP::X>();
+			}
+		}
+
 		std::string save(std::string common_name = "", DUMP_FORMAT df = { .dim = DIM })
 		{
-			if (df.rep == REP::P)
+			if (!mcomm.isMain)
 			{
-				logIO("Transforming to P representation");
 				fourier<REP::P>();
-				// Base::template fourier<REP::X>();
-				// logIO("Applying phaseShiftTrick to move to centered P representation");
-				// Base::phaseShiftTrick(Base::indices);
-				// logIO("Transforming to P representation");
-				// Base::template fourier<REP::P>();
+				Base::template fourier<REP::X>();
 			}
-			auto ret = Base::_save(common_name, df, IO::psi_ext + std::to_string(MPI::region));
-			if (df.rep == REP::P)
+			auto ret = Base::_save_centered(common_name, df, IO::psi_ext + std::to_string(MPI::region));
+			if (!mcomm.isMain)
 			{
-				// Base::template fourier<REP::X>();
-				// Base::phaseShiftTrick(Base::indices);
-				// Base::template fourier<REP::P>();
-				logIO("Transforming back to X representation");
+				Base::template fourier<REP::P>();
 				fourier<REP::X>();
 			}
 			return ret;
 		}
 
-		std::string saveJoined(std::string common_name = "", DUMP_FORMAT df = { .dim = DIM })
-		{
-			if (df.rep == REP::P) fourier<REP::P>();
+		// std::string saveJoined(std::string common_name = "", DUMP_FORMAT df = { .dim = DIM })
+		// {
+		// 	if (df.rep == REP::P) fourier<REP::P>();
 
-			// MPI_Allreduce(MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, MPI::eComm);
-			MPI_Reduce((MPI::eID) ? psi : MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, 0, MPI::eComm);
-			if (MPI::region == 0) return Base::_save(common_name + "_joined", df);
-			if (df.rep == REP::P) fourier<REP::X>();
-		}
+		// 	// MPI_Allreduce(MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, MPI::eComm);
+		// 	MPI_Reduce((MPI::eID) ? psi : MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, 0, MPI::eComm);
+		// 	if (MPI::region == 0) return Base::_save(common_name + "_joined", df);
+		// 	if (df.rep == REP::P) fourier<REP::X>();
+		// }
 
 		std::string saveIonizedJoined(std::string common_name = "", DUMP_FORMAT df = { .dim = DIM })
 		{
-			if (df.rep == REP::P) fourier<REP::P>();
+			if (!mcomm.isMain)
+			{
+				fourier<REP::P>();
+				Base::template fourier<REP::X>();
+			}
 			if (MPI::region == 0) Base::reset(); //removing un-ionized part
 
 			// MPI_Allreduce(MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, MPI::eComm);
@@ -410,13 +439,13 @@ namespace QSF
 			IO::path ret = "";
 			if (MPI::region == 0)
 			{
-				fourier<REP::X>();
-				Base::phaseShiftTrick(Base::indices);
-				fourier<REP::P>();
-				ret = Base::_save(common_name + "_ionized_joined", df);
+				ret = Base::_save_centered(common_name + "_ionized_joined", df);
 			}
-
-			if (df.rep == REP::P) fourier<REP::X>();
+			if (!mcomm.isMain)
+			{
+				Base::template fourier<REP::P>();
+				fourier<REP::X>();
+			}
 			return ret;
 		}
 
@@ -464,15 +493,12 @@ namespace QSF
 			{
 			case AXIS::X:
 				getBox<0>(rank, boxIndex, n_seq<DIM - 1>);
-				// getXBox(rank, boxIndex);
 				break;
 			case AXIS::Y:
 				getBox<1>(rank, boxIndex, n_seq<DIM - 1>);
-				// getYBox(rank, boxIndex);
 				break;
 			case AXIS::Z:
 				getBox<2>(rank, boxIndex, n_seq<DIM - 1>);
-				// getZBox(rank, boxIndex);
 				break;
 			default:
 				break;
@@ -496,6 +522,7 @@ namespace QSF
 				return  onehalf * ((dirs == dirFree ? 0 : Base::template mask<dirs>(nodes)) + ... + 0)
 				+ onesixth * (1 - ((dirs == dirFree ? 1.0 : Base::template mask<dirs>(nodes))*...));
 			// else if constexpr (DIM == 2) //TODO: FIX
+				// return  onehalf * ((dirs == dirFree ? 0 : Base::template mask<dirs>(nodes)) + ... + 0);
 				// return onehalf * (1 - ((dirs == dirFree ? 1.0 : Base::template mask<dirs>(nodes))*...));
 			else return 1.0;
 				// else return 1.0;
@@ -628,23 +655,20 @@ namespace QSF
 		}
 
 	#pragma region FFToverloads
-		inline void normalizeAfterTwoFFT()
+		inline void normalize_after_fft_partial()
 		{
-			if constexpr (Base::MPIGridComm::many)
-			{
-				if (mcomm.boundedCoordDim > 0)
-					Base::multiplyArray(psi, partial_inv_m);
-			}
-			else Base::normalizeAfterTwoFFT();
+			if (mcomm.boundedCoordDim > 0)
+				Base::multiplyArray(psi, partial_inv_m);
 		}
+
 		template <REP R>
 		inline void fourier_partial()
 		{
-			printf("multigrid FT %d\n", int(R));
+			// printf("multigrid FT %d pID:%d mpiFFTW:%d plans_partial_count:%d isMAIN:%d\n", int(R), MPI::pID, mpiFFTW, plans_partial_count, mcomm.isMain);
 			constexpr DIMS back = R == REP::P ? 0 : 1;
 			if (mpiFFTW) fftw_execute(mpi_plans_partial[back]);
 			for (int i = 0; i < plans_partial_count; i++) fftw_execute(plans_partial[i + DIM * back]);
-			if constexpr (back) normalizeAfterTwoFFT();
+			if constexpr (back) normalize_after_fft_partial();
 		}
 		template <REP R>
 		inline void fourier()
