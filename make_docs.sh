@@ -1,0 +1,1 @@
+ rm -rf build; CC=gcc-11 CXX=g++-11 cmake . -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -B build; cd build; make; cd ..;

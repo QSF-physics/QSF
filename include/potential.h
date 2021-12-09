@@ -1,39 +1,13 @@
 namespace QSF
 {
+	// Gener
 	struct InteractionBase
 	{
-		/* If you think that a generic field parameter is lacking add it here */
 		double Ncharge;
 		double Echarge;
 		double Nsoft;
 		double Esoft;//,yukawaDecay;
 	};
-
-
-	// template <size_t ID, typename ... Inter>
-	// struct Potential
-	// {
-	// 	using type = Potential;
-	// 	inline static Potential instance;
-	// 	int count = sizeof...(Inter);
-
-	// 	InteractionBase* inters[sizeof...(Inter)]{};
-	// 	static constexpr std::string_view name = join_v<Inter::name...>;
-
-	// 	template <AXIS fc, typename ... Args>
-	// 	inline double operator()(Args...coords)
-	// 	{
-	// 		// size_t i = 0;
-	// 		// double val = 0;
-	// 		// ([&] {
-	// 		// 	val += static_cast<Inter*>(inters[i])->operator() < fc > (coords...) + ...);
-	// 		// 	i++;
-	// 		// }(), ...);
-	// 		// return val;
-	// 		return (static_cast<Inter*>(inters[Index_v<Inter, Inter...>])->template operator() < fc > (coords...) + ...);
-	// 	}
-	// };
-
 
 	struct CoulombInteraction : InteractionBase
 	{
