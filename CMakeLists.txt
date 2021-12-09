@@ -35,4 +35,4 @@ message(STATUS "FFTW_DOUBLE_MPI_LIB_FOUND: ${FFTW_DOUBLE_MPI_LIB_FOUND}")
 target_link_libraries(${PROJECT_NAME} INTERFACE FFTW::Double)
 target_link_libraries(${PROJECT_NAME} INTERFACE FFTW::DoubleMPI)
 
-add_subdirectory ("docs")
+# add_subdirectory ("docs")
