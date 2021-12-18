@@ -432,7 +432,6 @@ namespace QSF
 			}
 			if (MPI::region == 0) Base::reset(); //removing un-ionized part
 
-			// MPI_Allreduce(MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, MPI::eComm);
 			MPI_Reduce((MPI::eID) ? psi : MPI_IN_PLACE, psi, m_l, MPI_CXX_DOUBLE_COMPLEX, MPI_SUM, 0, MPI::eComm);
 
 			//EXPERIMENTAL

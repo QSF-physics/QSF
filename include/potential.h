@@ -74,20 +74,27 @@ namespace QSF
 		}
 	};
 
-	struct EckhardtSachaInteraction : InteractionBase
+	enum class ReducedModel
+	{
+		EckhardSacha,
+		Eberly
+	};
+
+	template <ReducedModel model>
+	struct ReducedDimInteraction : InteractionBase
 	{
 		double NEcharge;
 		double EEcharge;
 		static constexpr std::string_view name = "ES";
-		explicit EckhardtSachaInteraction(InteractionBase p) :
+		explicit ReducedDimInteraction(InteractionBase p) :
 			InteractionBase(p),
 			NEcharge(Ncharge* Echarge),
 			EEcharge(Echarge* Echarge)
 		{
-			logInfo("EckhardtSachaInteraction init NEcharge=%g, EEcharge=%g", NEcharge, EEcharge);
+			logInfo("ReducedDimInteraction init NEcharge=%g, EEcharge=%g", NEcharge, EEcharge);
 		}
 
-		EckhardtSachaInteraction(Section& settings)
+		ReducedDimInteraction(Section& settings)
 		{
 			logInfo("InteractionBase init");
 			inipp::get_value(settings, "Ncharge", Ncharge);
@@ -96,33 +103,36 @@ namespace QSF
 			inipp::get_value(settings, "Esoft", Esoft);
 			NEcharge = (Ncharge * Echarge);
 			EEcharge = (Echarge * Echarge);
-			logInfo("EckhardtSachaInteraction init NEcharge=%g, EEcharge=%g", NEcharge, EEcharge);
+			logInfo("ReducedDimInteraction init NEcharge=%g, EEcharge=%g", NEcharge, EEcharge);
 		}
 
-		inline double ee_EckhardtSacha(double x, double y)
+		inline double ee_i(double x, double y)
 		{
-			return EEcharge / sqrt((x - y) * (x - y) + x * y + Esoft);
+			if constexpr (model == ReducedModel::EckhardSacha)
+				return EEcharge / sqrt((x - y) * (x - y) + x * y + Esoft);
+			else if constexpr (model == ReducedModel::Eberly)
+				return EEcharge / sqrt((x - y) * (x - y) + Esoft);
 		}
-		inline double Ne_EckhardtSacha(double x)
+		inline double Ne_i(double x)
 		{
 			return NEcharge / sqrt(x * x + Nsoft);
 		}
 		inline double operator()(double x, double y, double z)
 		{
-			return ee_EckhardtSacha(x, y) + ee_EckhardtSacha(y, z) + ee_EckhardtSacha(z, x) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(y) + Ne_EckhardtSacha(z);
+			return ee_i(x, y) + ee_i(y, z) + ee_i(z, x) + Ne_i(x) + Ne_i(y) + Ne_i(z);
 		}
 		inline double operator()(double x, double y)
 		{
-			return ee_EckhardtSacha(x, y) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(y);
+			return ee_i(x, y) + Ne_i(x) + Ne_i(y);
 		}
 		inline double operator()(double x)
 		{
-			return Ne_EckhardtSacha(x);
+			return Ne_i(x);
 		}
 		inline double partial(AXIS fc, double x)
 		{
 			if (fc == AXIS::NO)
-				return Ne_EckhardtSacha(x);
+				return Ne_i(x);
 			else return 0.0;
 		}
 		inline double partial(AXIS fc, double x, double y)
@@ -130,9 +140,9 @@ namespace QSF
 			if (fc == AXIS::NO)
 				return operator()(x, y);
 			else if (fc == AXIS::Y)
-				return Ne_EckhardtSacha(x);
+				return Ne_i(x);
 			else if (fc == AXIS::X)
-				return Ne_EckhardtSacha(y);
+				return Ne_i(y);
 			else return 0.0;
 		}
 
@@ -141,17 +151,17 @@ namespace QSF
 			if (fc == AXIS::NO)
 				return operator()(x, y, z);
 			else if (fc == AXIS::Z)
-				return ee_EckhardtSacha(x, y) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(y);
+				return ee_i(x, y) + Ne_i(x) + Ne_i(y);
 			else if (fc == AXIS::Y)
-				return ee_EckhardtSacha(x, z) + Ne_EckhardtSacha(x) + Ne_EckhardtSacha(z);
+				return ee_i(x, z) + Ne_i(x) + Ne_i(z);
 			else if (fc == AXIS::X)
-				return ee_EckhardtSacha(y, z) + Ne_EckhardtSacha(y) + Ne_EckhardtSacha(z);
+				return ee_i(y, z) + Ne_i(y) + Ne_i(z);
 			else if (fc == AXIS::YZ)
-				return Ne_EckhardtSacha(x);
+				return Ne_i(x);
 			else if (fc == AXIS::XZ)
-				return Ne_EckhardtSacha(y);
+				return Ne_i(y);
 			else if (fc == AXIS::XY)
-				return Ne_EckhardtSacha(z);
+				return Ne_i(z);
 			else return 0.0;
 		}
 	};
