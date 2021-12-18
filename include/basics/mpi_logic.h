@@ -164,7 +164,7 @@ namespace MPI
 			MPI_Comm_rank(rComm, &rID);
 			MPI_Comm_size(rComm, &rSize);
 			MPI_Comm_group(rComm, &rGroup);
-			_logMPI("region %d: [rID %3d/%3d] is in group %d [gID %3d/%3d]", region, rID, rSize, group, gID, gSize);
+			_logMPI("[pID %3d] region %d: [rID %3d/%3d] is in group %d [gID %3d/%3d]", pID, region, rID, rSize, group, gID, gSize);
 
 			logSETUP("Initiated %d regions, processes per region: %d", regionCount, rSize);
 			Barrier();

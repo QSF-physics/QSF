@@ -1,3 +1,5 @@
+#include "tests/multigrid.h"
+
 namespace QSF
 {
 	struct SrcRegion
@@ -121,6 +123,7 @@ namespace QSF
 
 		void init()
 		{
+
 			__logMPI("MultiRegions init pID:%d", MPI::pID);
 			int index = 0;
 			for (int i = 0; i < MPI::regionCount; i++)
@@ -276,7 +279,7 @@ namespace QSF
 				m_slice = DIM == 3 ? m / n[2] * nCAP : m;
 				m_lslice = m_slice / MPI::rSize;
 				slice = (cxd*)fftw_malloc(sizeof(cxd) * m_lslice);
-				// __logMPI("[pID:%d] initSlice [m_slice:%td] [m_lslice:%td]\n", MPI::pID, m_slice, m_lslice);
+				__logMPI("[pID:%d] initSlice [m_slice:%td] [m_lslice:%td]\n", MPI::pID, m_slice, m_lslice);
 
 				// Base::initFFTW();
 				(initSliceStrides<dirFree>(rev_seq<DIM - 1>), ...);
@@ -288,7 +291,7 @@ namespace QSF
 				isTopX = pos_lx.last > n[0] - 1 - nCAP;
 				startX = Max(0, n[0] - nCAP - pos_lx.first);
 
-				// __logMPI("[xSLICE] pID: %d  startX[%td] (sizeX[%td] isBottomX %d) isTopX %d \n", MPI::pID, startX, sizeX, isBottomX, isTopX);
+				__logMPI("[xSLICE] pID: %d  startX[%td] (sizeX[%td] isBottomX %d) isTopX %d \n", MPI::pID, startX, sizeX, isBottomX, isTopX);
 				if (transf_slice[0] == NULL) logInfo("fftw_mpi_plan... (slice) returned NULL");
 			}
 		}
@@ -300,8 +303,9 @@ namespace QSF
 			{
 				if constexpr (dir == 1 && (Axis<dirFree> == AXIS::X || Axis<dirFree> == AXIS::Z))
 					return true;
-				if constexpr (dir == 2 && Axis<dirFree> == AXIS::Y)
+				else if constexpr (dir == 2 && Axis<dirFree> == AXIS::Y)
 					return true;
+				else return false;
 			}
 			return false;
 		}
@@ -348,9 +352,9 @@ namespace QSF
 		inline void getData(int rank, ind slice_off, ind wf_offset, ind count)
 		{
 			if (slice_off<0 || slice_off + count >m_lslice)
-				printf("ERROR %d slice[%td/%td/%td]", MPI::pID, slice_off, count, m_lslice);
+				fprintf(stderr, "ERROR %d slice[%td/%td/%td]", MPI::pID, slice_off, count, m_lslice);
 			if (wf_offset<0 || wf_offset + count >m_l)
-				printf("ERROR %d wf[% td / % td / % td] \n", MPI::pID, wf_offset, count, m_l);
+				fprintf(stderr, "ERROR %d wf[% td / % td / % td] \n", MPI::pID, wf_offset, count, m_l);
 			// static int a = 0;
 			// if (a < 1000)
 			// 	__logMPI("[pID:%d [%d]] [slice_off:%td] [count:%td] [rank:%d] [wf_offset:%td]\n", MPI::pID, a, slice_off, count, rank, wf_offset);
@@ -513,16 +517,15 @@ namespace QSF
 		// 			+ onehalf * (CAP1(pos_lx.first + i) + CAP1(boxIndex * nCAP + k)));
 		// }
 		const double onesixth = 1.0 / 6.0;
-		const double onehalf = 0.5;//0.5;
+		const double onehalf = 0.5;
 		template <uind dirFree, uind ... dirs, typename ...Nodes>
 		inline double mask_correction(Nodes ... nodes)
 		{
 			if constexpr (DIM == 3)
 				return  onehalf * ((dirs == dirFree ? 0 : Base::template mask<dirs>(nodes)) + ... + 0)
 				+ onesixth * (1 - ((dirs == dirFree ? 1.0 : Base::template mask<dirs>(nodes))*...));
-			// else if constexpr (DIM == 2) //TODO: FIX
-				// return  onehalf * ((dirs == dirFree ? 0 : Base::template mask<dirs>(nodes)) + ... + 0);
-				// return onehalf * (1 - ((dirs == dirFree ? 1.0 : Base::template mask<dirs>(nodes))*...));
+			else if constexpr (DIM == 2)
+				return 1 - onehalf * ((dirs == dirFree ? 1.0 : Base::template inv_mask<dirs>(nodes))*...);
 			else return 1.0;
 				// else return 1.0;
 			// onesixth* (invCAP2(j + boxIndex * CAPnodes, k)) + onehalf * (CAP1(j + boxIndex * CAPnodes) + CAP1(k));
@@ -531,42 +534,40 @@ namespace QSF
 		template <uind dirFree, uind ... dirs>
 		inline void maskSlice(int boxIndex, seq<dirs...>)
 		{
+			double mask_value;
+			double mask_value_corr = 1.0;
+
 			ind counters[DIM] = { 0 };
 			do
 			{
 				//those by design operate on nCAP nodes, which takes neg dist from boundry
 				if (Axis<dirFree> != AXIS::X || (isBottomX && counters[0] < sizeX))
 				{
-					slice[slice_offset<dirFree>(counters[dirs]...)]
-						*= Base::template inv_mask<0>(Base::template neg_dist_from_edge<dirFree>(counters[dirFree]));
+					mask_value = Base::template inv_mask<0>(Base::template neg_dist_from_edge<dirFree>(counters[dirFree]));
+					if (MPI::group == 1) mask_value_corr = mask_correction<dirFree, dirs...>(Base::template neg_dist_from_edge<dirs>(counters[dirs] + slider<dirFree, dirs>(boxIndex))...);
 
-					if (MPI::group == 1)
-						slice[slice_offset<dirFree>(counters[dirs]...)]
-						*= mask_correction<dirFree, dirs...>(Base::template neg_dist_from_edge<dirs>(counters[dirs] + slider<dirFree, dirs>(boxIndex))...);
-					// if ((MPI::group == 1) && (dirFree == 0))// && ((counters[dirs] == 1) && ...))
-					// 	printf("pID %d reg %d box %d dir %td cooords[%2td %2td %2td] local[%2td %2td %2td] (bottom) val [%g]\n", MPI::pID, MPI::group, boxIndex, dirFree, Base::template neg_dist_from_edge<dirs>(counters[dirs] + slider<dirFree, dirs>(boxIndex))...,
-					// 		   counters[dirs]...,
-					// 		   mask_correction<dirFree, dirs...>(Base::template neg_dist_from_edge<dirs>(counters[dirs] + slider<dirFree, dirs>(boxIndex))...));
+					slice[slice_offset<dirFree>(counters[dirs]...)] *=
+						((MPI::group == 1) ? (mask_value * mask_value_corr) : mask_value);
+
+					{TEST_MULTIGRID_MASK_P1}
 				}
 
 				if (Axis<dirFree> != AXIS::X || (isTopX && counters[0] >= startX))
 				{
-					slice[slice_offset<dirFree>((counters[dirs] + top<dirFree, dirs>())...)]
-						*= Base::template inv_mask<0>(Base::template neg_dist_from_edge<dirFree>(counters[dirFree] + top<dirFree, dirFree>()));
-					if (MPI::group == 1)
-						slice[slice_offset<dirFree>((counters[dirs] + top<dirFree, dirs>())...)]
-						*= mask_correction<dirFree, dirs...>(Base::template neg_dist_from_edge<dirs>(counters[dirs] + tslider<dirFree, dirs>(boxIndex))...);
+					mask_value = Base::template inv_mask<0>(Base::template neg_dist_from_edge<dirFree>(counters[dirFree] + top<dirFree, dirFree>()));
+					if (MPI::group == 1) mask_value_corr = mask_correction<dirFree, dirs...>(Base::template neg_dist_from_edge<dirs>(counters[dirs] + tslider<dirFree, dirs>(boxIndex))...);
 
-					// if ((MPI::group == 1) && (dirFree == 0))// && ((counters[dirs] == 1) && ...))
-					// 	printf("pID %d reg %d box %d dir %td cooords[%2td %2td %2td] local[%2td %2td %2td] (top   ) val [%g]\n", MPI::pID, MPI::group, boxIndex, dirFree, Base::template neg_dist_from_edge<dirs>(counters[dirs] + tslider<dirFree, dirs>(boxIndex))...,
-					// 		   counters[dirs]...,
-					// 		   mask_correction<dirFree, dirs...>(Base::template neg_dist_from_edge<dirs>(counters[dirs] + tslider<dirFree, dirs>(boxIndex))...));
+					slice[slice_offset<dirFree>((counters[dirs] + top<dirFree, dirs>())...)] *=
+						((MPI::group == 1) ? (mask_value * mask_value_corr) : mask_value);
+
+					{TEST_MULTIGRID_MASK_P2}
 				}
 			} while (!(...&&
 					   ((counters[Base::template rev<dirs>]++,
 						 counters[Base::template rev<dirs>] < sliceLimited<dirFree, Base::template rev<dirs>>())
 						? (false) : (counters[Base::template rev<dirs>] = 0, true))
 					   ));
+
 		}
 
 		template <uind dirFree, uind ... dirs>
@@ -615,6 +616,8 @@ namespace QSF
 		}
 		void postCompute()
 		{
+			{TEST_MULTIGRID_MASK_P0}
+
 			Base::postCompute();
 			transfer();
 			if (MPI::group != MPI::groupCount - 1)
@@ -679,7 +682,8 @@ namespace QSF
 	#pragma endregion FFToverloads
 
 	#pragma region Tests
-			//See: http://www.fftw.org/fftw3_doc/Load-balancing.html#Load-balancing
+
+				//See: http://www.fftw.org/fftw3_doc/Load-balancing.html#Load-balancing
 		void test()
 		{
 			// logTestFatal(n % MPI::rSize == 0, "Grid length n (%td) should be divisible by the number of MPI region processes (%d) (FFTW reg)", n, MPI::rSize);
