@@ -7,7 +7,8 @@ namespace QSF
 	{
 		/* If you think that a generic field parameter is lacking add it here */
 		double field, omega, ncycles, FWHM_percent, phase_in_pi_units, delay_in_cycles;
-		double Up() const { return 0.25 * field / omega / omega; }
+		// double Up() const { return 0.25 * field * field / omega / omega; }
+		// double Quiver() const { return field / omega / omega; }
 	};
 
 	//Sets a few derived quantities for convienience 

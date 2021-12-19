@@ -142,6 +142,28 @@ struct N2D :_Operator
 						 PatchBi2j2k2(i, j, k, p_SD, p_SD, p_NS, 0, p_DT - 1) + PatchBi2j2k2(j, i, k, p_SD, p_SD, p_NS, 0, p_DT - 1));
 	}
 };
+struct N2D_SYM :_Operator
+{
+	static constexpr REP rep = REP::X;
+	static constexpr bool late = false;
+	static constexpr std::string_view name = "N2D";
+	static inline borVec<2> border(ind i, ind j) //2e
+	{
+		return borVec<2>(SegmentB(j, i, p_SD, p_SD, p_NS) - SegmentB(-j - 1, -i - 1, p_SD, p_SD, p_NS),
+						 SegmentB(i, j, p_SD, p_SD, p_NS) - SegmentB(-i - 1, -j - 1, p_SD, p_SD, p_NS));
+	}
+};
+struct N2D_ASYM :_Operator
+{
+	static constexpr REP rep = REP::X;
+	static constexpr bool late = false;
+	static constexpr std::string_view name = "N2D";
+	static inline borVec<2> border(ind i, ind j) //2e
+	{
+		return borVec<2>(-SegmentB(j, -i - 1, p_SD, p_SD, p_NS) + SegmentB(-j - 1, i, p_SD, p_SD, p_NS),
+						 -SegmentB(i, -j - 1, p_SD, p_SD, p_NS) + SegmentB(-i - 1, j, p_SD, p_SD, p_NS));
+	}
+};
 
 struct S2D :_Operator
 {
@@ -159,7 +181,30 @@ struct S2D :_Operator
 						 PatchBi2j2k2(i, j, k, p_SD, p_NS, p_CAP, 0, p_DT) + PatchBi2j2k2(j, i, k, p_SD, p_NS, p_CAP, 0, p_DT));
 	}
 };
-
+struct S2D_SYM :_Operator
+{
+	static constexpr REP rep = REP::X;
+	static constexpr bool late = false;
+	static constexpr std::string_view name = "S2D_SYM";
+	static inline borVec<2> border(ind i, ind j) //2e
+	{
+		return borVec<2>(
+			SegmentB(j, i, p_SD, p_NS, p_CAP) - SegmentB(-j - 1, -i - 1, p_SD, p_NS, p_CAP),
+			SegmentB(i, j, p_SD, p_NS, p_CAP) - SegmentB(-i - 1, -j - 1, p_SD, p_NS, p_CAP));
+	}
+};
+struct S2D_ASYM :_Operator
+{
+	static constexpr REP rep = REP::X;
+	static constexpr bool late = false;
+	static constexpr std::string_view name = "S2D_ASYM";
+	static inline borVec<2> border(ind i, ind j) //2e
+	{
+		return borVec<2>(
+			-SegmentB(j, -i - 1, p_SD, p_NS, p_CAP) + SegmentB(-j - 1, i, p_SD, p_NS, p_CAP),
+			-SegmentB(i, -j - 1, p_SD, p_NS, p_CAP) + SegmentB(-i - 1, j, p_SD, p_NS, p_CAP));
+	}
+};
 // 3e only
 struct N2T :_Operator
 {
