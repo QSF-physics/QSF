@@ -45,3 +45,8 @@ constexpr double inv_twopi = 1.0 / pi / 2.0;
 constexpr double inv_pi = 1.0 / pi;
 constexpr double twopi = 2.0 * pi;
 constexpr double threepi2 = 1.5 * pi;
+constexpr double lambda2omega = 45.563352529;
+constexpr double lambda_to_omega(long double lambda)
+{
+	return 45.563352529 / lambda;
+}

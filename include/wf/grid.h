@@ -1,3 +1,5 @@
+#include "tests/multigrid.h"
+
 namespace QSF
 {
 
@@ -580,20 +582,23 @@ namespace QSF
 	#pragma endregion Computations
 
 	#pragma region Operations
-		template <uind ... Is>
-		inline void maskRegion_(seq<Is...>)
+		template <uind ... dirs>
+		inline void maskRegion_(seq<dirs...>)
 		{
+			double region_mask;
 			ind counters[DIM + 1] = { 0 };
 			do
 			{
-				psi[counters[DIM]] *= BaseGrid::template mask<Is...>(
-					(mcomm.bounded[Is] ? neg_dist_from_edge<Is>(counters[Is]) : -n2[Is])...);
+				region_mask = BaseGrid::template mask<dirs...>(
+					(mcomm.bounded[dirs] ? neg_dist_from_edge<dirs>(counters[dirs]) : -n2[dirs])...);
+				{TEST_MULTIGRID_MASK_P1}
+				psi[counters[DIM]] *= region_mask;
 
 			} while (!(...&&
-					   ((counters[rev<Is>]++,
-						 counters[rev<Is>] < shape<REP::X, rev<Is>>())
+					   ((counters[rev<dirs>]++,
+						 counters[rev<dirs>] < shape<REP::X, rev<dirs>>())
 						? (counters[DIM]++, false)
-						: (counters[rev<Is>] = 0, true))
+						: (counters[rev<dirs>] = 0, true))
 					   ));
 		}
 		// REP::X only!
@@ -889,36 +894,6 @@ namespace QSF
 						? (counters[DIM]++, false)
 						: (counters[rev<Is>] = 0, true))
 					   ));
-
-
-			// ind ip4 = n[0] / 2 + nodesFromCenter;
-			// ind ip3 = n[0] / 2 - nodesFromCenter;
-			// logInfo("crossOut");
-			// ind intemp2 = ip4 - ip3;
-			// ind intemp;
-			// // y-direction
-			// for (ind i = ip3;i < ip4;i++) {
-			// 	double temp = 0.5 * (1. + cos(2. * pi * (i - ip3) / intemp2));
-			// 	for (ind j = 0; j < n[0];j++)
-			// 	{
-			// 		if (i >= pos_lx.first && i <= pos_lx.last)
-			// 		{
-			// 			intemp = (i - pos_lx.first) * n[0] + j;
-			// 			psi[intemp] = temp * psi[intemp];
-			// 		}
-			// 	}
-			// }
-			// // x-direction
-			// for (ind j = ip3;j < ip4;j++) {
-			// 	double temp = 0.5 * (1. + cos(2. * pi * (j - ip3) / intemp2));
-			// 	for (ind i = 0;i < n[0];i++) {
-			// 		if (i >= pos_lx.first && i <= pos_lx.last)
-			// 		{
-			// 			intemp = (i - pos_lx.first) * n[0] + j;
-			// 			psi[intemp] = temp * psi[intemp];
-			// 		}
-			// 	}
-			// }
 		}
 
 		void orthogonalizeWith(IO::path input_path, std::string ext = IO::psi_ext)

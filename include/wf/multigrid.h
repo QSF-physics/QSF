@@ -549,7 +549,7 @@ namespace QSF
 					slice[slice_offset<dirFree>(counters[dirs]...)] *=
 						((MPI::group == 1) ? (mask_value * mask_value_corr) : mask_value);
 
-					{TEST_MULTIGRID_MASK_P1}
+					{TEST_MULTIGRID_SLICE_MASK_P1}
 				}
 
 				if (Axis<dirFree> != AXIS::X || (isTopX && counters[0] >= startX))
@@ -560,7 +560,7 @@ namespace QSF
 					slice[slice_offset<dirFree>((counters[dirs] + top<dirFree, dirs>())...)] *=
 						((MPI::group == 1) ? (mask_value * mask_value_corr) : mask_value);
 
-					{TEST_MULTIGRID_MASK_P2}
+					{TEST_MULTIGRID_SLICE_MASK_P2}
 				}
 			} while (!(...&&
 					   ((counters[Base::template rev<dirs>]++,
