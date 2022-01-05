@@ -9,21 +9,30 @@ in which you'd like your files to be located and pass string "path/to/XXXX.psi" 
 Both options support "*" wildcards for finding multiple files at once in the input pathnames.
 Important!: Place your input paths in doublequotes "" *)
 
-SetDirectory[DirectoryName[$InputFileName]]
+SetDirectory[DirectoryName[$InputFileName]];
+<< "common/parsing.wls"
 << "common/wf.wls"
 ResetDirectory[];
-Needs["ForScience`"]
-Print["SINGLE PLOT"]
+Needs["ForScience`"];
+Print["\nPlot"];
 ParseInput[];
-Echo[outPaths, "Output locations: "];
+
+ExportMultiple[path_,hd_,data_]:=Block[{tmpName},
+    tmpName=PrependName[path, "blur_radius_"<>ToString[blur]<>"/qm_none_"];
+    Export[tmpName, 
+    WFPlot[hd, data, BlurRadius->0.0, QuarterMerge->None, PlotRange->{{0,4},{0,4}, Full}] ];
+];
+
 MapThread[(
-    {hd,data}=WFLoad[#1]; 
-    Print[#1];
-    Print[WFNorm[hd,data]];
-    (* Export[PrependName[#2, "blur_radius_0/qm_none_"], WFPlot[hd, data, BlurRadius->0.0, QuarterMerge->None, PlotRange->{{0,4},{0,4}, Full}] ];
+    {hd,data}=WFLoad[#1, Probability->True]; 
+    outF=PrependName[#2, "blur_radius_0/qm_"<>ToString[]<>"_"];
+    Print[#1 <> " --> " #2];
+    
+    Echo[WFNorm[hd,data], "Norm: "];
+    Export[PrependName[#2, "blur_radius_0/qm_none_"], WFPlot[hd, data, BlurRadius->0.0, QuarterMerge->None, PlotRange->{{0,4},{0,4}, Full}] ];
     Export[PrependName[#2, "blur_radius_0/qm_corr_"], WFPlot[hd, data, BlurRadius->0.0, QuarterMerge->Correlated, PlotRange->{{0,4},{0,4}, Full}] ];
     Export[PrependName[#2, "blur_radius_0/qm_all_"], WFPlot[hd, data, BlurRadius->0.0, QuarterMerge->All, PlotRange->{{0,4},{0,4}, Full}] ];
     Export[PrependName[#2, "blur_radius_0.1/qm_none_"], WFPlot[hd, data, BlurRadius->0.1, QuarterMerge->None, PlotRange->{{0,4},{0,4}, Full}] ];
     Export[PrependName[#2, "blur_radius_0.1/qm_corr_"], WFPlot[hd, data, BlurRadius->0.1, QuarterMerge->Correlated, PlotRange->{{0,4},{0,4}, Full}] ];
-    Export[PrependName[#2, "blur_radius_0.1/qm_all_"], WFPlot[hd, data, BlurRadius->0.1, QuarterMerge->All, PlotRange->{{0,4},{0,4}, Full}] ]; *)
+    Export[PrependName[#2, "blur_radius_0.1/qm_all_"], WFPlot[hd, data, BlurRadius->0.1, QuarterMerge->All, PlotRange->{{0,4},{0,4}, Full}] ];
     ) &, {inPaths,outPaths}];

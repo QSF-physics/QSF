@@ -69,12 +69,22 @@ std::string axisName(AXIS ax)
 {
 	switch (ax)
 	{
+	case AXIS::NO:
+		return "NONE";
 	case AXIS::X:
 		return "X";
 	case AXIS::Y:
 		return "Y";
 	case AXIS::Z:
 		return "Z";
+	case AXIS::XY:
+		return "XY";
+	case AXIS::XZ:
+		return "XZ";
+	case AXIS::YZ:
+		return "YZ";
+	case AXIS::XYZ:
+		return "XYZ";
 	default:
 		return std::to_string((uind)ax);
 	}

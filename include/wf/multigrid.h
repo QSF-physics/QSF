@@ -124,7 +124,7 @@ namespace QSF
 		void init()
 		{
 
-			__logMPI("MultiRegions init pID:%d", MPI::pID);
+			__logMPI("[Region:%d] [freeCoord:%s] [pID:%d]\n", MPI::region, axisName(mcomm.freeCoord).c_str(), MPI::pID);
 			int index = 0;
 			for (int i = 0; i < MPI::regionCount; i++)
 			{
@@ -133,16 +133,14 @@ namespace QSF
 					switch (mcomm.freeCoord ^ mcomm.freeCoords[i])
 					{
 					case AXIS::X: sourceRegions.push_back({ index * MPI::rSize + MPI::rID,AXIS::X });
-						// printf("[[[%d is X source for %d]]]\n", index * MPI::rSize + MPI::rID, MPI::pID);
 						break;
 					case AXIS::Y: sourceRegions.push_back({ index * MPI::rSize + MPI::rID,AXIS::Y });
-						// printf("[[[%d is Y source for %d]]]\n", index * MPI::rSize + MPI::rID, MPI::pID);
 						break;
 					case AXIS::Z: sourceRegions.push_back({ index * MPI::rSize + MPI::rID,AXIS::Z });
-						// printf("[[[%d is Z source for %d]]]\n", index * MPI::rSize + MPI::rID, MPI::pID);
 						break;
 					default: break;
 					}
+					__logMPI("[Region:%d] getting %s from [pID:%d]\n", MPI::region, axisName(mcomm.freeCoord ^ mcomm.freeCoords[i]).c_str(), index * MPI::rSize + MPI::rID);
 					index++;
 				}
 			}
@@ -589,6 +587,8 @@ namespace QSF
 		//Max at 0,0,0, Min at (c,c,c), c=CAP_nodes
 		inline void coherentAddition(AXIS fc, int boxIndex)
 		{
+			// __logMPI("[Region:%d] coherentlAddition %s\n", MPI::region, axisName(fc).c_str());
+
 			if (fc == AXIS::X)
 			{
 				maskSlice<0>(boxIndex, n_seq<DIM>);

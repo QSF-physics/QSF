@@ -1,31 +1,61 @@
+
+BoolInv := # == 0 &;
+Bool := # != 0 &;
+FromEdge[ind_, ns_] := MapThread[If[#1 < #2/2, -#1, #1 - #2 + 1] &, {ind, ns}];
+WFMask[hd_,ratio_:0.5] := Block[{ns, nCAP, eta, CAP, bd},
+   ns = hd["ns"]/hd["downscale"];
+   nCAP = IntegerPart[ns*ratio/2];
+   bd = Bool /@ hd["bounded"];
+   eta = Pick[Power[3.0/nCAP, 4], bd];
+   CAP := Exp[-eta . Map[If[# > 0, #^4, 0] &, #]] &;
+   Array[
+    (s = Pick[(nCAP + FromEdge[List[##] - 1, ns]), bd];
+      If[AllTrue[s, Negative], 1, CAP[s]]) &, ns]
+   ];
+WFInvMask[hd_,ratio_:0.5]:= 1 - WFMask[hd,ratio];
+WFShiftTrick[hd_]:= Array[Mod[Total[List[##]] + 1, 2] 2 - 1 &, hd["ns"]/hd["downscale"] ];
+
+
+
 OpenBin:=Check[OpenRead[#,BinaryFormat->True],Abort[]] &;
-WFHeader[st_]:=Block[{dim=BinaryRead[st, "UnsignedInteger8"]},
-<|"dim"-> dim,
-"rep"->BinaryRead[st, "UnsignedInteger8"],
-"isComplex"->(1===BinaryRead[st, "Byte"]),
-"downscale"->BinaryRead[st, "Integer64"],
-"ns"->BinaryReadList[st, "Integer64",dim],
-"dxs"->BinaryReadList[st, "Real64",dim],
-"bounded"->BinaryReadList[st, "Byte",dim]|>];
+
+(* For internal use with open input string *)
+WFHeader[st_InputStream]:=Block[{dim=BinaryRead[st, "UnsignedInteger8"]},
+    <|"dim"-> dim,"rep"->BinaryRead[st, "UnsignedInteger8"],
+    "isComplex"->(1===BinaryRead[st, "Byte"]),
+    "downscale"->BinaryRead[st, "Integer64"],
+    "ns"->BinaryReadList[st, "Integer64",dim],
+    "dxs"->BinaryReadList[st, "Real64",dim],
+    "bounded"->BinaryReadList[st, "Byte",dim]|>
+];
+
+WFHeader[path_String]:=Block[{st=OpenBin[path]},
+    hd=WFHeader[st]; Close[path];
+    hd
+];
 
 WFData[st_, hd_]:=Block[{data},
     data=BinaryReadList[st, If[hd["isComplex"],"Complex128","Real64"] ];
-    data=If[hd["isComplex"], Abs[data]^2, data];
     ArrayReshape[data,hd["ns"]/hd["downscale"] ] 
 ];
 
-WFNorm[hd_, data_]:=Total[data,\[Infinity] ] If[hd["rep"]==2,
-    (2\[Pi])^(hd["dim"])/(Times@@(hd["dxs"]))/(Times@@(hd["ns"])),
-    Times@@(hd["dxs"]) 
-];
+WFDataStep[hd_]:=Block[{},
+    dxs=hd["dxs"];
+    dps=2\[Pi]/(ToExpression[hd["ns"]] ToExpression[hd["dxs"] ]);
+    If[hd["rep"]==2,dps,dxs]*hd["downscale"]
+]
 
-WFLoad[path_]:=Block[{st,hd,data,norm},
+WFNorm[hd_, data_]:=Total[data,\[Infinity] ] Times@@(WFDataStep[hd]); 
+
+Options[WFLoad] = {Probability -> False};
+WFLoad[path_,opt :OptionsPattern[]]:=Block[{st,hd,data,norm},
     st=OpenBin[path];
     hd=WFHeader[st];
     data=WFData[st,hd];
     Close[path];
-    {hd,data}
+    {hd,If[OptionValue[WFLoad, Probability] && hd["isComplex"], Abs[data]^2, data]}
 ]
+
 
 WFDataRange[hd_]:=Block[{Xs,Ps,dps},
     dps=2\[Pi]/(ToExpression[hd["ns"]] ToExpression[hd["dxs"]]);
@@ -34,28 +64,24 @@ WFDataRange[hd_]:=Block[{Xs,Ps,dps},
     MapThread[{-#1,#2}&, If[hd["rep"]==2,{Ps, Ps-dps}, {Xs, Xs}] ]
 ]
 
-WFDataStep[hd_]:=Block[{},
-    dxs=hd["dxs"];
-    dps=2\[Pi]/(ToExpression[hd["ns"]] ToExpression[hd["dxs"]]);
-    If[hd["rep"]==2,dps,dxs]*hd["downscale"]
-]
-
+Needs["ForScience`"];
 (* BlurRadius and PlotRange are in a.u. *)
-Options[WFPlot] = Join[{BlurRadius -> 1, QuarterMerge->None}, Options[ListLinePlot],Options[ArrayPlot],Options[ListDensityPlot3D] ];
-(* Join[{BlurRadius -> 1, QuarterMerge->None},Options[ListLinePlot],Options[ArrayPlot],Options[ListDensityPlot3D] ]; *)
+Options[WFPlot] = Join[{BlurRadius -> None, QuarterMerge->None}, Options[ListLinePlot],Options[ArrayPlot],Options[ListDensityPlot3D] ];
 WFPlot[hd_, data_, opt :OptionsPattern[] ]:=Block[{drng,len,subsets,step,res},
     drng=WFDataRange[hd];
     step=WFDataStep[hd];
-    res=GaussianFilter[data,{OptionValue[WFPlot, BlurRadius]/step}];
+    res=If[OptionValue[WFPlot, BlurRadius]===None,data,
+    GaussianFilter[data,{OptionValue[WFPlot, BlurRadius]/step}] ];
     
     res=If[OptionValue[WFPlot, QuarterMerge]===None,
-        Print["--> Not merging quaters"]; res,
+        (* Print["--> Not merging quaters"]; *)
+        res,
         len = Length[Dimensions[res] ];
         subsets=Subsets[Range[len ] ];
         subsets = If[OptionValue[WFPlot,QuarterMerge]===Correlated, 
-            Print["--> Merging correlated quaters"];
+            (* Print["--> Merging correlated quaters"]; *)
             Select[subsets, Length[#] == len || Length[#] == 0 &], 
-            Print["--> Merging all quaters"]; 
+            (* Print["--> Merging all quaters"];  *)
             subsets];
         Total[Reverse[res, #] & /@ subsets]/Length[subsets] ];
 
@@ -65,9 +91,9 @@ WFPlot[hd_, data_, opt :OptionsPattern[] ]:=Block[{drng,len,subsets,step,res},
         Frame->True,
         FrameTicks->True,
         DataRange->drng],
-        2, ArrayPlot[res,
+        2, ArrayPlot[Reverse@res,
         Evaluate@FilterRules[{opt}, Options[ArrayPlot]],
-        DataReversed->{False, True},
+        DataReversed->False,
         FrameTicks->True,
         PlotLegends->Placed[Automatic,Right], 
         ColorFunction->ForScience`PlotUtils`Jet,
@@ -87,37 +113,5 @@ WFPlot[hd_, data_, opt :OptionsPattern[] ]:=Block[{drng,len,subsets,step,res},
    ColorFunction -> (Color[norm] &), ColorFunctionScaling -> False,
    OpacityFunction -> Transparency, OpacityFunctionScaling -> True,  *)
 ];
-
-PrependName[path_, what_]:=Block[{fsp=FileNameSplit[path]}, FileNameJoin[Join[Most@fsp, {what<>fsp[[-1]]} ] ] ];
-
-ParseInput[filterFun_:Identity]:=(
-    (* Read first cmd line arg *)
-    inp=$ScriptCommandLine[[2]];
-    (* If it points directly to file or is not a directory, leave as is, otherwise add *.psi* pattern *)
-    inp=If[FileExistsQ[inp]|| !DirectoryQ[inp], inp, inp<>"*.psi*"];
-    (* Read second command line arg, with png format as default *)
-    format=Quiet[Check[$ScriptCommandLine[[3]],"png"] ];
-    format=If[StringStartsQ[format,"."],format,"."<>format];
-    (* Look for patterns in the input *)
-    sinp=FileNameSplit[inp];
-    Print[sinp];
-    pattern=FirstPosition[sinp, n_ /; StringContainsQ[Print[n]; n, "*"], Heads -> False];
-    Print[pattern];
-    (* Generate a list of files to process, excluding images *)
-    inPaths=filterFun[FileNames[inp]];
-    Print[inp <> Directory[] ];
-    inPaths=Select[inPaths, ! (StringEndsQ[#,".png"] || StringEndsQ[#,".pdf"]) & ];
-    Print["Will process following files: "];
-    Print/@inPaths;
-
-    relPaths=If[StringStartsQ[ExpandFileName[#],Directory[] ], StringDelete[ExpandFileName[#], Directory[]<>"/" ],#] & /@inPaths;
-    outPaths=(If[ pattern === Missing["NotFound"], #, StringRiffle[FileNameSplit[#],"_"] ] <>format) &/@relPaths;
-    outPathsMerge=FileNameSplit/@relPaths;
-    outPathsMerge= (StringRiffle[If[ pattern === Missing["NotFound"], #,
-    pos=First[pattern] - Length[sinp] - 1;
-    replacement=If[pos== -1, StringDrop[#[[pos]],-1] <> "_joined",
-    StringRiffle[Most[StringSplit[#[[pos]],"_"] ],"_"]<>"_AVG"];
-    ReplacePart[#,pos->replacement] ],"_" ]<>format) & /@ outPathsMerge;
-);
 
 

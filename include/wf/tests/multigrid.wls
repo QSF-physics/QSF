@@ -27,7 +27,9 @@ DebugPlot[basename_]:=Block[{fs, fsd, width, output},
 ];
 
 {output, width, fsd} = DebugPlot["multigrid_mask_region"];
-Export[output, Multicolumn[{Labeled[Multicolumn[Pl[width,#[[All,;;width-1]] ]& /@fsd,3,Appearance->"Horizontal"],"mask"]},1,Appearance->"Vertical"] ];
+Export[output, 
+    Multicolumn[{Labeled[Multicolumn[Pl[width,#[[All,;;width-1]] ]& /@fsd,
+    3,Appearance->"Horizontal"],"mask"]},1,Appearance->"Vertical"] ];
 
 {output, width, fsd} = DebugPlot["multigrid_slice_mask_region"];
 Export[output, 
