@@ -18,11 +18,10 @@ Print["\nGroupFLX"]
 (* filterFun:=Select[#, StringEndsQ[#, "1"|"2"|"3"] &] &; *)
 ParseInput["RE.dat"];
 
-SetOptions[Plot, BaseStyle -> {FontFamily -> "Latin Modern Math", FontSize -> 12}]
-SetOptions[ListLinePlot, BaseStyle -> {FontFamily -> "Latin Modern Math", FontSize -> 12}]
-SetOptions[Labeled, BaseStyle -> {FontFamily -> "Latin Modern Math", FontSize -> 12}]
+
 MergeAndBlur[paths_]:=Block[{all,labels,data},
     (* pk=GroupBy[paths,StringExtract[#, "phase_"->2,"/"->1]&]; *)
+
     all=(Echo[#, "Processing: "]; FLXLoad[#]) & /@ paths;
     wavelength=ToExpression[StringExtract[First[paths],"nm_"->2,"/"->1] ];
     model=StringExtract[First[paths],"/"->1];

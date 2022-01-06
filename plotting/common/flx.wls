@@ -5,7 +5,7 @@ FLXLoad[path_]:=Block[{st,labels, data},
     st=OpenBin[path];
     (* placeholder *)
     (* {3, A}, {5, NORM}, *)
-    labels = {{3, A},   {6, N2S}, {7, N2D_SYM}, {8, N2D_ASYM}, {9, S2D_SYM}, {10, S2D_ASYM}};
+    labels = {{3, A},  {6, N2S}, {7, N2D_SYM}, {8, N2D_ASYM}, {9, S2D_SYM}, {10, S2D_ASYM}};
     data = BinaryReadList[st, "Real64"];
     Close[st];
     data=Partition[data, 10];

@@ -1,3 +1,7 @@
+SetOptions[Plot, BaseStyle -> {FontFamily -> "Latin Modern Math", FontSize -> 12}];
+SetOptions[ListLinePlot, BaseStyle -> {FontFamily -> "Latin Modern Math", FontSize -> 12}];
+SetOptions[Labeled, BaseStyle -> {FontFamily -> "Latin Modern Math", FontSize -> 12}];
+
 PrependName[path_, what_]:=Block[{fsp=FileNameSplit[path]}, FileNameJoin[Join[Most@fsp, {what<>fsp[[-1]]} ] ] ];
 
 ParseInput[defaultPattern_, filterFun_:Identity]:=(
@@ -16,9 +20,11 @@ ParseInput[defaultPattern_, filterFun_:Identity]:=(
     Echo[blur, "Blur radius [au]:"];
     
     inps = FileNameSplit[inp];
-    (* Find GROUP patterns *)
+    (* Find JOIN patterns (putting on the same plot) *)
+    joinIDs = Flatten[Position[inps, n_ /; StringContainsQ[n, "@@"], Heads -> False]];
+    (* Find GROUP patterns (putting plots next to each other)*)
     groupIDs = Flatten[Position[inps, n_ /; StringContainsQ[n, "@"], Heads -> False]];
-    (* Find AVG patterns *)
+    (* Find AVG patterns (averaging the data) *)
     avgIDs = Flatten[Position[inps, n_ /; StringContainsQ[n, "*"], Heads -> False] ];
     (* Generate a list of files to process, excluding images *)
     inputFiles=Select[FileNames[inp], ! (StringEndsQ[#,".png"] || StringEndsQ[#,".pdf"]) & ];
