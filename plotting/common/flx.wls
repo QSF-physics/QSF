@@ -1,57 +1,93 @@
 
 OpenBin:=Check[OpenRead[#,BinaryFormat->True],Abort[]] &;
 
-FLXLoad[path_]:=Block[{st,labels, data},
+FLXLoad[path_, labelFilter_:Identity, lambda_:1, every_:1]:=Block[{st,labels, data},
     st=OpenBin[path];
-    (* placeholder *)
-    (* {3, A}, {5, NORM}, *)
-    labels = {{3, A},  {6, N2S}, {7, N2D_SYM}, {8, N2D_ASYM}, {9, S2D_SYM}, {10, S2D_ASYM}};
+    (* TODO: placeholder - should be loaded from binary header *)
+    labels = <|"step"->1,"time"->2,"A"->3,"norm"->4,"eta"->5,"N2S"->6,"N2D_SYM"->7,"N2D_ASYM"->8,"S2D_SYM"->9,"S2D_ASYM"->10|>;
     data = BinaryReadList[st, "Real64"];
     Close[st];
     data=Partition[data, 10];
-    (* [[;; 5]]; *)
-    {labels, data}
+    (* optional sparsification *)
+    data=If[every>1, data[[;; ;;every]], data];
+    (* meta= {tmax, dt, T}*)
+    meta =<|"tmax"->data[[-1, 2]],"dt"->data[[2, 2]], "T"->2*\[Pi]/(45.563352529/lambda)|>;
+    (* data time series is accessible by label index *)
+    labels=KeySelect[labels, If[labelFilter===Identity, True &,labelFilter] ];
+    data=Transpose[data];
+    
+    {Map[data[[#]]&, labels], meta}
 ];
-Options[WFPlot] = Join[{}, Options[ListLinePlot]];
-FLXPlot[data_, labels_, lambda_:1, blur_:0.1, opt :OptionsPattern[]]:=Block[{last,tmax,dt, T,flx},
-    tmax = data[[-1, 2]];
-    dt = data[[2, 2]];
-    T = 2*\[Pi]/(45.563352529/lambda);
-    indices=First[Transpose[labels] ];
-    names=Last[Transpose[labels] ];
-    Print[tmax/T];
-    flx=Transpose[data][[Rest@indices]];
-    flx=GaussianFilter[#,blur T/dt] & /@flx;
-    (* flx=flx/StandardDeviation[Flatten[flx]]; *)
-    flx=10.0 flx/StandardDeviation[Flatten[flx]];
-    (* /Max[Abs[flx]]; *)
-    (* Map[If[Last[#]===A, data[[All,First[#]]], Standardize[data[[All,First[#] ]] ] ]&, labels] *)
-    (* for currents *)
-    (*dt Accumulate[GaussianFilter[#,0.05 T/dt]]& *)
-    (* fun := If[#2 === A || #2 === NORM, Identity, GaussianFilter[#, blur T/dt] &]; *)
-    (* grids[min_, max_] := Join[Range[Ceiling[min], Floor[max]], Table[{j + .5, Dashed}, {j, Round[min], Round[max - 1], 1}]]; *)
+FLXFilter:=StringContainsQ[#,"N2S"|"N2D"|"S2D"]&;
+
+DefRangeFun[tmax_,T_]:={Round[0.4*tmax/T,2],Round[tmax/T]-Round[0.2*tmax/T,2]};
+
+Options[FLXColumnPlot] = Join[{ColorAssoc->None, PlotRangeFunction->DefRangeFun, Scale->1, LabelTransform->Identity}, Options[ListLinePlot]];
+FLXColumnPlot[all_, opt :OptionsPattern[]]:=Block[{dat,tmax,T, labels},
+    (* find all keys *)
+    
+    labels = DeleteDuplicates[Flatten[Keys /@ Values[all[[All, 1]] ] ]];
     GraphicsColumn[
-        MapThread[ListLinePlot[#1,
-            Evaluate@FilterRules[{opt}, Options[ListLinePlot] ],
-            PlotRange -> {{tmax/T/2.5, 0.75 tmax/T},Full},
-            DataRange -> {0, tmax/T},
-            (* ImagePadding -> {{60, 0}, {If[Last@names===#2,20,0], 0}}, *)
-            (* ImagePadding -> {{60, 20}, {20, 20}}, *)
-            ImagePadding -> {{30, 20}, {30, 10}},
-            PlotRangePadding -> {None, Scaled[0.1]},
-            (* PlotLayout->{"Column", UpTo[1]}, *)
-            Frame->True,
-            AspectRatio -> 1/2.5, 
-            FrameLabel->{{None,#2},{None,None}},
-            GridLines -> {Range[IntegerPart[tmax/T]],Automatic},
-            (* GridLines->Automatic, *)
-            FrameTicks->{Automatic,{If[Last@names===#2,Automatic,None],None}},
-            (* Background->White, *)
-            (* Prolog-> {White, Rectangle[ImageScaled[{0, 0}], ImageScaled[{1, 1}]] }, *)
-            ImageSize -> 400]&,{Prepend[flx,data[[All,3]] ],names}],
-            Spacings->{0,-46},
-            ImagePadding->20
+    Table[
+        LOG[magenta,  "Making joined plot for...", label];
+        Show[KeyValueMap[(
+            Check[dat = First[#2][label];
+                tmax=Last[#2]["tmax"];
+                T=Last[#2]["T"];
+                (* Debug to check that field values are right *)
+                (* If[label==="A",Print[2 \[Pi] Max[dat]/T] ]; *)
+                ListLinePlot[
+                    If[FLXFilter@label,OptionValue[FLXColumnPlot,Scale],1] dat,
+                    Evaluate@FilterRules[{opt}, Options[ListLinePlot] ],
+                    PlotStyle -> OptionValue[FLXColumnPlot,ColorAssoc][#1],
+                    AspectRatio -> 1/2.5, 
+                    GridLines -> {Range[IntegerPart[tmax/T] ],Automatic},
+                    PlotLegends->None,
+                    Frame->True,
+                    PlotRange -> {OptionValue[FLXColumnPlot,PlotRangeFunction][tmax, T],Full},
+                    FrameTicks->{Automatic,{If[Last@labels===label,Automatic,None],None}},
+                    DataRange -> {0, tmax/T}
+                ], 
+                Nothing]) &, all], 
+        (* PlotRange -> Full,  *)
+        PlotRange -> {OptionValue[FLXColumnPlot,PlotRangeFunction][tmax, T],Full},
+        FrameLabel->{{None,OptionValue[FLXColumnPlot,LabelTransform][label]},{None,None}},
+        (* ImagePadding -> {{30, 20}, {30, 10}}, *)
+        ImagePadding -> {{30, 20}, {30 , 10 }} OptionValue[FLXColumnPlot,ImageSize]/400,
+        (* ImageSize -> 400, *)
+        Frame -> True], 
+    {label, labels}],
+    (* Alignment -> Right, *)
+    Spacings->{-50.0,-45.5 }OptionValue[FLXColumnPlot,ImageSize]/400,
+    ImagePadding->{{0,0},{0,15}}
+    (* ImagePadding->20 OptionValue[FLXColumnPlot,ImageSize]/400 *)
     ]
+    
+];
+val = None;
+Options[FLXJoin] = Join[{}, Options[FLXColumnPlot]];
+FLXJoin[all_, opt :OptionsPattern[]]:=Block[
+    {legend,size,colors},
+    (* legend for data on the same plot and colors*)
+    legend=Keys[all];
+    size=Length[legend];
+    colors=AssociationThread[legend -> ColorData[97, "ColorList"][[;;size]] ];
+    
+    (* Normalize the FLX data *)
+    val = If[val===None,Flatten[Values[KeySelect[#,FLXFilter] ]& /@ Values[all[[All, 1]] ] ], val];
+    Labeled[
+        FLXColumnPlot[all,
+            Evaluate@FilterRules[{opt}, Options[FLXColumnPlot] ],
+            ColorAssoc->colors, Scale->10.0 /StandardDeviation[val] 
+        ],
+        If[size>1,LineLegend[
+            Values[colors], 
+            FontFix/@Keys[colors], 
+            LegendLabel -> FontFix[""],
+            LegendLayout -> "Row"],""], 
+        Top]
+];
+
     (* ListLinePlot[
             flx,
             (* Prepend[flx,data[[All,3]] ], *)
@@ -71,4 +107,3 @@ FLXPlot[data_, labels_, lambda_:1, blur_:0.1, opt :OptionsPattern[]]:=Block[{las
                 }
             
             ] *)
-];
