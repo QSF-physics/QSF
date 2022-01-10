@@ -84,7 +84,13 @@ WFPlot[hd_, data_, opt :OptionsPattern[] ]:=Block[{drng,len,subsets,step,res},
             (* Print["--> Merging all quaters"];  *)
             subsets];
         Total[Reverse[res, #] & /@ subsets]/Length[subsets] ];
-
+    tenPower=Table[10^(-i),{i,0,20}];
+        
+    {min, max} = {Min[res],Max[res]};
+    exp = Round[Log[10, max],1]-2;
+    Clear[f];
+    f[x_] := x /. {NumberForm[y_, {w_, z_}] :> NumberForm[Round[y/(10^exp), 1], 0]};
+    (* NumberForm[PaddedForm[y/(10^exp), {1, 1}], 2]}; *)
     Switch[hd["dim"],
         1, ListLinePlot[res, 
         Evaluate@FilterRules[{opt}, Options[ListLinePlot] ],
@@ -94,8 +100,16 @@ WFPlot[hd_, data_, opt :OptionsPattern[] ]:=Block[{drng,len,subsets,step,res},
         2, ArrayPlot[Reverse@res,
         Evaluate@FilterRules[{opt}, Options[ArrayPlot]],
         DataReversed->False,
-        FrameTicks->True,
-        PlotLegends->Placed[Automatic,Right], 
+        FrameTicks->{{True, None},{True, None}},
+        
+        PlotLegends->Placed[BarLegend[{Automatic, {min,max}},
+            LegendFunction -> f, 
+            LegendMarkerSize -> {136,10},
+            LegendMargins -> {{0, 20}, {0, -5}},
+            (* LegendMarkerSize -> {10, 15}, *)
+            LegendLabel -> Placed[DisplayForm[SuperscriptBox[ToString["\[Times]10"], exp] ], Right]
+            ],
+            Below], 
         ColorFunction->ForScience`PlotUtils`Jet,
         DataRange->drng],
         3, ListDensityPlot3D[res,

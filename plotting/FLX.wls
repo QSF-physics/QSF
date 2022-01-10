@@ -46,11 +46,10 @@ ProcessAvgs[avgs_]:=Block[{lambda,all,data,meta},
     {data, meta}
 ]
 
-ProcessJoins[joins_]:=(LOG[blue,"Processing JOINs..."]; 
-
-
-
-FLXJoin[Map[ProcessAvgs, joins], ImageSize->500, LabelTransform->KeyCleanup]);
+ProcessJoins[joins_]:=(
+    LOG[blue,"Processing JOINs..."]; 
+    FLXJoin[Map[ProcessAvgs, joins], ImageSize->500, LabelTransform->KeyCleanup]
+);
 
 processed=Map[ProcessJoins, groupInput];
 

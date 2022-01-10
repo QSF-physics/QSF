@@ -20,7 +20,9 @@ FLXLoad[path_, labelFilter_:Identity, lambda_:1, every_:1]:=Block[{st,labels, da
 ];
 FLXFilter:=StringContainsQ[#,"N2S"|"N2D"|"S2D"]&;
 
-DefRangeFun[tmax_,T_]:={Round[0.4*tmax/T,2],Round[tmax/T]-Round[0.2*tmax/T,2]};
+(* DefRangeFun[tmax_,T_]:={Round[0.4*tmax/T,2],Round[tmax/T]-Round[0.2*tmax/T,2]}; *)
+(* DefRangeFun[tmax_,T_]:={Round[0.2*tmax/T,2],Round[tmax/T]-Round[0.3*tmax/T,2]}; *)
+DefRangeFun[tmax_,T_]:={0,Round[tmax/T]};
 
 Options[FLXColumnPlot] = Join[{ColorAssoc->None, PlotRangeFunction->DefRangeFun, Scale->1, LabelTransform->Identity}, Options[ListLinePlot]];
 FLXColumnPlot[all_, opt :OptionsPattern[]]:=Block[{dat,tmax,T, labels},
