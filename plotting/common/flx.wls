@@ -1,7 +1,7 @@
 
 OpenBin:=Check[OpenRead[#,BinaryFormat->True],Abort[]] &;
 
-FLXLoad[path_, labelFilter_:Identity, lambda_:1, every_:1]:=Block[{st,labels, data},
+FLXLoad[path_, labelFilter_:Identity, lambda_:1, every_:1]:=Block[{st,meta, labels, data},
     st=OpenBin[path];
     (* TODO: placeholder - should be loaded from binary header *)
     labels = <|"step"->1,"time"->2,"A"->3,"norm"->4,"eta"->5,"N2S"->6,"N2D_SYM"->7,"N2D_ASYM"->8,"S2D_SYM"->9,"S2D_ASYM"->10|>;

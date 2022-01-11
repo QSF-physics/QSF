@@ -253,7 +253,7 @@ namespace QSF
 			ind counter = 0;
 			while (counter < wf.m_l)
 			{
-				((curr[counter][Is] += wf._coupling[Axis<Is>] * norm(wf[counter])), ...);
+				((curr[counter][Is] -= wf._coupling[Axis<Is>] * norm(wf[counter])), ...);
 				counter++;
 			}
 		}
