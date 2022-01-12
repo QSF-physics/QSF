@@ -67,7 +67,7 @@ template <class ... Op> struct FLUX : COMPUTATION <double, true, Op...>
 
 using ZOA_FLUX_3D = FLUX<N2S, N2D, N2T, S2D, S2T, S2CAP, D2CAP, T2CAP>;
 using ZOA_FLUX_2D_SIMPLE = FLUX<N2S, N2D, S2D, S2CAP, D2CAP>;
-using ZOA_FLUX_2D = FLUX<N2S, N2D_SYM, N2D_ASYM, S2D_SYM, S2D_ASYM>;
+using ZOA_FLUX_2D = FLUX<N2S, N2D_SYM, N2D_ASYM, S2D_SYM, S2D_ASYM, S2CAP, D2CAP>;
 
 
 template <uind dir, class Op> struct DERIVATIVE : COMPUTATION <double, true, Op>

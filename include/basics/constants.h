@@ -38,7 +38,7 @@ constexpr cxd I = { 0.0, 1.0 };	// Imaginary unit
 constexpr auto eV = 27.2113; // ElectonVolt unit conversion factor
 constexpr double pi = M_PI;
 constexpr auto femtos = 41.34138;	  		// Femtosecond is this many atomic units
-
+constexpr double e = -1;
 constexpr cxd zero = { 0.0, 0.0 };
 constexpr double pi2 = pi / 2.0;
 constexpr double inv_twopi = 1.0 / pi / 2.0;
