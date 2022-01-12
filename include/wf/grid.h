@@ -479,7 +479,7 @@ namespace QSF
 			if ((counter - stride<REP::X, dir>() > 0) && (counter + stride<REP::X, dir>() < m_l)) //Boundries
 			{
 				// fprintf(stderr, "%d %td %td %p %p %p\n", MPI::pID, stride<R, dir>(), counter, &psi[counter], &psi[counter + stride<R, dir>()], &psi[counter - stride<R, dir>()]);
-				tmp = psi[counter + stride<REP::X, dir>()] - psi[counter - stride<REP::X, dir>()];
+				tmp = -psi[counter + stride<REP::X, dir>()] - psi[counter - stride<REP::X, dir>()];
 				curr[counter][dir] = inv_2dx[dir] * imag(conj(psi[counter]) * tmp);
 			}
 			else curr[counter][dir] = 0.0;
@@ -503,7 +503,7 @@ namespace QSF
 					for (ind j = 0; j < rowSize<REP::X>(); j++)
 					{
 						// fprintf(stderr, "%d %td %td %p %p %p\n", MPI::pID, rowSize<R>(), j, &psi[j], &psi[j - rowSize<R>()], &row_after[j]);
-						curr[lastRow + j][0] = inv_2dx[0]
+						curr[lastRow + j][0] = -inv_2dx[0]
 							* imag(conj(psi[lastRow + j]) * (row_after[j] - psi[lastRow - rowSize<REP::X>() + j]));
 					}
 				}
@@ -512,7 +512,7 @@ namespace QSF
 					for (ind j = 0; j < rowSize<REP::X>(); j++)
 					{
 						// fprintf(stderr, "%d %td %td %p %p %p\n", MPI::pID, rowSize<R>(), j, &psi[j], &psi[j + rowSize<R>()], &row_before[j]);
-						curr[j][0] = inv_2dx[0]
+						curr[j][0] = -inv_2dx[0]
 							* imag(conj(psi[j]) * (psi[j + rowSize<REP::X>()] - row_before[j]));
 					}
 				}

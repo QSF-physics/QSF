@@ -61,7 +61,7 @@ namespace QSF
 			inline double operator()(Cooords ... coords)
 			{
 				if constexpr (R == REP::P)
-					return kinetic<R, dirs...>(coords...) + coupling<R, dirs...>(coords...);
+					return kinetic<R, dirs...>(coords...) - coupling<R, dirs...>(coords...);
 				else
 					return potential<R, dirs...>(coords...) + coupling<R, dirs...>(coords...);
 			}
