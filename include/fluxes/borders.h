@@ -149,8 +149,8 @@ struct N2D_SYM :_Operator
 	static constexpr std::string_view name = "N2D";
 	static inline borVec<2> border(ind i, ind j) //2e
 	{
-		return borVec<2>(SegmentB(j, i, p_SD, p_SD, p_NS) - SegmentB(-j - 1, -i - 1, p_SD, p_SD, p_NS),
-						 SegmentB(i, j, p_SD, p_SD, p_NS) - SegmentB(-i - 1, -j - 1, p_SD, p_SD, p_NS));
+		return borVec<2>(SegmentB(j + 1, i, p_SD, p_SD, p_NS + 1) - SegmentB(-j, -i - 1, p_SD, p_SD, p_NS + 1),
+						 SegmentB(i + 1, j, p_SD, p_SD, p_NS + 1) - SegmentB(-i, -j - 1, p_SD, p_SD, p_NS + 1));
 	}
 };
 struct N2D_ASYM :_Operator
@@ -160,8 +160,8 @@ struct N2D_ASYM :_Operator
 	static constexpr std::string_view name = "N2D";
 	static inline borVec<2> border(ind i, ind j) //2e
 	{
-		return borVec<2>(-SegmentB(j, -i - 1, p_SD, p_SD, p_NS) + SegmentB(-j - 1, i, p_SD, p_SD, p_NS),
-						 -SegmentB(i, -j - 1, p_SD, p_SD, p_NS) + SegmentB(-i - 1, j, p_SD, p_SD, p_NS));
+		return borVec<2>(-SegmentB(j + 1, -i - 1, p_SD, p_SD, p_NS + 1) + SegmentB(-j, i, p_SD, p_SD, p_NS + 1),
+						 -SegmentB(i + 1, -j - 1, p_SD, p_SD, p_NS + 1) + SegmentB(-i, j, p_SD, p_SD, p_NS + 1));
 	}
 };
 

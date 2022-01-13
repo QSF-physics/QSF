@@ -4,10 +4,10 @@ OpenBin:=Check[OpenRead[#,BinaryFormat->True],Abort[]] &;
 FLXLoad[path_, labelFilter_:Identity, lambda_:1, every_:1]:=Block[{st,meta, labels, data},
     st=OpenBin[path];
     (* TODO: placeholder - should be loaded from binary header *)
-    labels = <|"step"->1,"time"->2,"A"->3,"norm"->4,"eta"->5,"N2S"->6,"N2D_SYM"->7,"N2D_ASYM"->8,"S2D_SYM"->9,"S2D_ASYM"->10|>;
+    labels = <|"step"->1,"time"->2,"A"->3,"norm"->4,"eta"->5,"N2S"->6,"N2D_SYM"->7,"N2D_ASYM"->8,"S2D_SYM"->9,"S2D_ASYM"->10,"S2CAP" -> 11, "D2CAP" -> 12|>;
     data = BinaryReadList[st, "Real64"];
     Close[st];
-    data=Partition[data, 10];
+    data=Partition[data, 12];
     (* optional sparsification *)
     data=If[every>1, data[[;; ;;every]], data];
     (* meta= {tmax, dt, T}*)

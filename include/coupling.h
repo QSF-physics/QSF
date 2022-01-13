@@ -115,32 +115,6 @@ Feel free to add more gauges recognized by the physics community. 			  */
 			using target = std::conditional_t<std::is_base_of_v<_VectorPotential, F>, F, PromoteFieldToA<F>>;
 			return base::template getValue<target>();
 		}
-		// double operator[](AXIS ax)
-		// {
-		// 	if constexpr ((std::is_base_of_v<_VectorPotential, Fields> || ...))
-		// 		return ((bool(Fields::axis & ax) ? std::get<Fields>(base::fields).lastVal : 0) + ...);
-		// 	else
-		// 		return ((bool(Fields::axis & ax) ? std::get<PromoteFieldToA<Fields>>(base::fields).lastVal : 0) + ...);
-		// }
-		// DipoleCoupling(const DipoleCoupling&) = default;
-		// A(t) = -int_0^t E(t) dt
-		// template <REP R, OPTIMS opt>
-		// inline void precalc(double time)
-		// {
-		// 	CouplingBase<DipoleApprox, Fields...>::precalc(time);
-		// 	{
-		// 		int i = 0;
-		// 		([&]
-		// 		 {
-		// 			 base::last_values[i++] -= (timer - lastTime) * (std::get <Fields>(base::fields).operator()(timer));
-		// 		 }(), ...);
-		// 		lastTime = timer;
-		// 	}
-		// }
-		// inline double operator()()
-		// {
-		// 	return 1.0;
-		// }
 	};
 
 };

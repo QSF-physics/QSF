@@ -91,7 +91,7 @@ namespace QSF
 			NEcharge(Ncharge* Echarge),
 			EEcharge(Echarge* Echarge)
 		{
-			logInfo("ReducedDimInteraction init NEcharge=%g, EEcharge=%g", NEcharge, EEcharge);
+			logInfo("ReducedDimInteraction init NEcharge=%g, EEcharge=%g, Nsoft=%g, Esoft=%g", NEcharge, EEcharge, Nsoft, Esoft);
 		}
 
 		ReducedDimInteraction(Section& settings)
@@ -103,7 +103,7 @@ namespace QSF
 			inipp::get_value(settings, "Esoft", Esoft);
 			NEcharge = (Ncharge * Echarge);
 			EEcharge = (Echarge * Echarge);
-			logInfo("ReducedDimInteraction init NEcharge=%g, EEcharge=%g", NEcharge, EEcharge);
+			logInfo("ReducedDimInteraction init NEcharge=%g, EEcharge=%g, Nsoft=%g, Esoft=%g", NEcharge, EEcharge, Nsoft, Esoft);
 		}
 
 		inline double ee_i(double x, double y)

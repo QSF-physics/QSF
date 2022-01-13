@@ -20,7 +20,7 @@ subdir=If[integrateFlux,"i",""]<>subdir;
 
 outputLocation="blur_radius_"<>ToString[blur]<>"/"<>subdir<>"/" <> groupOutput;
 (* For filtering unnecessary data *)
-labelFilt:=StringContainsQ[#,"A"|"F"|"N2S"|"N2D"|"S2D"]&;
+labelFilt:=StringContainsQ[#,(StartOfString~~"A"~~EndOfString)|(StartOfString~~"F"~~EndOfString)|"N2S"|"N2D"|"S2D"]&;
 (* For extracting wavelength data *)
 lambdaExtract:=ToExpression[StringExtract[#,"nm_"->2,"/"->1] ]&;
 
