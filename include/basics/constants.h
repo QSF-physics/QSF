@@ -48,5 +48,5 @@ constexpr double threepi2 = 1.5 * pi;
 constexpr double lambda2omega = 45.563352529;
 constexpr double lambda_to_omega(long double lambda)
 {
-	return 45.563352529 / lambda;
+	return lambda2omega / lambda;
 }

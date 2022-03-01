@@ -10,7 +10,7 @@ Both options support "*" wildcards for finding multiple files at once in the inp
 Important!: Place your input paths in doublequotes "" *)
 
 SetDirectory[DirectoryName[$InputFileName]]
-<< "common/wf.wls"
+<< "common/wf.wl"
 ResetDirectory[];
 Needs["ForScience`"];
 
@@ -20,7 +20,7 @@ filterFun[paths_]:=Block[{hd, res, bt},
    bt=Total[hd["bounded"]];
    Select[res, (hd=WFHeader[#]; (hd["rep"]==2 && bt==0) || (hd["rep"] ==1 && bt>0)) &]
 ];
-ParseInput[filterFun];
+ParsePattern[filterFun];
 hd0=None;
 
 ratio=Quiet[ToExpression@Check[$ScriptCommandLine[[5]],0.5] ];
