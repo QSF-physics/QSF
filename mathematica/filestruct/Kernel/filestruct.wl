@@ -55,8 +55,13 @@ Module[{res = ass, cn=1, tmpl=StringTemplate["[``/``]"]},
     Do[
         step=tmpl[cn++,Length[OptionValue["Operations"] ] ];
         Switch[o,
-            _Rule, LOG[step," Rule ", o]; 
-                LL[]++; res=StructMap[res,o]; LL[]--;,
+            _Rule, LOG[step," Rule ", ToString[o]]; 
+                LL[]++; 
+                Switch[First[o],
+                    _Integer, res=StructMap[res,o];,
+                    _, cmdline`opt`UpdateOpts[o];
+                ]; 
+                LL[]--;,
             _Symbol, LOG[step, " Function ", o]; 
                 LL[]++; Catch[o[res],o[]]; LL[]--;,
             _List, LOG[step, " Inner process (to avoid saving results)"]; 

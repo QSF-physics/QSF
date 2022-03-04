@@ -66,19 +66,21 @@ WFMaskEdgeAt[tens_List, dims_List, opt :OptionsPattern[]] :=
 
 
 (* WF Modifiers *)
+SetAttributes[RemoveBoundedPart,{Listable}];
 decorator[LOGF]@
 RemoveBoundedPart[WF[hd_Association, data_List] ] := Block[{HD=hd, bd=hd["bounded"]},
     If[Total[bd] == 0,  LOG["Pass"]; WF[hd,data], 
         HD["bounded"]*=0; LOGV["Removing Bounded Part ", bd]; 
     WF[HD, FourierAt[WFMaskEdgeAt[FourierAt[data, bd], bd], bd, True] ] ]
 ];
-RemoveBoundedPart[ass_Association]:=Map[RemoveBoundedPart,ass];
+(* RemoveBoundedPart[ass_Association]:=Map[RemoveBoundedPart,ass]; *)
 
 cf = Compile[{{data, _Real, 2}, {n, _Integer}, {h, _Integer}}, 
     Table[Sum[data[[j - i + h, j]], {j, i, n}], {i, h, n}], CompilationTarget -> "C", RuntimeOptions -> "Speed"];
 
+SetAttributes[TransverseDiagSum,{Listable}];
 decorator[LOGF]@
-DiagSum[WF[hd_Association, data_List] ]:=Block[
+TransverseDiagSum[WF[hd_Association, data_List] ]:=Block[
     {n=First@hd["ns"], h=1+n/2, HD=hd},
     HD["dim"]=1;
     HD["ns"]=HD["ns"][[;;1]];
@@ -86,7 +88,7 @@ DiagSum[WF[hd_Association, data_List] ]:=Block[
     HD["dxs"]=Sqrt[2]*HD["dxs"][[;;1]];
     WF[HD, cf[data,n,h]]
 ];
-DiagSum[ass_Association]:=Map[DiagSum,ass];
+(* TransverseDiagSum[ass_Association]:=Map[TransverseDiagSum,ass]; *)
 
 WFSameSignMask[hd_, ratio_ : 0.2] := Block[{ns, nCAP, CAP, s},
    ns = hd["ns"]/hd["downscale"];
@@ -211,21 +213,22 @@ Block[{mo,res=data},mo=OptionValue[{QSFcmdline, MergeOrthants},"Orthants"];
 
 Needs["ForScience`"];
 
-Options[WFPlot] = {"BlurRadius" -> None, "Legend"->None};
-WFPlot[ass_Association]:=Map[WFPlot,ass];
 
+
+Options[WFPlot] = {"BlurRadius" -> None, "ColorIndex"->1};
+SetAttributes[WFPlot,{Listable}];
 decorator[LOGF]@
-WFPlot[WF[hd_Association, data_List], opt :OptionsPattern[{QSFcmdline, WFPlot, ListLinePlot, ArrayPlot, ListDensityPlot3D}] ]:=Block[
+WFPlot[WF[hd_Association, data_List|data_Legended], opt :OptionsPattern[{QSFcmdline, WFPlot, ListLinePlot, ArrayPlot, ListDensityPlot3D}] ]:=Block[
     {drng,step, min, max, subsets, HD=hd, res=data, leg},
     drng=WFDataRange[HD];
     step=WFDataStep[HD];
-    LOG[HD, drng, step];
     
-    res= If[HD["isComplex"], HD["isComplex"]=False; Abs[res]^2, res];
+    (* res= If[HD["isComplex"], HD["isComplex"]=False; Abs[res]^2, res]; *)
     
-    res=If[OptionValue[{QSFcmdline, WFPlot},"BlurRadius"]===None,res,
+    (* res=If[OptionValue[{QSFcmdline, WFPlot},"BlurRadius"]===None,
+        res,
         GaussianFilter[res,{OptionValue[{QSFcmdline, WFPlot}, "BlurRadius"]/step}] 
-    ];
+    ]; *)
     
     (* 
     
@@ -233,23 +236,19 @@ WFPlot[WF[hd_Association, data_List], opt :OptionsPattern[{QSFcmdline, WFPlot, L
     res[[-40 ;;, All]] = 0;
     res[[All, ;; 40]] = 0;
     res[[All, -40 ;;]] = 0; *)
-    (* If[OptionValue[{QSFcmdline, WFPlot},"DiagSum"], *)
-        (* WF[{HD, res}] = WFDiagSum[HD,res]; *)
-        (* drng={0,Last@First@drng*Sqrt[2]}; *)
-    (* ]; *)
-    
-    {min, max} = {Min[res],Max[res]};
+
+    {min, max} = MinMax[data /. {Legended[x_, _] :> x}];
     exp = Round[Log[10, max],1]-2;
     Clear[f];
     f[x_] := x /. {NumberForm[y_, {w_, z_}] :> NumberForm[Round[y/(10^exp), 1], 0]};
-    leg=OptionValue[{QSFcmdline, WFPlot},"Legend"];
-    LOGI[leg];
+    (* leg=OptionValue[{QSFcmdline, WFPlot},"Legend"];
+    LOGI[leg]; *)
     
     (* NumberForm[PaddedForm[y/(10^exp), {1, 1}], 2]}; *)
     Switch[HD["dim"],
         1,  
         ListLinePlot[
-        If[leg===None,res,Legended[res, Placed[leg,Below] ] ], 
+        res,
         FilterRules[{Options[QSFcmdline], opt}, Options[ListLinePlot] ],
         Frame->True,
         FrameTicks->True,
@@ -286,11 +285,12 @@ WFPlot[WF[hd_Association, data_List], opt :OptionsPattern[{QSFcmdline, WFPlot, L
    ColorFunction -> (Color[norm] &), ColorFunctionScaling -> False,
    OpacityFunction -> Transparency, OpacityFunctionScaling -> True,  *)
 ];
-(* WFMulticolumn[ass_Association]:=KeyValueMap[
-    Labeled[#1
-] *)
-(* WFCombine[ass_Association]:=Map[Legended[]] *)
-(* WFExport[ass_Association]:=Map[WFExport,ass]; *)
+
+
+Combine[ass_Association, keys_List : {}] :=Show[KeyValueMap[Combine[#2, Append[keys, #1] ] &, ass],PlotRange->Full];
+
+decorator[LOGF]@
+Combine[WF[hd_Association, data_List], keys_List:{}]:=WFPlot[WF[hd, Legended[data, keys] ],PlotStyle->cmdline`opt`GetColor[keys]];
 
 GraphicsQ[x_Legended|x_Graphics]:=True;
 GraphicsQ[x_]:=False;

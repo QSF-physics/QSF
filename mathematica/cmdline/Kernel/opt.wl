@@ -6,7 +6,9 @@ BeginPackage["cmdline`opt`",{"cmdline`log`"}]
 Begin["`Private`"];
 options2=<||>;
 End[];
-options=<|"defaultColors"->ColorData[97, "ColorList"]|>;
+options=<|"ColorList"->ColorData[97, "ColorList"],"colorIndex" -> <||>|>;
+GetColor[key_] := (If[MissingQ[options["colorIndex"][key]], AssociateTo[options["colorIndex"], key -> (Length[options["colorIndex"]] + 1)]]; 
+    Part[options["ColorList"], options["colorIndex"][key]]);
 
 SetAttributes[UpdateOpts, Listable];
 UpdateOpts[rule_] := AssociateTo[options, rule];
