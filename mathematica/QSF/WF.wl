@@ -11,8 +11,17 @@ fileStruct=ParsePattern[$ScriptCommandLine[[2]] ];
 (* filterFun:=Select[#, StringEndsQ[#, "1"|"2"|"3"] &] &; *)
 processed=StructProcess[fileStruct, "Operations"->
 {
-    2 ->Average@*RemoveBoundedPart@*WFLoad,
-        {GridLines->Full, Axes->False, PlotRange->Full, 0->Combine@*TransverseDiagSum@*MergeOrthants,StructPeak, WFExport}
+    TrimMarginsPercent->0.2,
+    0 ->TrimMargins@*Average@*RemoveBoundedPart@*WFLoad,StructPeak,
+    {
+        FrameLabel->{"X","Y"}, GridLines->Full, 
+        Axes->False, PlotRange->{{0,2},Full}, PrettyPlots, 
+        2->Combine@*GaussianBlur@*TransverseDiagSum@*MergeOrthants,
+        StructPeak,
+        3->Multicolumn,
+        StructPeak, WFExport
+    }
+        (* {GridLines->Full, Axes->False, PlotRange->Full, 0->WFPlot,StructPeak, WFExport} *)
 }];
 
 (* {2 ->((Print[Head[#]])&/@WFLoad[#]&),1->PrintHead}]; *)

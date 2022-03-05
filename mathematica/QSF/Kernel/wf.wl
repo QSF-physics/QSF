@@ -2,6 +2,7 @@ BeginPackage["QSF`wf`", {"cmdline`log`","cmdline`opt`", "QSF`wf`styling`"}];
 
 BoolInv := # == 0 &;
 Bool := # != 0 &;
+OpenBin:=Check[OpenRead[#,BinaryFormat->True],Abort[]] &;
 
 FromEdge[ind_, ns_] := MapThread[If[#1 < #2/2, -#1, #1 - #2 + 1] &, {ind, ns}];
 WFCAPMask[hd_,ratio_:0.5] := Block[{ns, nCAP, eta, CAP, bd},
@@ -65,30 +66,69 @@ WFMaskEdgeAt[tens_List, dims_List, opt :OptionsPattern[]] :=
 ];
 
 
+Bounded[hd_Association]:=hd["bounded"];
+BoundedQ[hd_Association]:=Total[Bounded[hd]] == 0;
+
 (* WF Modifiers *)
 SetAttributes[RemoveBoundedPart,{Listable}];
 decorator[LOGF]@
-RemoveBoundedPart[WF[hd_Association, data_List] ] := Block[{HD=hd, bd=hd["bounded"]},
-    If[Total[bd] == 0,  LOG["Pass"]; WF[hd,data], 
-        HD["bounded"]*=0; LOGV["Removing Bounded Part ", bd]; 
-    WF[HD, FourierAt[WFMaskEdgeAt[FourierAt[data, bd], bd], bd, True] ] ]
+RemoveBoundedPart[WF[hd_Association, data_List] ] :=If[
+    BoundedQ[hd], LOG["Pass"]; WF[hd,data], 
+    LOGV["Removing Bounded Part ", hd]; 
+    WF[
+        MapAt[#*0 &,hd,Key["bounded"] ], 
+        FourierAt[WFMaskEdgeAt[FourierAt[data, Bounded[hd] ], Bounded[hd] ], Bounded[hd], True]
+    ]
 ];
-(* RemoveBoundedPart[ass_Association]:=Map[RemoveBoundedPart,ass]; *)
 
-cf = Compile[{{data, _Real, 2}, {n, _Integer}, {h, _Integer}}, 
-    Table[Sum[data[[j - i + h, j]], {j, i, n}], {i, h, n}], CompilationTarget -> "C", RuntimeOptions -> "Speed"];
+
+SetAttributes[Evenify,{Listable}];
+Evenify[n_Integer]:=If[OddQ[n],n+1,n];
+
+Options[TrimMargins]={"TrimMarginsPercent"->0.1};
+SetAttributes[TrimMargins,{Listable}];
+decorator[LOGF]@
+TrimMargins[WF[hd_Association, data_List] ] := Block[{p, po},
+    p=OptionValue[{QSFcmdline, TrimMargins},"TrimMarginsPercent"]; 
+    po=Evenify@Round[hd["ns"] p];
+    If[Not[BoundedQ[hd] ], WF[hd,data],
+        LOG["Removing margins: ",p, "%, points: ", po]; 
+        WF[
+            ReplacePart[hd,{"ns"->hd["ns"] - 2 po}],
+            (* MapAt[# - 2 Evenify@Round[# p] &, hd, Key["ns"] ], *)
+            Apply[data[[##]] &, Map[(1 + Evenify@Round[# p] ;; # - Evenify@Round[# p]) &, hd["ns"] ] ]
+        ]
+    ]
+];
+
+
+
+Dim[hd_Association]:=hd["dim"];
+
+
+cf = Compile[{{data, _Real, 2}, {n, _Integer},{h, _Integer}}, 
+    Table[
+        Sum[data[[j - i + h, j]], {j, i, n}], 
+        {i, h, n}
+    ], 
+    CompilationTarget -> "C", RuntimeOptions -> "Speed"
+];
 
 SetAttributes[TransverseDiagSum,{Listable}];
 decorator[LOGF]@
 TransverseDiagSum[WF[hd_Association, data_List] ]:=Block[
-    {n=First@hd["ns"], h=1+n/2, HD=hd},
-    HD["dim"]=1;
-    HD["ns"]=HD["ns"][[;;1]];
-    HD["bounded"]=HD["bounded"][[;;1]];
-    HD["dxs"]=Sqrt[2]*HD["dxs"][[;;1]];
-    WF[HD, cf[data,n,h]]
+    {n=First@hd["ns"], h=1+n/2},
+    If[Dim[hd]!=2, LOGE["TransverseDiagSum currently supports only 2D wf's"] ];
+    If[Apply[UnsameQ,hd["ns"] ], LOGE["TransverseDiagSum requires square wf's"] ];
+    If[Apply[UnsameQ,hd["bounded"] ], LOGE["TransverseDiagSum requires wf's of uniform boundedness"] ];
+    WF[ReplacePart[hd, 
+        {"dim" -> 1, 
+        "ns" -> Most[hd["ns"] ]/2,
+        "bounded"->Most[Bounded[hd] ],
+        "dxs"->Sqrt[2]*Most[hd["dxs"] ],
+        "positiveAxisOnly"->True
+    }], cf[data,n, h] ]
 ];
-(* TransverseDiagSum[ass_Association]:=Map[TransverseDiagSum,ass]; *)
 
 WFSameSignMask[hd_, ratio_ : 0.2] := Block[{ns, nCAP, CAP, s},
    ns = hd["ns"]/hd["downscale"];
@@ -111,7 +151,7 @@ WFDropCorrelated[hdData_]:= WFInFourierSpace[(1-WFSameSignMask[#]&),hdData]
 
 
 
-OpenBin:=Check[OpenRead[#,BinaryFormat->True],Abort[]] &;
+
 
 (* For internal use with open input string *)
 WFHeader[st_InputStream]:=Block[{dim=BinaryRead[st, "UnsignedInteger8"]},
@@ -120,7 +160,9 @@ WFHeader[st_InputStream]:=Block[{dim=BinaryRead[st, "UnsignedInteger8"]},
     "downscale"->BinaryRead[st, "Integer64"],
     "ns"->BinaryReadList[st, "Integer64",dim],
     "dxs"->BinaryReadList[st, "Real64",dim],
-    "bounded"->BinaryReadList[st, "Byte",dim]|>
+    "bounded"->BinaryReadList[st, "Byte",dim],
+    "positiveAxisOnly"->False
+    |>
 ];
 WFHeader[path_String]:=Block[{st=OpenBin[path]},
     hd=WFHeader[st]; Close[path];
@@ -132,7 +174,7 @@ WFData[st_, hd_]:=Block[{data},
     ArrayReshape[data,hd["ns"]/hd["downscale"] ]
 ];
 
-WFDataStep[hd_]:=Block[{},
+WFDataStep[hd_Association]:=Block[{},
     dxs=hd["dxs"];
     dps=2\[Pi]/(ToExpression[hd["ns"]] ToExpression[hd["dxs"] ]);
     If[hd["rep"]==2,dps,dxs]*hd["downscale"]
@@ -140,7 +182,7 @@ WFDataStep[hd_]:=Block[{},
 
 WFNorm[hd_, data_]:=Total[data,\[Infinity] ] Times@@(WFDataStep[hd]); 
 
-Options[WFLoad] = {"Preprocess"->Identity};
+
 SetAttributes[WFLoad, {Listable}];
 WFLoad[path_String,opt :OptionsPattern[]]:=Block[{st,hd,data,norm},
     st=OpenBin[path];
@@ -149,14 +191,19 @@ WFLoad[path_String,opt :OptionsPattern[]]:=Block[{st,hd,data,norm},
     data=WFData[st,hd];
     Close[path];
     WF[hd,data]
-]
+];
 
 
-WFDataRange[hd_]:=Block[{Xs,Ps,dps},
-    dps=2\[Pi]/(ToExpression[hd["ns"]] ToExpression[hd["dxs"]]);
+WFDataRange[hd_Association]:=Block[{Xs,Ps,dps},
+    dps=2\[Pi]/(hd["ns"] hd["dxs"]);
     Xs=0.5 hd["dxs"] (hd["ns"]-1);
-    Ps=\[Pi]/ToExpression[hd["dxs"]];
-    If[hd["dim"]==1,First[#],Identity[#] ]&@MapThread[{-#1,#2}&, If[hd["rep"]==2,{Ps, Ps-dps}, {Xs, Xs}] ]
+    Ps=\[Pi]/hd["dxs"];
+    
+    If[hd["dim"]==1,First[#],Identity[#] ]&@
+    If[hd["positiveAxisOnly"],
+        MapThread[{#1,#2}&, If[hd["rep"]==2,{Ps*0, Ps-dps}, {hd["dxs"]*0.5, Xs}] ],
+        MapThread[{-#1,#2}&, If[hd["rep"]==2,{Ps, Ps-dps}, {Xs, Xs}] ]
+    ]
 ];
 
 
@@ -212,30 +259,24 @@ Block[{mo,res=data},mo=OptionValue[{QSFcmdline, MergeOrthants},"Orthants"];
 ];
 
 Needs["ForScience`"];
+SetAttributes[GaussianBlur,{Listable}];
+Options[GaussianBlur] = {"GaussianBlurRadius" -> None};
+GaussianBlur[WF[hd_Association, data_List], opt :OptionsPattern[{QSFcmdline,GaussianBlur}] ]:=
+If[
+    OptionValue["GaussianBlurRadius"]===None, WF[hd,data],
+    LOG["Applying GaussianBlur with radius ",OptionValue["GaussianBlurRadius"]];
+    WF[hd,GaussianFilter[data,{OptionValue["GaussianBlurRadius"]/WFDataStep[hd]} ] ]
+]; 
 
-
-
-Options[WFPlot] = {"BlurRadius" -> None, "ColorIndex"->1};
+Options[WFPlot] = {"ColorIndex"->1};
 SetAttributes[WFPlot,{Listable}];
 decorator[LOGF]@
 WFPlot[WF[hd_Association, data_List|data_Legended], opt :OptionsPattern[{QSFcmdline, WFPlot, ListLinePlot, ArrayPlot, ListDensityPlot3D}] ]:=Block[
     {drng,step, min, max, subsets, HD=hd, res=data, leg},
-    drng=WFDataRange[HD];
-    step=WFDataStep[HD];
+    drng=WFDataRange[hd];
+    step=WFDataStep[hd];
     
-    (* res= If[HD["isComplex"], HD["isComplex"]=False; Abs[res]^2, res]; *)
-    
-    (* res=If[OptionValue[{QSFcmdline, WFPlot},"BlurRadius"]===None,
-        res,
-        GaussianFilter[res,{OptionValue[{QSFcmdline, WFPlot}, "BlurRadius"]/step}] 
-    ]; *)
-    
-    (* 
-    
-    res[[;; 40, All]] = 0;
-    res[[-40 ;;, All]] = 0;
-    res[[All, ;; 40]] = 0;
-    res[[All, -40 ;;]] = 0; *)
+    (* res= If[HD["isComplex"], HD["isComplex"]=False; Abs[res]^2, res]; *)    
 
     {min, max} = MinMax[data /. {Legended[x_, _] :> x}];
     exp = Round[Log[10, max],1]-2;
@@ -243,7 +284,7 @@ WFPlot[WF[hd_Association, data_List|data_Legended], opt :OptionsPattern[{QSFcmdl
     f[x_] := x /. {NumberForm[y_, {w_, z_}] :> NumberForm[Round[y/(10^exp), 1], 0]};
     (* leg=OptionValue[{QSFcmdline, WFPlot},"Legend"];
     LOGI[leg]; *)
-    
+    LOG["Rules: ",ToString@FilterRules[{Options[QSFcmdline], opt}, Options[ListLinePlot] ] ];
     (* NumberForm[PaddedForm[y/(10^exp), {1, 1}], 2]}; *)
     Switch[HD["dim"],
         1,  
@@ -286,18 +327,22 @@ WFPlot[WF[hd_Association, data_List|data_Legended], opt :OptionsPattern[{QSFcmdl
    OpacityFunction -> Transparency, OpacityFunctionScaling -> True,  *)
 ];
 
-
-Combine[ass_Association, keys_List : {}] :=Show[KeyValueMap[Combine[#2, Append[keys, #1] ] &, ass],PlotRange->Full];
+(* Substitution for Show *)
+Options[Combine]={"PlotRange"->Full};
+Combine[ass_Association, keys_List : {}, opt :OptionsPattern[{QSFcmdline, Combine}] ] :=Show[KeyValueMap[Combine[#2, Flatten[Append[keys, #1] ] ] &, ass], PlotRange->OptionValue["PlotRange"] ];
 
 decorator[LOGF]@
-Combine[WF[hd_Association, data_List], keys_List:{}]:=WFPlot[WF[hd, Legended[data, keys] ],PlotStyle->cmdline`opt`GetColor[keys]];
+Combine[WF[hd_Association, data_List], keys_List:{}]:=WFPlot[WF[hd, Legended[data,keys] ],PlotStyle->cmdline`opt`GetColor[keys]];
 
 GraphicsQ[x_Legended|x_Graphics]:=True;
 GraphicsQ[x_]:=False;
 
-SetAttributes[WFExport,{Listable}];
+(* SetAttributes[WFExport,{Listable}]; *)
 decorator[LOGF]@
 WFExport[gr_?GraphicsQ]:=LOG@Export["wf00/"<>options["groupOutput"]<>".png",gr];
+
+Multicolumn[ass_Association, opt : OptionsPattern[{QSFcmdline, Multicolumn}]]:=
+Multicolumn[KeyValueMap[Labeled[#2, #1] &, ass] ];
 
 Options[WFMultiExport]={"OptionGroups"-><|""->{}|>,"OutputType"->".png"};
 WFMultiExport[processed_]:=Block[{outputLocation,folder},

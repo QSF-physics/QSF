@@ -1,6 +1,4 @@
 #!/usr/bin/env wolframscript
-Print["opt.wls"];
-
 BeginPackage["cmdline`opt`",{"cmdline`log`"}]
 
 Begin["`Private`"];

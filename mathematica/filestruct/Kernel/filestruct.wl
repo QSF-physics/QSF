@@ -39,11 +39,12 @@ StructPeak[ass_Association]:=StructPrint[ass,"Heads"->True];
 ]; *)
 
 StructMap[ass_, rule_Rule] := Block[
-    {dpth = ArrayDepth[ass, AllowedHeads -> Association],lvl,fn,res},
+    {dpth = ArrayDepth[ass, AllowedHeads -> Association],lvl,fn,res, keys},
     lvl=If[(First[rule]===All||First[rule]===0), {0}, {dpth-First[rule]+1}];
     lvl=DeleteDuplicates[lvl];
     fn=Last[rule];
-    LOGV["Applying ", fn, " ", lvl];
+    keys=Keys[ass];
+    LOGV["Applying ", fn, " to level ", lvl, " with: ", keys];
     LL[]++;
     res=Map[fn[#] &, ass, lvl];
     LL[]--;
