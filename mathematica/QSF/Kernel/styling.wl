@@ -1,6 +1,10 @@
 #!/usr/bin/env wolframscript
 BeginPackage["QSF`styling`"];
 
+PrettyPlots;
+FontFix;
+
+Begin["`Private`"];
 (* For making any plot pretty! *)
 PrettyPlots[]:=
     Map[SetOptions[#, BaseStyle -> 
@@ -11,5 +15,5 @@ PrettyPlots[]:=
 SetAttributes[FontFix, Listable];
 FontFix[labs_String] := Style[labs, FontFamily -> "Latin Modern Math", FontColor->Black];
 
-
+End[];
 EndPackage[];
