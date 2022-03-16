@@ -3,6 +3,7 @@ BeginPackage["cmdline`opt`",{"cmdline`log`"}]
 
 CurrentColorList;
 GetColor;
+QSFcmdline;
 UpdateOpts;
 AddOpts;
 BackupOpts;
@@ -20,9 +21,9 @@ CurrentColorList[] := "DefaultPlotStyle" /. (Method /. Charting`ResolvePlotTheme
 (* CurrentColorList[] := ColorData[97, "ColorList"]; *)
 GetColor[key_] := (If[MissingQ[options["colorIndex"][key]], AssociateTo[options["colorIndex"], key -> (Length[options["colorIndex"]] + 1)]]; Part[CurrentColorList[], options["colorIndex"][key]]);
 
-SetAttributes[UpdateOpts, Listable];
+(* SetAttributes[UpdateOpts, Listable]; *)
 UpdateOpts[rule_] := AssociateTo[options, rule];
-SetAttributes[AddOpts, Listable];
+(* SetAttributes[AddOpts, Listable]; *)
 AddOpts[rule_] := If[MissingQ[options[First[rule] ] ], AssociateTo[options, rule] ];
 Options[QSFcmdline]:=Normal@options;
 

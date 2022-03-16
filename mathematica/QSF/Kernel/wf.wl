@@ -279,54 +279,70 @@ $PlacePositions = <|{1, 1} -> {{None, Null}}, {1,
      2} -> {{Null, None}}, {2, 1} -> {{Null}, {None}}, {2, 
      2} -> {{None}, {Null}}|>;
 
-
-
+IntegerChop = With[{r = Round[#]}, r + Chop[# - r]] &;
+BetterTicks[minmax_, aspectRatio_:1, backgroundColor_:White, expRescale_:False, minor_:{0.01,0.000,10},major_:{0.025,0.00,5}]:=
+Module[{ticks, mD, exp=0, expN=1,min=First@minmax, max=Last@minmax, MC, mC},
+    MC=ColorNegate@ Apply[RGBColor,ConstantArray[backgroundColor /.{GrayLevel[x_]->x, RGBColor[x___] -> Round[Total[{x}]/3]}, 3]];
+    mC=Blend[{MC,Gray}];
+    ticks=N@FindDivisions[{min, max}, Last@major, Method -> "ExtendRange"];
+    If[expRescale,
+        exp=Last@MantissaExponent[ticks[[2]]];
+        expN=Power[10,-exp];
+        ticks=ticks*expN;
+    ];
+    mD=0.1*(ticks[[2]]-ticks[[1]]);
+    ticks=Flatten[
+        Table[If[(i+j*mD>max*expN) || (i+j*mD<min*expN),
+            Nothing, 
+            If[j==0, {i,IntegerChop[i], aspectRatio*Most[major], MC},{i+j*mD,"",aspectRatio*Most[minor], mC}]],
+       {i,ticks},
+       {j,If[i==First@ticks,-Last[minor]+1,0],Last[minor]-1,1}
+    ],1];
+    {exp,ticks}
+];
 
 AutoBarLegend[gr_Graphics, colorFn_, {min_, max_,n_:9}] := 
-  Module[{bp=BestLegendPlacement[gr], fbpi, ip, isL, ipL, ft, arL, arf, ticks, exp, minorDelta, m, M, expText,
+  Module[{bp=BestLegendPlacement[gr], fbpi, ip, is, isL, isG, ipG, ipL, ft, arL, ticks, exp, m, M, expText,
   auto={Automatic, Automatic}, none={None,None}},
+    (* bp: {Horizontal: Left=1/Right=2, Vertical: Bottom=1, Top=2} *)
    fbpi = Mod[First@bp, 2] + 1;
    ip= AbsoluteOptionsV[gr, ImagePadding];
-   isL = ReplacePart[auto, fbpi -> AbsoluteOptionsV[gr, ImageSize][[fbpi]] ];
-   ipL = ReplacePart[{auto, auto}, fbpi -> ip[[fbpi ]] ];
-   ft = ReplacePart[{none, none}, bp -> All];
+   is= AbsoluteOptionsV[gr, ImageSize];
+   ipL = ReplacePart[{auto, auto}, fbpi->ip[[fbpi]]];
+   ft = ReplacePart[{none, none}, bp->All];
    arL = Power[2, 4*(2*fbpi-3)];
-   ticks=N@FindDivisions[{min, max}, n, Method -> "ExtendRange"];
-   exp=Last@MantissaExponent[ticks[[2]]];
-   ticks=ticks*Power[10,-exp];
-   {m, M} = {min, max} Power[10,-exp];
-   minorDelta=0.1*(ticks[[2]]-ticks[[1]]);
-   arf=If[First[bp]==2,arL,1];
-   ticks=Flatten[Table[
-        If[i+j*minorDelta>M,Nothing, If[j==0, {i,i, arf*{0.5,0.05}, Black},{i+j*minorDelta,"",arf*{.2,0.05}, Darker[Gray]}]],
-       {i,ticks},
-       {j,0,9,1}
-    ],1];
+    {exp,ticks}=BetterTicks[{min,max}, If[First[bp]==1,1,arL], White, True,{0.2,0.0,10},{0.5,0.0,5}];
+    {m, M} = {min, max} Power[10,-exp];
+    (* Legend label with common exponent: exp *)
     expText=Style[DisplayForm@SuperscriptBox["\[Times]10", exp], "Graphics",Background -> Transparent];
-    extraPadding=1.1*Most[Rasterize[Text[expText],"BoundingBox"]];
-    expText=Text[expText, RotateLeft[{0.5*(M+m),M},First@bp-1], RotateLeft[{0.0,-1.1},First@bp-1] ];
+    extraPadding=Most[Rasterize[Text[expText],"BoundingBox"]];
+    LOGV[extraPadding];
+    expText=Text[expText, RotateLeft[{0.5*(M+m),M},First@bp-1], RotateLeft[{0.0,-1},First@bp-1] ];
     extraPadding=Max[ip[[{fbpi,2}]], extraPadding[[fbpi]] ];
+    ipG=ReplacePart[ip, {fbpi,2} -> extraPadding];
+    isG=is+Map[Total,ipG];
+    isL = ReplacePart[auto, fbpi -> isG[[fbpi]] ];
     ipL=ReplacePart[ipL, {fbpi,2} -> extraPadding]; 
-   
-    Grid[$PlacePositions[bp] /. {Null -> Show[gr,ImagePadding -> ReplacePart[ip, {fbpi,2} -> extraPadding]], 
-       None ->
-        
-        (mmm=Evaluate@DensityPlot[{y,x}[[First@bp]], {x, m, M}, {y, m, M}, 
-         PlotRange -> {{m, M}, {m, M}}, 
-         ColorFunction -> colorFn, 
-         AspectRatio -> arL, 
-         FrameTicks -> ReplacePart[{none, none}, bp -> ticks],
-         ImagePadding -> ipL, 
-         ImageSize -> isL, 
-         PlotRangeClipping -> False, 
-         FrameStyle->Black,
-         Epilog -> expText, 
-         BaseStyle -> ImageSizeMultipliers -> 1
-         ];
-         Print@AbsoluteOptions[mmm,{ImageSize,PlotRangePadding,ImagePadding}];
-         mmm)
-       }]
-        (* DeleteCases[ ____, Rule[ImageSize, _], \[Infinity]] *)
+    LOGV[ipL];
+    LOGV[ip];
+    (* DeleteCases[ ____, Rule[ImageSize, _], \[Infinity]] *)
+    Grid[$PlacePositions[bp] /. {
+        Null -> 
+        (* gr, *)
+        (mm=Show[gr,ImagePadding ->ipG, ImageSize->isG]; LOG@AbsoluteOptionsV[mm, ImagePadding]; mm), 
+        None -> DensityPlot[{y,x}[[First@bp]], {x, m, M}, {y, m, M}, 
+            PlotRange -> {{m, M}, {m, M}}, 
+            ColorFunction -> colorFn, 
+            AspectRatio -> arL, 
+            FrameTicks -> ReplacePart[{none, none}, bp -> ticks],
+            ImagePadding -> ipL, 
+            ImageSize -> isL, 
+            PlotRangeClipping -> False, 
+            FrameStyle->Black,
+            Epilog -> expText, 
+            BaseStyle -> ImageSizeMultipliers -> 1
+            ] 
+        }]
    ];
 
 SetAttributes[GaussianBlur,{Listable}];
@@ -344,17 +360,17 @@ SetAttributes[WFPlot,{Listable}];
 
 decorator[LOGF]@
 WFPlot[WF[hd_Association, data_List|data_Legended], opt :OptionsPattern[{QSFcmdline, WFPlot, ListLinePlot, ArrayPlot, ListDensityPlot3D}] ]:=Module[
-    {drng,step, min, max, subsets, HD=hd, res=data, leg},
+    {drng,step, min, max, subsets, HD=hd, res=data, leg,pr},
     drng=WFDataRange[hd];
     step=WFDataStep[hd];
     (* res= If[HD["isComplex"], HD["isComplex"]=False; Abs[res]^2, res]; *)    
 
     {min, max} = MinMax[RemoveLegends[data]];
     exp = Round[Log[10, max],1]-2;
-    (* leg=OptionValue[{QSFcmdline, WFPlot},"Legend"];
-    LOGI[leg]; *)
-    LOG["Rules: ",ToString@FilterRules[{Options[QSFcmdline], opt}, Options[ListLinePlot] ] ];
-    (* NumberForm[PaddedForm[y/(10^exp), {1, 1}], 2]}; *)
+    MC=Apply[RGBColor, ConstantArray[Round[ColorNegate@ ColorData["Jet"][0] /. RGBColor[x__] -> Total[{x}]/3], 3]];
+    mC=Blend[{MC,Gray}];
+    pr=OptionValue[{Options[QSFcmdline], opt, {PlotRange->Full}}, PlotRange];
+    pr=MapIndexed[If[First[#2]<HD["dim"] && #1===Full, drng[[First[#2]]], #1]&,pr];
     Switch[HD["dim"],
         1,  
         ListLinePlot[
@@ -367,12 +383,15 @@ WFPlot[WF[hd_Association, data_List|data_Legended], opt :OptionsPattern[{QSFcmdl
         AutoBarLegend[#,"Jet",{min,max}]&@ 
         ArrayPlot[Reverse@res,
         FilterRules[{Options[QSFcmdline], opt}, Options[ArrayPlot] ],
+
+        LOG[pr];
         DataReversed->False,
-        FrameTicks->{{True, True},{True, None}},
+        FrameTicks->{{First@Rest@BetterTicks[pr[[1]],1, ColorData["Jet"][0]], None},
+                     {First@Rest@BetterTicks[pr[[2]],1, ColorData["Jet"][0]], None}},
         ColorFunction->"Jet",
         ImageSize -> 435,
-        FrameStyle->Black,
         DataRange->drng,
+        PlotRangePadding->0,
         BaseStyle -> ImageSizeMultipliers -> 1],
         3, ListDensityPlot3D[res,
         FilterRules[{Options[QSFcmdline], opt}, Options[ListDensityPlot3D] ],
