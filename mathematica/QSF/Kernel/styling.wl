@@ -7,9 +7,9 @@ FontFix;
 Begin["`Private`"];
 (* For making any plot pretty! *)
 PrettyPlots[]:=
-    Map[SetOptions[#, BaseStyle -> 
+    Map[SetOptions[Print["Changing style of ", #]; #, BaseStyle -> 
         {FontFamily -> "Latin Modern Math", FontSize -> 12,FontColor->Black}] &,
-        {Plot,ListLinePlot}
+        {Plot,ListLinePlot, ArrayPlot, "Graphics"}
     ];
 
 SetAttributes[FontFix, Listable];

@@ -98,6 +98,7 @@ Module[{res = ass, cn=1, tmpl=StringTemplate["[``/``]"]},
     ,
     {o, OptionValue["Operations"]}];
 ];
+LookIn[inp_]:=If[$Notebooks, Quiet@FileNameJoin[{Check[NotebookDirectory[],Directory[]],inp}], inp];
 
 ParsePattern[inp_, op: OptionsPattern[{QSFcmdline,ParsePattern}]]:=Block[
     {inps, ptrn, poses, grFn},
@@ -105,8 +106,10 @@ ParsePattern[inp_, op: OptionsPattern[{QSFcmdline,ParsePattern}]]:=Block[
         
     inps = FileNameSplit[inp];
     (* Generate a list of files to process, excluding images *)
-    inputFiles=Select[FileNames[
-        If[$Notebooks, FileNameJoin[{NotebookDirectory[],inp}], inp]], ! (StringEndsQ[#,".png"] || StringEndsQ[#,".pdf"]) & ];
+    
+    
+    inputFiles=Select[FileNames[LookIn[inp]], 
+        ! (StringEndsQ[#,".png"] || StringEndsQ[#,".pdf"]) & ];
     inputFiles=OptionValue[{QSFcmdline, ParsePattern}, "FilterFunction"][inputFiles];
     (* Abort if no files found *)
     CHA[First[inputFiles],"No valid files found in " <> Directory[]];

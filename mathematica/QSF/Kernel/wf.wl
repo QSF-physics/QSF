@@ -1,5 +1,4 @@
-BeginPackage["QSF`wf`", {"cmdline`log`","cmdline`opt`", "QSF`wf`styling`", "PlotGrid`","QSF`ColorFunctions`"}];
-Print[$ContextPath];
+BeginPackage["QSF`wf`", {"cmdline`log`","cmdline`opt`", "QSF`styling`", "PlotGrid`","QSF`ColorFunctions`"}];
 
 BoolInv := # == 0 &;
 Bool := # != 0 &;
@@ -294,7 +293,7 @@ Module[{ticks, mD, exp=0, expN=1,min=First@minmax, max=Last@minmax, MC, mC},
     ticks=Flatten[
         Table[If[(i+j*mD>max*expN) || (i+j*mD<min*expN),
             Nothing, 
-            If[j==0, {i,IntegerChop[i], aspectRatio*Most[major], MC},{i+j*mD,"",aspectRatio*Most[minor], mC}]],
+            If[j==0, {i,Style[IntegerChop[i],BaseStyle /. Options[ArrayPlot]], aspectRatio*Most[major], MC},{i+j*mD,"",aspectRatio*Most[minor], mC}]],
        {i,ticks},
        {j,If[i==First@ticks,-Last[minor]+1,0],Last[minor]-1,1}
     ],1];
@@ -314,10 +313,10 @@ AutoBarLegend[gr_Graphics, colorFn_, {min_, max_,n_:9}] :=
     {exp,ticks}=BetterTicks[{min,max}, If[First[bp]==1,1,arL], White, True,{0.2,0.0,10},{0.5,0.0,5}];
     {m, M} = {min, max} Power[10,-exp];
     (* Legend label with common exponent: exp *)
-    expText=Style[DisplayForm@SuperscriptBox["\[Times]10", exp], "Graphics",Background -> Transparent];
+    expText=Style[DisplayForm@SuperscriptBox["\[Times]10", exp], BaseStyle /. Options[ArrayPlot],Background -> Transparent];
     extraPadding=Most[Rasterize[Text[expText],"BoundingBox"]];
     LOGV[extraPadding];
-    expText=Text[expText, RotateLeft[{0.5*(M+m),M},First@bp-1], RotateLeft[{0.0,-1},First@bp-1] ];
+    expText=Text[expText, RotateLeft[{0.5*(M+m),M},First@bp-1], RotateLeft[{-0.5,-1},First@bp-1] ];
     extraPadding=Max[ip[[{fbpi,2}]], extraPadding[[fbpi]] ];
     ipG=ReplacePart[ip, {fbpi,2} -> extraPadding];
     isG=is+Map[Total,ipG];
@@ -389,7 +388,7 @@ WFPlot[WF[hd_Association, data_List|data_Legended], opt :OptionsPattern[{QSFcmdl
         FrameTicks->{{First@Rest@BetterTicks[pr[[1]],1, ColorData["Jet"][0]], None},
                      {First@Rest@BetterTicks[pr[[2]],1, ColorData["Jet"][0]], None}},
         ColorFunction->"Jet",
-        ImageSize -> 435,
+        ImageSize -> 300,
         DataRange->drng,
         PlotRangePadding->0,
         BaseStyle -> ImageSizeMultipliers -> 1],
