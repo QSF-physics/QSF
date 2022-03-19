@@ -36,10 +36,10 @@ SetAttributes[VARVALUE, HoldAll];
 VARVALUE[msg_] := template[
    COLORS["reset"],
    COLORS["blue"],
-   ToString@Unevaluated@msg,
+   StringReplace[ToString[Unevaluated@msg,InputForm],"$"~~DigitCharacter..->""],
    COLORS["reset"],
    COLORS["green"],
-   ToString@msg, 
+   msg, 
    COLORS["reset"]]/; ValueQ[msg];
 (* VARVALUE[msg_] := Sequence["V:", msg]; *)
 VARVALUE[msg_] := Sequence[COLORS[[
@@ -51,6 +51,9 @@ VARVALUE[msg_] := Sequence[COLORS[[
    ]],msg];
 
 LL[]:=1;
+SetAttributes[ToStringList,{Listable}];
+ToStringList[msg_]:=If[StringQ[msg],msg,ToString[msg,InputForm]];
+
 Options[LOG]={"LL":>LL[], "LC"->None};
 LOG[msgs___,op:OptionsPattern[{QSFcmdline, LOG}] ]:=
 CmdLinePrint[
@@ -64,12 +67,12 @@ CmdLinePrint[
          Key[OptionValue[{QSFcmdline, LOG},"LC"] ] 
       ]
    ]],
-   msgs, 
+   StringJoin[ToStringList[{msgs}]], 
    COLORS["reset"] 
 ];
 
 LOGF[f_, args_, rhs_] := Module[{res},   
-   LOG["[", ToString[f],"]"];
+   LOG["[", f,"]"];
    LL[]++;
    res = rhs;
    LL[]--;

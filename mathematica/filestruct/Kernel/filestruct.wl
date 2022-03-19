@@ -56,8 +56,9 @@ StructMap[ass_, rule_Rule] := Block[
     
     res=MapIndexed[
         (
-            keys=Flatten[{#2}//.{Key[k_]->k}];
-            LOG["Applying to group of [",Head@#1,"] at key path [", If[keys=={},"root", keys],"]"];
+            path=Flatten[{#2}//.{Key[k_]->k}];
+            LOG["Applying to group of [",Head@#1,"] at key path [", If[path=={},"root", path],"]"];
+            UpdateOpts["path"->path];
             LL[]++;
             tmp=fn[#1];
             LL[]--;
@@ -65,38 +66,33 @@ StructMap[ass_, rule_Rule] := Block[
         )&, ass, {lvl}];
     res
 ];
+
 Options[StructProcess] = {"Operations" -> {}};
 StructProcess[ass_Association, op: OptionsPattern[{QSFcmdline,StructProcess}]] := 
-Module[{res = ass, cn=1, tmpl=StringTemplate["[``/``]"]},   
+Module[{res = ass, cn=1, tmpl=StringTemplate["[``/``]"]}, 
+    Block[{options=options},
+    LL[]++; 
     Do[
         step=tmpl[cn++,Length[OptionValue["Operations"] ] ];
         Switch[o,
             _Rule, 
-                
                 Switch[First[o],
-                        
                     _Integer, 
-                        LL[]++; 
-                        LOG[step," Operation ", ToString[o]]; 
+                        LOG[step," Operation ", o]; 
                         res=StructMap[res,o];,
-                        LL[]--;
                     _, 
-                        LL[]++; 
-                        LOG[step," Option ", ToString[o]]; 
-                        cmdline`opt`UpdateOpts[o];
-                        LL[]--;
+                        LOG[step," Option ", o]; 
+                        UpdateOpts[o];
                 ]; 
-                ,
-            _Symbol, LOG[step, " Function ", o]; 
-                LL[]++; Catch[o[res],o[]]; LL[]--;,
-            _List, LOG[step, " Inner process (to avoid saving results)"]; 
-                LL[]++;
-                StructProcess[res, "Operations"->o];,
-                LL[]--;
-            _ , LOGE[step, " Unrecognized command: ", o];
+            ,_String, AppendToKey["ExportPath"->o]; LOG["Current export path set to: ","ExportPath"/.Options[QSFcmdline]];
+            ,_Symbol, LOG[step, " Function ", o]; Catch[o[res],o[]]; 
+            ,_List, LOG[step, " Inner process (to avoid saving results)"]; StructProcess[res, "Operations"->o];
+            ,_ , LOGE[step, " Unrecognized command: ", o];
         ];
     ,
     {o, OptionValue["Operations"]}];
+    LL[]--; 
+    ];
 ];
 LookIn[inp_]:=If[$Notebooks, Quiet@FileNameJoin[{Check[NotebookDirectory[],Directory[]],inp}], inp];
 

@@ -1,35 +1,25 @@
 #!/usr/bin/env wolframscript
 BeginPackage["cmdline`opt`",{"cmdline`log`"}]
 
-CurrentColorList;
-GetColor;
 QSFcmdline;
 UpdateOpts;
 AddOpts;
-BackupOpts;
-RestoreOpts;
 OptString;
 GetOpts;
-options;
+AppendToKey;
+PopKey;
 
 Begin["`Private`"];
-options2=<||>;
 
-(* options=<|"ColorList"->ColorData[97, "ColorList"],"LineList"->{Dashed, DotDashed, Dotted},"colorIndex" -> <||>|>; *)
-options=<|"colorIndex" -> <||>|>;
-CurrentColorList[] := "DefaultPlotStyle" /. (Method /. Charting`ResolvePlotTheme[$PlotTheme, ListPlot]);
-(* CurrentColorList[] := ColorData[97, "ColorList"]; *)
-GetColor[key_] := (If[MissingQ[options["colorIndex"][key]], AssociateTo[options["colorIndex"], key -> (Length[options["colorIndex"]] + 1)]]; Part[CurrentColorList[], options["colorIndex"][key]]);
-
-(* SetAttributes[UpdateOpts, Listable]; *)
-UpdateOpts[rule_] := AssociateTo[options, rule];
-(* SetAttributes[AddOpts, Listable]; *)
-AddOpts[rule_] := If[MissingQ[options[First[rule] ] ], AssociateTo[options, rule] ];
+options=<||>;
 Options[QSFcmdline]:=Normal@options;
 
-BackupOpts[]:=(options2=options)&;
-RestoreOpts[]:=(options=options2)&;
+UpdateOpts[rule_] := AssociateTo[options, rule];
+AddOpts[rule_] := If[MissingQ[options[First[rule]]], AssociateTo[options, rule] ];
+AppendToKey[rule_] := If[MissingQ[options[First[rule]]], AssociateTo[options, rule/.{Key[x_]->x}];,
 
+options=Merge[{options, <|rule/.{Key[x_]->x}|>},Flatten]; ];
+PopKey[key_]:=(options= Delete[options,{key,-1}]);
 
 OptString[args_:If[$Notebooks,"",Quiet@Check[$ScriptCommandLine[[3;;]],""]  ] ]:=
     StringRiffle[

@@ -43,12 +43,11 @@ cache=<||>;
 Options[WFMaskEdgeAt] = {"WFMaskEdgeAtRatio"->0.5};
 decorator[LOGF]@
 WFMaskEdgeAt[tens_List, dims_List, opt :OptionsPattern[]] := 
- Module[{path,
-        ns = Dimensions[tens],
-        ratio=OptionValue[{QSFcmdline, WFMaskEdgeAt},"WFMaskEdgeAtRatio"],
-        nCAP = IntegerPart[ns*ratio/2], 
-        eta = Power[3.0/nCAP , 4], 
-        CAPk := Exp[-Clip[(eta) . Map[If[# < 0, #^4, 0] &, #], {0, 100}] ] &},
+ Module[{path,ns = Dimensions[tens],ratio,nCAP, eta,CAPk},
+    ratio=OptionValue[{QSFcmdline, WFMaskEdgeAt},"WFMaskEdgeAtRatio"];
+    nCAP = IntegerPart[ns*ratio/2];
+    eta = Power[3.0/nCAP , 4];
+    CAPk := Exp[-Clip[(eta) . Map[If[# < 0, #^4, 0] &, #], {0, 100}] ] &;
     path="/tmp/ns"<>StringRiffle[ns,"_"]<>"_d"<>StringRiffle[dims,"_"]<>"_r"<>ToString[ratio]<>".mx";
     
     LOGV[nCAP, " ", ratio];
@@ -117,7 +116,8 @@ cf = Compile[{{data, _Real, 2}, {n, _Integer},{h, _Integer}},
 SetAttributes[TransverseDiagSum,{Listable}];
 decorator[LOGF]@
 TransverseDiagSum[WF[hd_Association, data_List] ]:=Module[
-    {n=First@hd["ns"], h=1+n/2},
+    {n=First@hd["ns"],h},
+    h=1+n/2;
     If[Dim[hd]!=2, LOGE["TransverseDiagSum currently supports only 2D wf's"] ];
     If[Apply[UnsameQ,hd["ns"] ], LOGE["TransverseDiagSum requires square wf's"] ];
     If[Apply[UnsameQ,hd["bounded"] ], LOGE["TransverseDiagSum requires wf's of uniform boundedness"] ];
@@ -255,7 +255,7 @@ Module[{mo,res=data},mo=OptionValue[{QSFcmdline, MergeOrthants},"Orthants"];
         Total[Reverse[res, #] & /@ subsets]
         (* /Length[subsets]  *)
     ];
-    WF[hd,data]
+    WF[hd,res]
 ];
 
 
@@ -315,20 +315,16 @@ AutoBarLegend[gr_Graphics, colorFn_, {min_, max_,n_:9}] :=
     (* Legend label with common exponent: exp *)
     expText=Style[DisplayForm@SuperscriptBox["\[Times]10", exp], BaseStyle /. Options[ArrayPlot],Background -> Transparent];
     extraPadding=Most[Rasterize[Text[expText],"BoundingBox"]];
-    LOGV[extraPadding];
     expText=Text[expText, RotateLeft[{0.5*(M+m),M},First@bp-1], RotateLeft[{-0.5,-1},First@bp-1] ];
     extraPadding=Max[ip[[{fbpi,2}]], extraPadding[[fbpi]] ];
     ipG=ReplacePart[ip, {fbpi,2} -> extraPadding];
     isG=is+Map[Total,ipG];
     isL = ReplacePart[auto, fbpi -> isG[[fbpi]] ];
     ipL=ReplacePart[ipL, {fbpi,2} -> extraPadding]; 
-    LOGV[ipL];
-    LOGV[ip];
+    
     (* DeleteCases[ ____, Rule[ImageSize, _], \[Infinity]] *)
     Grid[$PlacePositions[bp] /. {
-        Null -> 
-        (* gr, *)
-        (mm=Show[gr,ImagePadding ->ipG, ImageSize->isG]; LOG@AbsoluteOptionsV[mm, ImagePadding]; mm), 
+        Null -> Show[gr,ImagePadding ->ipG, ImageSize->isG],
         None -> DensityPlot[{y,x}[[First@bp]], {x, m, M}, {y, m, M}, 
             PlotRange -> {{m, M}, {m, M}}, 
             ColorFunction -> colorFn, 
@@ -382,8 +378,6 @@ WFPlot[WF[hd_Association, data_List|data_Legended], opt :OptionsPattern[{QSFcmdl
         AutoBarLegend[#,"Jet",{min,max}]&@ 
         ArrayPlot[Reverse@res,
         FilterRules[{Options[QSFcmdline], opt}, Options[ArrayPlot] ],
-
-        LOG[pr];
         DataReversed->False,
         FrameTicks->{{First@Rest@BetterTicks[pr[[1]],1, ColorData["Jet"][0]], None},
                      {First@Rest@BetterTicks[pr[[2]],1, ColorData["Jet"][0]], None}},
@@ -414,12 +408,11 @@ fixNestedLegends = {Legended[Legended[k_, c___], dd___] :> Legended[k, Flatten[{
 Options[WFCombine]={"PlotRange"->Full,"LegendPlacement"->Bottom};
 WFCombine[ass_Association, keys_List : {}, opt :OptionsPattern[{QSFcmdline, WFCombine}] ] :=
 Show[KeyValueMap[WFCombine[#2, Flatten[Append[keys, #1] ], opt ] &, ass], PlotRange->OptionValue["PlotRange"] ] //. fixNestedLegends;
-(* Show[WFPlot[Cases[ass,WF[hd_Association, data_List]:>WF[hd,Legended[data,"elo"] ],\[Infinity] ], PlotStyle->cmdline`opt`GetColor[keys] ] ] //. fixNestedLegends; *)
+(* Show[WFPlot[Cases[ass,WF[hd_Association, data_List]:>WF[hd,Legended[data,"elo"] ],\[Infinity] ], PlotStyle->GetColor[keys] ] ] //. fixNestedLegends; *)
 
 decorator[LOGF]@
 WFCombine[WF[hd_Association, data_List], keys_List:{}, opt :OptionsPattern[{QSFcmdline, WFCombine}] ]:=
-WFPlot[WF[hd, Legended[data, Placed[keys, OptionValue[{QSFcmdline, WFCombine},"LegendPlacement"] ] ] ], PlotStyle->cmdline`opt`GetColor[keys] ];
-(* Combine[WF[hd_Association, data_List], keys_List:{}]:=WFPlot[WF[hd, data],PlotStyle->cmdline`opt`GetColor[keys]]; *)
+WFPlot[WF[hd, Legended[data, Placed[keys, OptionValue[{QSFcmdline, WFCombine},"LegendPlacement"] ] ] ], PlotStyle->GetColor[keys] ];
 
 GraphicsQ[x_Legended|x_Graphics|x_Grid]:=True;
 GraphicsQ[x_]:=False;
@@ -434,10 +427,26 @@ GriddedLeaves[any_] := {any};
 (* Needs["ForScience`PlotUtils`"]; *)
 (* PlotGrid[ass_Association,o:OptionsPattern[Join[Options[PlotGrid],Options[Graphics] ] ] ]:=ForScience`PlotUtils`PlotGrid[GriddedLeaves[ass],o]; *)
 
-SetAttributes[WFExport,{Listable}];
-Options[WFExport]={"WFExportPath"->"plots"};
+(* SetAttributes[WFExport,{Listable}]; *)
+Options[WFExport]={"ExportPath"->"plots","FileFormat"->".png"};
 decorator[LOGF]@
-WFExport[gr_?GraphicsQ, opt :OptionsPattern[{QSFcmdline, WFExport}] ]:=LOG@Export[FileNameJoin[Flatten[Append[{OptionValue[{QSFcmdline, WFExport},"WFExportPath"]} , options["groupOutput"]<>".png"] ] ],gr];
+WFExport[gr_?GraphicsQ, keys_:{}, opt :OptionsPattern[{QSFcmdline, WFExport}] ]:=
+LOG@Export[
+    StringJoin[{
+        FileNameJoin[Flatten[{
+            StringJoin[Flatten[
+                {
+                    OptionValue[{QSFcmdline, WFExport},"ExportPath"], 
+                    OptionValue[{QSFcmdline, WFExport},"path"]
+                }]], 
+                keys 
+        }]],
+        StringPadLeft[OptionValue[{QSFcmdline, WFExport},"FileFormat"],4, "."]
+    }]
+,gr];
+
+WFExport[ass_Association, keys_:{}]:=MapIndexed[WFExport[#1,Flatten@Join[#2/.{Key[x_]->x}, keys]]&, ass];
+(* MapIndexed[(AppendToKey["keys"->#2]; res=WFExport[#1]; PopKey["keys"];res)&,ass]; *)
 
 Multicolumn[ass_Association, opt : OptionsPattern[{QSFcmdline, Multicolumn}]]:=
 Multicolumn[KeyValueMap[Labeled[#2, #1] &, ass] ];
