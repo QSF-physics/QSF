@@ -1,9 +1,13 @@
 BeginPackage["QSF`wf`", {"cmdline`log`","cmdline`opt`", "QSF`styling`", "PlotGrid`","QSF`ColorFunctions`"}];
 
-BoolInv := # == 0 &;
+Begin["`Private`"]
 Bool := # != 0 &;
-OpenBin:=Check[OpenRead[#,BinaryFormat->True],Abort[]] &;
+End[];
 
+ProbabilityQ[hd_Association] := Not[hd["isComplex"]];
+
+OpenBin:=Check[OpenRead[#,BinaryFormat->True],Abort[]] &;
+WFFileNameQ:=StringEndsQ[#, ".psi" ~~ DigitCharacter..] &;
 FromEdge[ind_, ns_] := MapThread[If[#1 < #2/2, -#1, #1 - #2 + 1] &, {ind, ns}];
 WFCAPMask[hd_,ratio_:0.5] := Module[{ns, nCAP, eta, CAP, bd},
    ns = hd["ns"]/hd["downscale"];
@@ -247,13 +251,13 @@ decorator[LOGF]@
 MergeOrthants[WF[hd_Association, data_List],opt :OptionsPattern[{QSFcmdline,MergeOrthants}] ]:=
 Module[{mo,res=data},mo=OptionValue[{QSFcmdline, MergeOrthants},"Orthants"];
     res=If[mo===None,LOG["Not merging orthants"]; res,
-        subsets=Subsets[Range[hd["dim"] ] ];
-        subsets=If[mo==="Correlated", 
+    =Subsets[Range[hd["dim"] ] ];
+    =If[mo==="Correlated", 
             LOG["Merging correlated orthants"];
-            Select[subsets, Length[#] == hd["dim"] || Length[#] == 0 &], 
-            LOG["Merging all orthants"]; subsets];
-        Total[Reverse[res, #] & /@ subsets]
-        (* /Length[subsets]  *)
+            Select, Length[#] == hd["dim"] || Length[#] == 0 &], 
+            LOG["Merging all orthants"];];
+        Total[Reverse[res, #] & /@]
+        (* /Length]  *)
     ];
     WF[hd,res]
 ];
@@ -353,12 +357,16 @@ If[
 Options[WFPlot] = {"ColorIndex"->1};
 SetAttributes[WFPlot,{Listable}];
 
+
+
+WFPlot[WF[hd_Association, leg_Legended]]:=Legended[WFPlot[hd,RemoveLegend[data]], leg /.{Legended[a_, b___] :> b}];
+
 decorator[LOGF]@
-WFPlot[WF[hd_Association, data_List|data_Legended], opt :OptionsPattern[{QSFcmdline, WFPlot, ListLinePlot, ArrayPlot, ListDensityPlot3D}] ]:=Module[
-    {drng,step, min, max, subsets, HD=hd, res=data, leg,pr},
+WFPlot[WF[hd_Association, data_List], opt :OptionsPattern[{QSFcmdline, WFPlot, ListLinePlot, ArrayPlot, ListDensityPlot3D}] ]:=Module[
+    {drng,step, min, max, HD=hd, res=data, leg,pr},
     drng=WFDataRange[hd];
     step=WFDataStep[hd];
-    (* res= If[HD["isComplex"], HD["isComplex"]=False; Abs[res]^2, res]; *)    
+    res= If[HD["isComplex"], HD["isComplex"]=False; Abs[res]^2, res];    
 
     {min, max} = MinMax[RemoveLegends[data]];
     exp = Round[Log[10, max],1]-2;

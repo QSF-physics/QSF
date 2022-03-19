@@ -5,6 +5,7 @@ OpenBin:=CHA[OpenRead[#,BinaryFormat->True], "File "<>#<>" cannot be opened."] &
 (* For extracting wavelength data *)
 LambdaFromPath:=ToExpression[StringExtract[#,"nm_"->2,"/"->1] ]&;
 FWHMFromPath:=ToExpression[StringExtract[#,"fwhm_cycles_"->2, "/"->1] ]&;
+DataFileNameQ:=StringEndsQ[#, ".dat"] &;
 
 FLXDefMetadata[path_, labeled_]:=<|
     "tmax"->Last[labeled["time"] ],

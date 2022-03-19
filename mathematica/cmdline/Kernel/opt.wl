@@ -8,11 +8,13 @@ OptString;
 GetOpts;
 AppendToKey;
 PopKey;
+COptionsPattern;
 
 Begin["`Private`"];
 
 options=<||>;
 Options[QSFcmdline]:=Normal@options;
+COptionsPattern := OptionsPattern[{QSFcmdline, ##}] &;
 
 UpdateOpts[rule_] := AssociateTo[options, rule];
 AddOpts[rule_] := If[MissingQ[options[First[rule]]], AssociateTo[options, rule] ];

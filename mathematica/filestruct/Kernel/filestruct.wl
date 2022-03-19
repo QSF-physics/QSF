@@ -5,7 +5,7 @@ StructPrint;
 StructPeak;
 StructMap;
 StructProcess;
-Options[ParsePattern] = {"FilterFunction"->Identity};
+Options[ParsePattern] = {"ParseFilter"->Identity};
 ParsePattern;
 
 Begin["`Private`"];
@@ -18,8 +18,6 @@ KeyCleanup[keys_List]:=If[Length[keys]==0, "", StringRiffle[KeyCleanup/@Flatten[
 PrependName[path_, what_]:=Block[{fsp=FileNameSplit[path]}, FileNameJoin[Join[Most@fsp, {what<>fsp[[-1]]} ] ] ];
 
 
-Options[ParsePattern] = {"FilterFunction"->Identity};
-
 (* Helper functions for creating relative paths and flatterning *)
 Relativizer:=If[StringStartsQ[ExpandFileName[#],Directory[] ], StringDelete[ExpandFileName[#], Directory[]<>"/" ],#] &;
 
@@ -31,7 +29,7 @@ StructKeyMap[else_,op: OptionsPattern[{StructKeyMap}] ]:=else;
 Options[StructPrint]= {"StructPrintFn"->LOG,"Heads"->False};
 StructPrint[assoc_Association, op: OptionsPattern[{QSFcmdline,StructPrint}]] := KeyValueMap[
     (OptionValue[{QSFcmdline,StructPrint},"StructPrintFn"][
-        If[OptionValue["Heads"],ToString[#1]<>" -> "<>ToString[Head@#2],#1]
+        If[OptionValue["Heads"],ToString[#1,InputForm]<>" -> "<>ToString[Head@#2],#1]
     ]; 
     LL[]++;
     StructPrint[#2,op]; 
@@ -69,7 +67,7 @@ StructMap[ass_, rule_Rule] := Block[
 
 Options[StructProcess] = {"Operations" -> {}};
 StructProcess[ass_Association, op: OptionsPattern[{QSFcmdline,StructProcess}]] := 
-Module[{res = ass, cn=1, tmpl=StringTemplate["[``/``]"]}, 
+Module[{res = ass, cn=1, tmpl=StringTemplate["[``/``] ``"]}, 
     Block[{options=options},
     LL[]++; 
     Do[
@@ -78,10 +76,10 @@ Module[{res = ass, cn=1, tmpl=StringTemplate["[``/``]"]},
             _Rule, 
                 Switch[First[o],
                     _Integer, 
-                        LOG[step," Operation ", o]; 
+                        LOG[step," Operation: ", ToString[Last@o,InputForm], " at level ", First@o]; 
                         res=StructMap[res,o];,
                     _, 
-                        LOG[step," Option ", o]; 
+                        LOG[step," Option: ", ToString[o,InputForm]]; 
                         UpdateOpts[o];
                 ]; 
             ,_String, AppendToKey["ExportPath"->o]; LOG["Current export path set to: ","ExportPath"/.Options[QSFcmdline]];
@@ -96,9 +94,10 @@ Module[{res = ass, cn=1, tmpl=StringTemplate["[``/``]"]},
 ];
 LookIn[inp_]:=If[$Notebooks, Quiet@FileNameJoin[{Check[NotebookDirectory[],Directory[]],inp}], inp];
 
+
 ParsePattern[inp_, op: OptionsPattern[{QSFcmdline,ParsePattern}]]:=Block[
     {inps, ptrn, poses, grFn},
-    LOGII["Parsing Input Patern: ", inp];
+    LOGJ["Parsing Input Patern: ", inp];
         
     inps = FileNameSplit[inp];
     (* Generate a list of files to process, excluding images *)
@@ -106,7 +105,7 @@ ParsePattern[inp_, op: OptionsPattern[{QSFcmdline,ParsePattern}]]:=Block[
     
     inputFiles=Select[FileNames[LookIn[inp]], 
         ! (StringEndsQ[#,".png"] || StringEndsQ[#,".pdf"]) & ];
-    inputFiles=OptionValue[{QSFcmdline, ParsePattern}, "FilterFunction"][inputFiles];
+    inputFiles=OptionValue[{QSFcmdline, ParsePattern}, "ParseFilter"][inputFiles];
     (* Abort if no files found *)
     CHA[First[inputFiles],"No valid files found in " <> Directory[]];
     UpdateOpts["inputFiles"->inputFiles]; 

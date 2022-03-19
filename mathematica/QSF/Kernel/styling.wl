@@ -11,7 +11,7 @@ Begin["`Private`"];
 SetAttributes[FontFix, Listable];
 FontFix[labs_String] := Style[labs, FontFamily -> "Latin Modern Math", FontColor->Black];
 
-Map[SetOptions[Print["Changing style of ", #]; #, BaseStyle -> 
+Map[SetOptions[#, BaseStyle -> 
     {FontFamily -> "Latin Modern Math", FontSize -> 12,FontColor->Black}] &,
     {Plot,ListLinePlot, ArrayPlot, "Graphics"}
 ];
