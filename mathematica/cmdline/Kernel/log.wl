@@ -69,7 +69,8 @@ LOG[msgs__,op:OptionsPattern[{QSFcmdline, LOG}] ]:=
 CPrint[
    LogIndent[op],
    LogColor[op],
-   StringJoin[ToStringList[{msgs}]], 
+
+   StringJoin[ToStringList[If[ListQ[#],ToString[#,InputForm],Identity[#]]&/@{msgs}]], 
    COLORS["reset"] 
 ];
 

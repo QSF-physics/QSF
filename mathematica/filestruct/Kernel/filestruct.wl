@@ -45,19 +45,19 @@ StructPeak[ass_Association]:=StructPrint[ass,"Heads"->True];
   Map[f, ass, {If[# < 0, # + dpth, # - 1] &@lvl}]
 ]; *)
 
-StructMap[ass_, rule_Rule] := Block[
-    {dpth = ArrayDepth[ass, AllowedHeads -> Association],lvl,fn,res, keys,tmp},
+StructMap[ass_, rule_Rule] := Module[
+    {dpth = ArrayDepth[ass, AllowedHeads -> Association],lvl,fn,res,tmp, TreePath},
     (* lvl=If[(First[rule]===All||First[rule]===0), {0}, {dpth-First[rule]+1}]; *)
     (* lvl=DeleteDuplicates[lvl]; *)
-    lvl=First[rule]-1;
+    lvl=First[rule];
     fn=Last[rule];
     
     res=MapIndexed[
         (
-            path=Flatten[{#2}//.{Key[k_]->k}];
-            LOG["Applying to group of [",Head@#1,"] at key path [", If[path=={},"root", path],"]"];
-            UpdateOpts["path"->path];
             LL[]++;
+            TreePath=Flatten[{#2}//.{Key[k_]->k}];
+            LOG["Applying [", fn,"] at TreePath [", If[TreePath=={},"root", ToString@TreePath],"]"];
+            UpdateOpts["TreePath"->TreePath];
             tmp=fn[#1];
             LL[]--;
             tmp
@@ -67,7 +67,7 @@ StructMap[ass_, rule_Rule] := Block[
 
 Options[StructProcess] = {"Operations" -> {}};
 StructProcess[ass_Association, op: OptionsPattern[{QSFcmdline,StructProcess}]] := 
-Module[{res = ass, cn=1, tmpl=StringTemplate["[``/``] ``"]}, 
+Module[{res = ass, cn=1, tmpl=StringTemplate["[``/``] "]}, 
     Block[{options=options},
     LL[]++; 
     Do[
@@ -76,16 +76,16 @@ Module[{res = ass, cn=1, tmpl=StringTemplate["[``/``] ``"]},
             _Rule, 
                 Switch[First[o],
                     _Integer, 
-                        LOG[step," Operation: ", ToString[Last@o,InputForm], " at level ", First@o]; 
+                        LOG[step,"Operation: ", ToString[Last@o,InputForm], " at level ", First@o]; 
                         res=StructMap[res,o];,
                     _, 
-                        LOG[step," Option: ", ToString[o,InputForm]]; 
+                        LOG[step,"Option: ", ToString[o,InputForm]]; 
                         UpdateOpts[o];
                 ]; 
-            ,_String, AppendToKey["ExportPath"->o]; LOG["Current export path set to: ","ExportPath"/.Options[QSFcmdline]];
-            ,_Symbol, LOG[step, " Function ", o]; Catch[o[res],o[]]; 
-            ,_List, LOG[step, " Inner process (to avoid saving results)"]; StructProcess[res, "Operations"->o];
-            ,_ , LOGE[step, " Unrecognized command: ", o];
+            ,_String, AppendToKey["ExportPath"->o]; LOG["Current ExportPath set to: ","ExportPath"/.Options[QSFcmdline]];
+            ,_Symbol, LOG[step, "Function ", o]; Catch[o[res],o[]]; 
+            ,_List, LOG[step, "Inner process (to avoid saving results)"]; StructProcess[res, "Operations"->o];
+            ,_ , LOGE[step, "Unrecognized command: ", o];
         ];
     ,
     {o, OptionValue["Operations"]}];
@@ -133,7 +133,6 @@ ParsePattern[inp_, op: OptionsPattern[{QSFcmdline,ParsePattern}]]:=Block[
     (* LOGW["Identified structure sizes:", Dimensions[groupInput, AllowedHeads -> All]]; *)
     LOGW["Identified structure:"];
     StructPrint[groupInput];
-    LOGW["Key count at particular levels: ", Dimensions[groupInput, AllowedHeads->Association],"\n"];
     groupInput
 ];
 End[];

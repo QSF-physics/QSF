@@ -8,13 +8,20 @@ OptString;
 GetOpts;
 AppendToKey;
 PopKey;
-COptionsPattern;
+COptionValue;
+COptionValues;
 
 Begin["`Private`"];
 
 options=<||>;
 Options[QSFcmdline]:=Normal@options;
-COptionsPattern := OptionsPattern[{QSFcmdline, ##}] &;
+COptionValue := OptionValue[{QSFcmdline, #}, ##2] &;
+COptionValues := OptionValue[{QSFcmdline, #}, {##2}] &;
+
+(*ListPlotDefault->Explicit Pass->CMDLine->Final*)
+(* Options[TK7] = {"sad" -> 3};
+TK7[k : OptionsPattern[]] := {COptionValue[{k, TK7, ListPlot}, "sad"],
+COptionValue[{k, ListPlot}, PlotRange]}; *)
 
 UpdateOpts[rule_] := AssociateTo[options, rule];
 AddOpts[rule_] := If[MissingQ[options[First[rule]]], AssociateTo[options, rule] ];

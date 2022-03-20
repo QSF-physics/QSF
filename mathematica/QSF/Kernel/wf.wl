@@ -1,13 +1,20 @@
-BeginPackage["QSF`wf`", {"cmdline`log`","cmdline`opt`", "QSF`styling`", "PlotGrid`","QSF`ColorFunctions`"}];
+BeginPackage["QSF`wf`", {"cmdline`log`","cmdline`opt`", "QSF`styling`", "PlotGrid`","QSF`ColorFunctions`","QSF`DataAnalysis`"}];
 
-Begin["`Private`"]
+(* Whether given filename has a signature consistent with QSF package *)
+WFFileNameQ;
+WFLoad;
+TrimMargins;
+Average;
+RemoveBoundedPart;
+WFExport;
+WFPlot;
+Begin["`Private`"];
+
 Bool := # != 0 &;
-End[];
-
 ProbabilityQ[hd_Association] := Not[hd["isComplex"]];
-
 OpenBin:=Check[OpenRead[#,BinaryFormat->True],Abort[]] &;
 WFFileNameQ:=StringEndsQ[#, ".psi" ~~ DigitCharacter..] &;
+
 FromEdge[ind_, ns_] := MapThread[If[#1 < #2/2, -#1, #1 - #2 + 1] &, {ind, ns}];
 WFCAPMask[hd_,ratio_:0.5] := Module[{ns, nCAP, eta, CAP, bd},
    ns = hd["ns"]/hd["downscale"];
@@ -21,34 +28,14 @@ WFCAPMask[hd_,ratio_:0.5] := Module[{ns, nCAP, eta, CAP, bd},
    ];
 WFInvCAPMask[hd_,ratio_:0.5]:= 1 - WFCAPMask[hd,ratio];
 
-(* Makes a fourier transform at dimension d *)
-FourierAt[tens_List, d_Integer, inv_ : False] := Module[
-    {dim = Length[Dimensions[tens]]},
 
-    Transpose[
-        Map[If[inv, InverseFourier[#], Fourier[#] ] &, 
-            Transpose[tens, d <-> dim], 
-            {dim - 1}], 
-    d <-> dim]
-];
-
-decorator[LOGF]@
-FourierAt[tens_List, dims_List, inv_ : False] := Module[
-    {pos = Flatten@Position[dims, 1], dim = Length[Dimensions[tens]], ret = tens},
-    If[Length[dims] != dim, LOGE[dims," ",dim, " ",Dimensions[tens]]; Abort[]];
-   
-    If[AllTrue[dims, 1 == # &], 
-        If[inv, InverseFourier[ret], Fourier[ret] ],
-        Fold[FourierAt[#1, #2, inv] &, ret, pos] 
-    ]
-];
 cache=<||>;
 
 Options[WFMaskEdgeAt] = {"WFMaskEdgeAtRatio"->0.5};
 decorator[LOGF]@
-WFMaskEdgeAt[tens_List, dims_List, opt :OptionsPattern[]] := 
+WFMaskEdgeAt[tens_List, dims_List, opt:OptionsPattern[]] := 
  Module[{path,ns = Dimensions[tens],ratio,nCAP, eta,CAPk},
-    ratio=OptionValue[{QSFcmdline, WFMaskEdgeAt},"WFMaskEdgeAtRatio"];
+    ratio=COptionValue[WFMaskEdgeAt,"WFMaskEdgeAtRatio"];
     nCAP = IntegerPart[ns*ratio/2];
     eta = Power[3.0/nCAP , 4];
     CAPk := Exp[-Clip[(eta) . Map[If[# < 0, #^4, 0] &, #], {0, 100}] ] &;
@@ -92,7 +79,7 @@ Options[TrimMargins]={"TrimMarginsPercent"->0.1};
 SetAttributes[TrimMargins,{Listable}];
 decorator[LOGF]@
 TrimMargins[WF[hd_Association, data_List] ] := Module[{p, po},
-    p=OptionValue[{QSFcmdline, TrimMargins},"TrimMarginsPercent"]; 
+    p=COptionValue[TrimMargins,"TrimMarginsPercent"]; 
     po=Evenify@Round[hd["ns"] p];
     If[Not[BoundedQ[hd] ], WF[hd,data],
         LOG["Removing margins: ",p, "%, points: ", po]; 
@@ -178,7 +165,7 @@ WFData[st_, hd_]:=Module[{data},
     ArrayReshape[data,hd["ns"]/hd["downscale"] ]
 ];
 
-WFDataStep[hd_Association]:=Module[{},
+WFDataStep[hd_Association]:=Module[{dxs,dps},
     dxs=hd["dxs"];
     dps=2\[Pi]/(ToExpression[hd["ns"]] ToExpression[hd["dxs"] ]);
     If[hd["rep"]==2,dps,dxs]*hd["downscale"]
@@ -187,9 +174,9 @@ WFDataStep[hd_Association]:=Module[{},
 WFNorm[hd_, data_]:=Total[data,\[Infinity] ] Times@@(WFDataStep[hd]); 
 
 
-SetAttributes[WFLoad, {Listable}];
+SetAttributes[WFLoad, Listable];
 decorator[LOGF]@
-WFLoad[path_String,opt :OptionsPattern[]]:=Module[{st,hd,data,norm},
+WFLoad[path_,opt:OptionsPattern[]]:=Module[{st,hd,data},
     st=OpenBin[path];
     hd=WFHeader[st];
     hd["path"]=path;
@@ -248,16 +235,16 @@ Average[inp_] :=
 Options[MergeOrthants]={"Orthants"->All};
 SetAttributes[MergeOrthants,{Listable}];
 decorator[LOGF]@
-MergeOrthants[WF[hd_Association, data_List],opt :OptionsPattern[{QSFcmdline,MergeOrthants}] ]:=
-Module[{mo,res=data},mo=OptionValue[{QSFcmdline, MergeOrthants},"Orthants"];
+MergeOrthants[WF[hd_Association, data_List],opt:OptionsPattern[]]:=
+Module[{mo,res=data},mo=COptionValue[MergeOrthants,"Orthants"];
     res=If[mo===None,LOG["Not merging orthants"]; res,
-    =Subsets[Range[hd["dim"] ] ];
-    =If[mo==="Correlated", 
+        subsets=Subsets[Range[hd["dim"] ] ];
+        subsets=If[mo==="Correlated", 
             LOG["Merging correlated orthants"];
-            Select, Length[#] == hd["dim"] || Length[#] == 0 &], 
-            LOG["Merging all orthants"];];
-        Total[Reverse[res, #] & /@]
-        (* /Length]  *)
+            Select[subsets, Length[#] == hd["dim"] || Length[#] == 0 &], 
+            LOG["Merging all orthants"]; subsets];
+        Total[Reverse[res, #] & /@ subsets]
+        (* /Length[subsets]  *)
     ];
     WF[hd,res]
 ];
@@ -346,7 +333,7 @@ AutoBarLegend[gr_Graphics, colorFn_, {min_, max_,n_:9}] :=
 
 SetAttributes[GaussianBlur,{Listable}];
 Options[GaussianBlur] = {"GaussianBlurRadius" -> None};
-GaussianBlur[WF[hd_Association, data_List], opt :OptionsPattern[{QSFcmdline,GaussianBlur}] ]:=
+GaussianBlur[WF[hd_Association, data_List],opt:OptionsPattern[]]:=
 If[
     OptionValue["GaussianBlurRadius"]===None, WF[hd,data],
     LOG["Applying GaussianBlur with radius ",OptionValue["GaussianBlurRadius"]];
@@ -362,13 +349,13 @@ SetAttributes[WFPlot,{Listable}];
 WFPlot[WF[hd_Association, leg_Legended]]:=Legended[WFPlot[hd,RemoveLegend[data]], leg /.{Legended[a_, b___] :> b}];
 
 decorator[LOGF]@
-WFPlot[WF[hd_Association, data_List], opt :OptionsPattern[{QSFcmdline, WFPlot, ListLinePlot, ArrayPlot, ListDensityPlot3D}] ]:=Module[
-    {drng,step, min, max, HD=hd, res=data, leg,pr},
+WFPlot[WF[hd_Association, data_List],opt:OptionsPattern[]]:=Module[
+    {drng,step, min, max, HD=hd, res=data, pr},
     drng=WFDataRange[hd];
     step=WFDataStep[hd];
     res= If[HD["isComplex"], HD["isComplex"]=False; Abs[res]^2, res];    
 
-    {min, max} = MinMax[RemoveLegends[data]];
+    {min, max} = MinMax[res];
     exp = Round[Log[10, max],1]-2;
     MC=Apply[RGBColor, ConstantArray[Round[ColorNegate@ ColorData["Jet"][0] /. RGBColor[x__] -> Total[{x}]/3], 3]];
     mC=Blend[{MC,Gray}];
@@ -414,13 +401,12 @@ WFPlot[WF[hd_Association, data_List], opt :OptionsPattern[{QSFcmdline, WFPlot, L
 fixNestedLegends = {Legended[Legended[k_, c___], dd___] :> Legended[k, Flatten[{c, dd}, 1] ]};
 (* Substitution for Show *)
 Options[WFCombine]={"PlotRange"->Full,"LegendPlacement"->Bottom};
-WFCombine[ass_Association, keys_List : {}, opt :OptionsPattern[{QSFcmdline, WFCombine}] ] :=
+WFCombine[ass_Association, keys_List:{},opt:OptionsPattern[]] :=
 Show[KeyValueMap[WFCombine[#2, Flatten[Append[keys, #1] ], opt ] &, ass], PlotRange->OptionValue["PlotRange"] ] //. fixNestedLegends;
 (* Show[WFPlot[Cases[ass,WF[hd_Association, data_List]:>WF[hd,Legended[data,"elo"] ],\[Infinity] ], PlotStyle->GetColor[keys] ] ] //. fixNestedLegends; *)
-
 decorator[LOGF]@
-WFCombine[WF[hd_Association, data_List], keys_List:{}, opt :OptionsPattern[{QSFcmdline, WFCombine}] ]:=
-WFPlot[WF[hd, Legended[data, Placed[keys, OptionValue[{QSFcmdline, WFCombine},"LegendPlacement"] ] ] ], PlotStyle->GetColor[keys] ];
+WFCombine[WF[hd_Association, data_List], keys_List:{},opt:OptionsPattern[] ]:=
+WFPlot[WF[hd, Legended[data, Placed[keys, COptionValue[WFCombine,"LegendPlacement"] ] ] ], PlotStyle->GetColor[keys] ];
 
 GraphicsQ[x_Legended|x_Graphics|x_Grid]:=True;
 GraphicsQ[x_]:=False;
@@ -438,25 +424,27 @@ GriddedLeaves[any_] := {any};
 (* SetAttributes[WFExport,{Listable}]; *)
 Options[WFExport]={"ExportPath"->"plots","FileFormat"->".png"};
 decorator[LOGF]@
-WFExport[gr_?GraphicsQ, keys_:{}, opt :OptionsPattern[{QSFcmdline, WFExport}] ]:=
+WFExport[gr_?GraphicsQ, keys_:{},opt:OptionsPattern[] ]:=
 LOG@Export[
     StringJoin[{
         FileNameJoin[Flatten[{
             StringJoin[Flatten[
                 {
-                    OptionValue[{QSFcmdline, WFExport},"ExportPath"], 
-                    OptionValue[{QSFcmdline, WFExport},"path"]
-                }]], 
-                keys 
+                    LOG["TreePath: ",COptionValue[WFExport,"TreePath"]];
+                    LOG["keys: ",keys];
+                    COptionValue[WFExport,"ExportPath"] 
+                    ,COptionValue[WFExport,"TreePath"]
+                }]] 
+                ,keys 
         }]],
-        StringPadLeft[OptionValue[{QSFcmdline, WFExport},"FileFormat"],4, "."]
+        StringPadLeft[COptionValue[WFExport,"FileFormat"],4, "."]
     }]
 ,gr];
 
 WFExport[ass_Association, keys_:{}]:=MapIndexed[WFExport[#1,Flatten@Join[#2/.{Key[x_]->x}, keys]]&, ass];
 (* MapIndexed[(AppendToKey["keys"->#2]; res=WFExport[#1]; PopKey["keys"];res)&,ass]; *)
 
-Multicolumn[ass_Association, opt : OptionsPattern[{QSFcmdline, Multicolumn}]]:=
+Multicolumn[ass_Association,opt:OptionsPattern[]]:=
 Multicolumn[KeyValueMap[Labeled[#2, #1] &, ass] ];
 SameLegendQ:=SameQ[Cases[#1, LineLegend[_, x_, ___] :> x, \[Infinity] ], Cases[#2, LineLegend[_, y_, ___] :> y, \[Infinity] ] ] &;
 (* WFGrid[x_List]:=Legended[Grid[(x//.fixNestedLegends)/.{Legended[a_, b___] :> a},BaseStyle->ImageSizeMultipliers->1], Flatten@Union[Flatten[(x//.fixNestedLegends) /.{Legended[a_, b___] :> b}] ] ]; *)
@@ -471,18 +459,18 @@ WFGrid[ass_Association]:=WFGrid[GriddedLeaves[ass],"RowLabels"->Keys[ass], "Colu
 LO[]:=PlotGrid0[{{Plot[x, {x, 0, 1}, Frame -> True], 
    Plot[x, {x, 0, 1}, Frame -> True]}}];
 
-WFGrid[x_List,opt :OptionsPattern[{QSFcmdline, WFGrid}]]:=Legended[PlotGrid1[RemoveLegends[x]], UnifyLegends[x] ];
-(* WFGrid[x_List,opt :OptionsPattern[{QSFcmdline, WFGrid}]]:=Legended[
+WFGrid[x_List,opt:OptionsPattern[]]:=Legended[PlotGrid1[RemoveLegends[x]], UnifyLegends[x] ];
+(* WFGrid[x_List,opt :OptionsPattern[]]:=Legended[
     PlotGrid0[
         Prepend[
         MapThread[
             Prepend[#1,#2]&, 
             {
                 RemoveLegends[x],
-                OptionValue[{QSFcmdline, WFGrid},"RowLabels"]
+                COptionValue[WFGrid,"RowLabels"]
             } 
         ], 
-        Prepend[OptionValue[{QSFcmdline, WFGrid},"ColumnLabels"] ,""]
+        Prepend[COptionValue[WFGrid,"ColumnLabels"] ,""]
         ]
     ], 
     UnifyLegends[x]
@@ -492,6 +480,6 @@ WFGrid[x_List,opt :OptionsPattern[{QSFcmdline, WFGrid}]]:=Legended[PlotGrid1[Rem
 
 (* ImportExport`RegisterImport["QSF-wf",WFLoad]; *)
 (* ResourceFunction["RegisterFormat"]["QSF-wf", <|"Extensions" -> Table[StringTemplate["psi``"][i], {i, 1, 16}]|>] *)
+End[];
 
 EndPackage[];
-
