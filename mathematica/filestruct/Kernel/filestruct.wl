@@ -66,13 +66,14 @@ StructMap[ass_, rule_Rule] := Module[
 ];
 
 Options[StructProcess] = {"Operations" -> {}};
-StructProcess[ass_Association, op: OptionsPattern[{QSFcmdline,StructProcess}]] := 
+StructProcess[ass_Association, op: OptionsPattern[{StructProcess}]] := 
 Module[{res = ass, cn=1, tmpl=StringTemplate["[``/``] "]}, 
-    Block[{options=options},
+    Block[{options},
     LL[]++; 
     Do[
         step=tmpl[cn++,Length[OptionValue["Operations"] ] ];
         Switch[o,
+            Null, "";,
             _Rule, 
                 Switch[First[o],
                     _Integer, 

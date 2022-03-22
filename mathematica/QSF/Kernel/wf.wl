@@ -1,13 +1,20 @@
 BeginPackage["QSF`wf`", {"cmdline`log`","cmdline`opt`", "QSF`styling`", "PlotGrid`","QSF`ColorFunctions`","QSF`DataAnalysis`"}];
 
 (* Whether given filename has a signature consistent with QSF package *)
+WF;
 WFFileNameQ;
 WFLoad;
 TrimMargins;
 Average;
 RemoveBoundedPart;
+MergeOrthants;
+GaussianBlur;
+TransverseDiagSum;
+WFCombine;
 WFExport;
 WFPlot;
+WFGrid;
+
 Begin["`Private`"];
 
 Bool := # != 0 &;
@@ -346,14 +353,14 @@ SetAttributes[WFPlot,{Listable}];
 
 
 
-WFPlot[WF[hd_Association, leg_Legended]]:=Legended[WFPlot[hd,RemoveLegend[data]], leg /.{Legended[a_, b___] :> b}];
+(* WFPlot2D[WF[hd_Association, leg_Legended]]:=Legended[WFPlot[hd,RemoveLegend[data]], leg /.{Legended[a_, b___] :> b}]; *)
 
 decorator[LOGF]@
-WFPlot[WF[hd_Association, data_List],opt:OptionsPattern[]]:=Module[
+WFPlot[WF[hd_Association, data_List|data_Legended],opt:OptionsPattern[]]:=Module[
     {drng,step, min, max, HD=hd, res=data, pr},
     drng=WFDataRange[hd];
     step=WFDataStep[hd];
-    res= If[HD["isComplex"], HD["isComplex"]=False; Abs[res]^2, res];    
+    res= If[HD["isComplex"], HD["isComplex"]=False; Abs[RemoveLegend[res]]^2, res];    
 
     {min, max} = MinMax[res];
     exp = Round[Log[10, max],1]-2;
@@ -400,13 +407,31 @@ WFPlot[WF[hd_Association, data_List],opt:OptionsPattern[]]:=Module[
 
 fixNestedLegends = {Legended[Legended[k_, c___], dd___] :> Legended[k, Flatten[{c, dd}, 1] ]};
 (* Substitution for Show *)
-Options[WFCombine]={"PlotRange"->Full,"LegendPlacement"->Bottom};
-WFCombine[ass_Association, keys_List:{},opt:OptionsPattern[]] :=
-Show[KeyValueMap[WFCombine[#2, Flatten[Append[keys, #1] ], opt ] &, ass], PlotRange->OptionValue["PlotRange"] ] //. fixNestedLegends;
-(* Show[WFPlot[Cases[ass,WF[hd_Association, data_List]:>WF[hd,Legended[data,"elo"] ],\[Infinity] ], PlotStyle->GetColor[keys] ] ] //. fixNestedLegends; *)
+Options[WFCombine]={"PlotRange"->Full,"LegendPlacement"->Bottom,"LeafPath"->{}};
+(* WFCombine[ass_Association,opt:OptionsPattern[]] :=
+Show[KeyValueMap[WFCombine[#2, Flatten[Append[COptionValue[{opt,WFCombine},"LeafPath"], #1]],opt]&,ass],PlotRange->OptionValue["PlotRange"] ] //. fixNestedLegends; *)
+
+
+(* [WFExport[#1,"LeafPath"->Flatten@Join[COptionValue[{opt,WFExport},"LeafPath"],#2/.{Key[x_]->x}]]&, ass]; *)
+
+
+(* ALMOST *)
 decorator[LOGF]@
-WFCombine[WF[hd_Association, data_List], keys_List:{},opt:OptionsPattern[] ]:=
-WFPlot[WF[hd, Legended[data, Placed[keys, COptionValue[WFCombine,"LegendPlacement"] ] ] ], PlotStyle->GetColor[keys] ];
+WFCombine[WF[hd_Association,data_List],opt:OptionsPattern[]]:=
+WFPlot[WF[hd,Legended[data, Placed[COptionValue[{opt,WFCombine},"LeafPath"],COptionValue[WFCombine,"LegendPlacement"]]]], PlotStyle->GetColor[COptionValue[{opt,WFCombine},"LeafPath"]]];
+
+WFCombine[ass_Association,opt:OptionsPattern[]]:=Show[Cases[
+MapIndexed[If[MatchQ[#1,_WF],WFCombine[#1,"LeafPath" -> #2],#1]&,ass, 5], _Legended, 5
+],PlotRange->COptionValue[{opt,WFCombine},"PlotRange"]];
+
+(* 
+decorator[LOGF]@
+WFCombine[x_Graphics,opt:OptionsPattern[]]:=
+Legended[x, Placed[COptionValue[{opt,WFCombine},"LeafPath"],COptionValue[WFCombine,"LegendPlacement"]]];
+
+WFCombine[ass_Association,opt:OptionsPattern[]]:=Show[Cases[
+MapIndexed[If[MatchQ[#1,_Graphics],WFCombine[#1,"LeafPath" -> #2],#1]&,ass, 3], x_Legended, 3
+],PlotRange->COptionValue[{opt,WFCombine},"PlotRange"]]; *)
 
 GraphicsQ[x_Legended|x_Graphics|x_Grid]:=True;
 GraphicsQ[x_]:=False;
@@ -422,27 +447,26 @@ GriddedLeaves[any_] := {any};
 (* PlotGrid[ass_Association,o:OptionsPattern[Join[Options[PlotGrid],Options[Graphics] ] ] ]:=ForScience`PlotUtils`PlotGrid[GriddedLeaves[ass],o]; *)
 
 (* SetAttributes[WFExport,{Listable}]; *)
-Options[WFExport]={"ExportPath"->"plots","FileFormat"->".png"};
+Options[WFExport]={"ExportPath"->"wf_plots/", "TreePath"->{}, "LeafPath"->{},"FileFormat"->".png"};
 decorator[LOGF]@
-WFExport[gr_?GraphicsQ, keys_:{},opt:OptionsPattern[] ]:=
+WFExport[gr_?GraphicsQ,opt:OptionsPattern[]]:=
 LOG@Export[
     StringJoin[{
         FileNameJoin[Flatten[{
             StringJoin[Flatten[
                 {
                     LOG["TreePath: ",COptionValue[WFExport,"TreePath"]];
-                    LOG["keys: ",keys];
-                    COptionValue[WFExport,"ExportPath"] 
-                    ,COptionValue[WFExport,"TreePath"]
+                    LOG["LeafPath: ",COptionValue[{opt,WFExport},"LeafPath"]];
+                    COptionValue[{opt,WFExport},"ExportPath"] 
+                    ,COptionValue[{opt,WFExport},"TreePath"]
                 }]] 
-                ,keys 
+                ,COptionValue[{opt,WFExport},"LeafPath"]
         }]],
         StringPadLeft[COptionValue[WFExport,"FileFormat"],4, "."]
     }]
 ,gr];
 
-WFExport[ass_Association, keys_:{}]:=MapIndexed[WFExport[#1,Flatten@Join[#2/.{Key[x_]->x}, keys]]&, ass];
-(* MapIndexed[(AppendToKey["keys"->#2]; res=WFExport[#1]; PopKey["keys"];res)&,ass]; *)
+WFExport[ass_Association,opt:OptionsPattern[]]:=MapIndexed[WFExport[#1,"LeafPath"->Flatten@Join[COptionValue[{opt,WFExport},"LeafPath"],#2/.{Key[x_]->x}]]&, ass];
 
 Multicolumn[ass_Association,opt:OptionsPattern[]]:=
 Multicolumn[KeyValueMap[Labeled[#2, #1] &, ass] ];
@@ -453,11 +477,9 @@ SubKeys[ass_Association]:=DeleteDuplicatesBy[DeleteCases[Rest/@Position[ass, x_G
 UnifyLegends[x_List]:=Flatten@Union[Flatten[Flatten[x] /.{Legended[a_, b___] :> b}],SameTest -> SameLegendQ];
 RemoveLegends[x_]:=x/.{Legended[a_, b___] :> a};
 Options[WFGrid]={"RowLabels"->{}, "ColumnLabels"->{}};
+
+
 WFGrid[ass_Association]:=WFGrid[GriddedLeaves[ass],"RowLabels"->Keys[ass], "ColumnLabels"->SubKeys[ass] ];
-
-
-LO[]:=PlotGrid0[{{Plot[x, {x, 0, 1}, Frame -> True], 
-   Plot[x, {x, 0, 1}, Frame -> True]}}];
 
 WFGrid[x_List,opt:OptionsPattern[]]:=Legended[PlotGrid1[RemoveLegends[x]], UnifyLegends[x] ];
 (* WFGrid[x_List,opt :OptionsPattern[]]:=Legended[

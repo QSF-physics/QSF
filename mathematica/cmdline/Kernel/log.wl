@@ -87,6 +87,8 @@ decorator /: SetDelayed[decorator[dec_][f_[args___]], rhs_]:=
   f[a:PatternSequence[args]]:=
      dec[Unevaluated @ f, Unevaluated @ {a}, Unevaluated @ rhs];
 
+
+
 LOGI:=LOG[##,"LC"->"blue","LL"->0] &;
 LOGJ:=LOG[##,"LC"->"magenta","LL"->0] &;
 LOGW:=LOG[##,"LC"->"yellow","LL"->0] &;
