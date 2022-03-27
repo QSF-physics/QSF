@@ -5,15 +5,21 @@ CurrentColorList;
 GetColor;
 PrettyPlots;
 FontFix;
-
+defaultStyle;
 Begin["`Private`"];
+
+defaultStyle={FontFamily -> "Latin Modern Math", FontSize -> 12,FontColor->Black};
 
 SetAttributes[FontFix, Listable];
 FontFix[labs_String] := Style[labs, FontFamily -> "Latin Modern Math", FontColor->Black];
 
 Map[SetOptions[#, BaseStyle -> 
     {FontFamily -> "Latin Modern Math", FontSize -> 12,FontColor->Black}] &,
-    {Plot,ListLinePlot, ArrayPlot, "Graphics"}
+    {Plot,ListLinePlot, ArrayPlot, Labeled,"Graphics"}
+];
+Map[SetOptions[#, 
+    LabelStyle->{FontFamily -> "Latin Modern Math", FontSize -> 12,FontColor->Black}] &,
+    {LineLegend}
 ];
 
 colorIndex=<||>;
