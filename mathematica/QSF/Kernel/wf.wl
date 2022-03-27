@@ -370,6 +370,7 @@ WFPlot[WF[hd_Association, data_List|data_Legended],opt:OptionsPattern[]]:=Module
 		ListLinePlot[
 		res,
 		FilterRules[{Options[QSFcmdline], opt}, Options[ListLinePlot] ],
+    (* PlotRangePadding->Scaled[0.08], *)
 		Frame->True,
 		FrameTicks->True,
 		DataRange->drng],

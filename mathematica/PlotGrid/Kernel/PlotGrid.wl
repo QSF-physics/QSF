@@ -30,6 +30,10 @@ TrimTicksAndLabels[gr_Graphics, sides_List] :=
             AbsoluteOptionsV[gr, FrameTicks]
         , sides]
     ,FrameStyle->{Black}
+    ,ImagePadding->ReplacePart[
+      AbsoluteOptionsV[gr,ImagePadding]
+      ,{sides->0.3,Complement[Values@$SidePositions,sides]->40}]
+    (* ,ImageSize->If[Last@#2==1||Last@#2==Last@dims,{340,Automatic},{300,Automatic}]; *)
     (* ,ImagePadding ->  *)
       (* ReplacePart[AbsoluteOptionsV[gr, ImagePadding], sides->10]  *)
 ];
@@ -69,10 +73,10 @@ Grid[
     g=Overlay[{
       g=Show[
         TrimTicksAndLabels[#1,GridEdgeComplement[#2,dims]]
-        ,ImagePadding->RemovedImagePadding[#1,#2,dims]
+        (* ,ImagePadding->RemovedImagePadding[#1,#2,dims] *)
         ,ImageSize->ims
         ]
-      ,Graphics[ {MapThread[
+      ,Graphics[{MapThread[
         Inset[
           Framed[
             PRot[#2]@Style[First@#1,FontSize->12]
@@ -82,7 +86,7 @@ Grid[
         ,{KeepVisible[Apply[Part[gLab,#1,{1,#2+1}]&,#2],vis]
         ,KeepVisible[pref,vis]/.$SidePlacement}]}
         ,AbsoluteOptions[g,{ImageSize}]
-        ,AspectRatio->Apply[Divide, AbsoluteOptionsV[g, ImageSize]]
+        ,AspectRatio->Apply[Divide, Reverse@AbsoluteOptionsV[g, ImageSize]]
         ,PlotRangeClipping->False] 
     }];
     xx="/tmp/"<>RandomWord[];
