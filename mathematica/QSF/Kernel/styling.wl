@@ -23,8 +23,15 @@ Map[SetOptions[#,
 ];
 
 colorIndex=<||>;
-DefaultColorList[] := "DefaultPlotStyle" /. (Method /. Charting`ResolvePlotTheme[$PlotTheme, ListPlot]);
-GetColor[key_] := (If[MissingQ[colorIndex[key]], AssociateTo[colorIndex, key -> (Length[colorIndex] + 1)]]; Part[DefaultColorList[], colorIndex[key]]);
+(* $PlotTheme: for real default *)
+(* "ThemeName" string for others *)
+GetPlotStyle[name_]:="DefaultPlotStyle"/.(Method/.Charting`ResolvePlotTheme[name,ListLinePlot]);
+
+(* pmrkrs=PlotMarkers/.Charting`ResolvePlotTheme["OpenMarkersThick",ListLinePlot] *)
+DashedVibrantTheme[]:=
+  ReplacePart[Join[GetPlotStyle["Monochrome"],Rest@GetPlotStyle["Monochrome"]],{x_,1}:>GetPlotStyle[$PlotTheme][[x,1]]];
+
+GetColor[key_]:=(If[MissingQ[colorIndex[key]],AssociateTo[colorIndex,key->(Length[colorIndex]+1)]];Part[DashedVibrantTheme[],colorIndex[key]]);
 
 End[];
 EndPackage[];

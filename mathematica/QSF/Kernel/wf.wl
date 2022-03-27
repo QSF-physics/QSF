@@ -373,6 +373,7 @@ WFPlot[WF[hd_Association, data_List|data_Legended],opt:OptionsPattern[]]:=Module
     (* PlotRangePadding->Scaled[0.08], *)
 		Frame->True,
 		FrameTicks->True,
+    PlotTheme -> "Detailed",
 		DataRange->drng],
 		2, 
 		AutoBarLegend[#,"Jet",{min,max}]&@ 
@@ -405,7 +406,10 @@ WFPlot[WF[hd_Association, data_List|data_Legended],opt:OptionsPattern[]]:=Module
 
 fixNestedLegends = {Legended[Legended[k_, c___], dd___] :> Legended[k, Flatten[{c, dd}, 1] ]};
 (* Substitution for Show *)
-Options[WFCombine]={"PlotRange"->Full,"LegendPlacement"->Bottom,"LeafPath"->{}};
+Options[WFCombine]={
+  "PlotRange"->Full
+  ,"LegendLabels"->Identity
+,"LegendPlacement"->Bottom,"LeafPath"->{}};
 (* WFCombine[ass_Association,opt:OptionsPattern[]] :=
 Show[KeyValueMap[WFCombine[#2, Flatten[Append[COptionValue[{opt,WFCombine},"LeafPath"], #1]],opt]&,ass],PlotRange->OptionValue["PlotRange"] ] //. fixNestedLegends; *)
 
@@ -423,7 +427,8 @@ WFPlot[
 			data, 
 			Placed[
 				Style[
-          StringJoin[Flatten[COptionValue[{opt,WFCombine},"LeafPath"]//.{Key[a__]:>a}]]
+          COptionValue[{opt,WFCombine},"LegendLabels"]@
+          Flatten[COptionValue[{opt,WFCombine},"LeafPath"]//.{Key[a__]:>a}]
         , defaultStyle]
 				,COptionValue[WFCombine,"LegendPlacement"]
 			]
@@ -496,7 +501,13 @@ GridKeys[ass_Association]:=KeyValueMap[If[AssociationQ[#2],Join[{#1},GridKeys[#2
 GridKeys[any_]:=Nothing;
 SubKeys[ass_Association]:=Map[Flatten@*Rest,DeepKeys[ass]];
 
-UnifyLegends[x_List]:=Flatten@Union[Flatten[Flatten[x] /.{Legended[a_, b___] :> b}],SameTest -> SameLegendQ];
+UnifyLegends[x_List]:=
+SortBy[
+  Flatten@Union[
+    Flatten[Flatten[x] /.{Legended[a_, b___] :> b}],
+    SameTest -> SameLegendQ], 
+  Cases[#, Style[c_, ___] -> c, \[Infinity]] &
+];
 RemoveLegends[x_]:=x/.{Legended[a_, b___] :> a};
 
 

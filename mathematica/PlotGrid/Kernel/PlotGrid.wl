@@ -16,9 +16,9 @@ $SidePlacement = AssociationMap[Reverse,$SidePositions];
 ClearTickLabel := ReplacePart[#, 2 -> ""] &;
 AbsoluteOptionsV := #2 /. AbsoluteOptions[#1, #2] &;
 
-ClearLastTickLabels[ticks_List, n_ : 3] :=  Map[MapAt[ClearTickLabel, #, -n ;;] &, ticks, {2}];
-
-TrimTicksAndLabels[gr_Graphics, sides_List] := 
+ClearLastTickLabels[ticks_List, n_ : 2] :=  Map[MapAt[ClearTickLabel, #, -n ;;] &, ticks, {2}];
+(* Options[TrimTicksAndLabels]={"PlotGridPadding"->{{30,20},{10,20}}}; *)
+TrimTicksAndLabels[gr_Graphics, sides_List,opt:OptionsPattern[]] := 
   Show[gr, 
     FrameLabel -> 
         ToExpression@
@@ -32,15 +32,12 @@ TrimTicksAndLabels[gr_Graphics, sides_List] :=
     ,FrameStyle->{Black}
     ,ImagePadding->ReplacePart[
       AbsoluteOptionsV[gr,ImagePadding]
-      ,{sides->0.3,Complement[Values@$SidePositions,sides]->40}]
-    (* ,ImageSize->If[Last@#2==1||Last@#2==Last@dims,{340,Automatic},{300,Automatic}]; *)
-    (* ,ImagePadding ->  *)
-      (* ReplacePart[AbsoluteOptionsV[gr, ImagePadding], sides->10]  *)
+      ,{sides->0.2,Complement[Values@$SidePositions,sides]->OptionValue[{opt,PlotGrid1},"PlotGridPadding"]}]
 ];
 
-GridEdge[pos_List, dims_List] := 
-  Position[MapAt[Reverse, Reverse@Transpose@{pos - 1, dims - pos}, {2}], 0];
-GridEdgeComplement[pos_List, dims_List] := Complement[Values@$SidePositions, GridEdge[pos,dims] ];
+GridEdge[pos_List,dims_List]:=
+Position[MapAt[Reverse,Reverse@Transpose@{pos-1,dims-pos},{2}],0];
+GridEdgeComplement[pos_List,dims_List]:=Complement[Values@$SidePositions,GridEdge[pos,dims]];
 
 
 RemovedImagePadding[gr_Graphics,loc_List,dims_List]:=
@@ -49,30 +46,26 @@ GridEdge[loc,dims]->40}];
 
 
 
-PlotGrid0[pl__]:=PlotGrid[pl];
-
-(* PlotGrid1[pl_?MatrixQ]:=Grid[MapIndexed[
-   Show[#1, ImagePadding -> RemovedImagePadding[#1, #2, Dimensions@pl] ] &, pl, {2}], 
-  Spacings -> 0, BaseStyle -> ImageSizeMultipliers -> 1]; *)
-  (* //If[COptionValue[{opt,WFGrid},"GridTranspose"],Transpose,Identity], *)
 KeepVisible[l_,edges_]:=MapIndexed[If[MemberQ[edges,{First@#2,1}|{First@#2,2}],#1,Nothing]&, l];
 
 PPair[x_]:=If[Print[x];(x===System`Top)||(x===System`Bottom),{System`Center,x},{x,System`Center}];
+PPairRel[x_]:=If[Print[x];(x===System`Top)||(x===System`Bottom),{System`Center,0},{0,System`Center}];
 PRot[x_]:=If[x===System`Left || x===System`Right,Rotate[#,90 Degree]&,Identity];
-Options[PlotGrid1]={"GridLabels"->{},"GridTranspose"->False,"LabelPlacement"->{System`Right,System`Top}};
+Options[PlotGrid1]={"GridLabels"->{},"GridTranspose"->False,"LabelPlacement"->{System`Right,System`Top},"PlotGridPadding"->30};
 PlotGrid1[pl_?MatrixQ,opt:OptionsPattern[]]:=
-Module[{vis, ims, pref,gLab, dims,xx,xxx},
+Module[{vis, ims, pref,gLab, dims,g},
 pref=OptionValue[{opt,PlotGrid1},"LabelPlacement"];
 gLab=OptionValue[{opt,PlotGrid1},"GridLabels"];
+pgp=OptionValue[{opt,PlotGrid1},"PlotGridPadding"];
 dims=Dimensions@pl;
 Grid[
   MapIndexed[
     (
     vis=Intersection[pref/.$SidePositions,GridEdge[#2,dims]];
-    ims=If[Last@#2==1||Last@#2==Last@dims,{340,Automatic},{300,Automatic}];
-    g=Overlay[{
+    ims=If[Last@#2==1||Last@#2==Last@dims,{300+pgp,Automatic},{300,Automatic}];
+    Overlay[{
       g=Show[
-        TrimTicksAndLabels[#1,GridEdgeComplement[#2,dims]]
+        TrimTicksAndLabels[#1,GridEdgeComplement[#2,dims],opt]
         (* ,ImagePadding->RemovedImagePadding[#1,#2,dims] *)
         ,ImageSize->ims
         ]
@@ -88,35 +81,20 @@ Grid[
         ,AbsoluteOptions[g,{ImageSize}]
         ,AspectRatio->Apply[Divide, Reverse@AbsoluteOptionsV[g, ImageSize]]
         ,PlotRangeClipping->False] 
-    }];
-    xx="/tmp/"<>RandomWord[];
+    }]
+    (* xx="/tmp/"<>RandomWord[];
     Export[xx<>"_g.txt",FullForm@g];
-    Export[xx<>"_g.png",g];
-    g    
+    Export[xx<>"_g.png",g]; *)
+    (* g     *)
     )& 
     ,pl
     ,{2}]
-(* ,BaseStyle->ImageSizeMultipliers->1 *)
+,BaseStyle->ImageSizeMultipliers->1
 ,Spacings -> {0, 0.1}
 ]];
-(* Grid[MapIndexed[
-  Show[
-    TrimTicksAndLabels[#1, GridEdgeComplement[#2, dims]]
-    , ImagePadding -> RemovedImagePadding[#1, #2, dims]
-    , ImageSize -> 
-     If[Last@#2 == 1 || Last@#2 == Last@dims, {340, 
-       Automatic}, {300, Automatic}]
-    ] &, mod, {2}] *)
-  
 
-(* Show[#1,ImagePadding -> RemovedImagePadding[#1,#2,Dimensions@pl]],
-    Labeled[
-      
-      (* Apply Labels *)
-     ,KeepVisible[Apply[Part[OptionValue[{opt,PlotGrid1},"GridLabels"],#1,{1,#2+1}]&,#2],visible]
-      (* Only one vertical and horizontal, the one that's free *)
-     ,KeepVisible[pref,visible]/.$SidePlacement
-     ,RotateLabel->True] *)
+
+PlotGrid0[pl__]:=PlotGrid[pl];
 PlotGrid2[pl_?MatrixQ]:=GraphicsGrid[MapIndexed[
     TrimTicksAndLabels[#1, GridEdgeComplement[#2, Dimensions@pl]] &, pl, {2}], 
     Spacings -> Scaled[-0.1]];
