@@ -68,7 +68,7 @@ StructMap[ass_, rule_Rule] := Module[
 Options[StructProcess] = {"Operations" -> {}};
 StructProcess[ass_Association, op: OptionsPattern[{StructProcess}]] := 
 Module[{res = ass, cn=1, tmpl=StringTemplate["[``/``] "]}, 
-    Block[{options},
+    Block[{cmdline`opt`options=cmdline`opt`options},
     LL[]++; 
     Do[
         step=tmpl[cn++,Length[OptionValue["Operations"] ] ];

@@ -10,7 +10,8 @@ AppendToKey;
 PopKey;
 COptionValue;
 COptionValues;
-(* options; *)
+options;
+
 Begin["`Private`"];
 
 options=<||>;

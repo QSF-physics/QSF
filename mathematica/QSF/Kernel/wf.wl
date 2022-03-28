@@ -14,13 +14,16 @@ WFCombine;
 WFExport;
 WFPlot;
 WFGrid;
-
+ExtractNumbers;
 Begin["`Private`"];
 
-Bool := # != 0 &;
+Bool:=#!=0&;
 ProbabilityQ[hd_Association] := Not[hd["isComplex"]];
 OpenBin:=Check[OpenRead[#,BinaryFormat->True],Abort[]] &;
 WFFileNameQ:=StringEndsQ[#, ".psi" ~~ DigitCharacter..] &;
+RemoveGarbage:=FixedPoint[If[ListQ[#],If[Length[#]>1,Flatten[DeleteCases[#,{},-1]],First[#]],#]&,#]&;
+ExtractNumbers[l_String|l_List]:=RemoveGarbage[StringCases[l,x:NumberString:>ToExpression[x]]];
+
 
 FromEdge[ind_, ns_] := MapThread[If[#1 < #2/2, -#1, #1 - #2 + 1] &, {ind, ns}];
 WFCAPMask[hd_,ratio_:0.5] := Module[{ns, nCAP, eta, CAP, bd},
@@ -336,6 +339,7 @@ AutoBarLegend[gr_Graphics, colorFn_, {min_, max_,n_:9}] :=
 
 SetAttributes[GaussianBlur,{Listable}];
 Options[GaussianBlur] = {"GaussianBlurRadius" -> None};
+
 GaussianBlur[WF[hd_Association, data_List],opt:OptionsPattern[]]:=
 If[
 	OptionValue["GaussianBlurRadius"]===None, WF[hd,data],
@@ -492,7 +496,8 @@ WFExport[ass_Association,opt:OptionsPattern[]]:=MapIndexed[WFExport[#1,"LeafPath
 Multicolumn[ass_Association,opt:OptionsPattern[]]:=
 Multicolumn[KeyValueMap[Labeled[#2, #1] &, ass] ];
 
-SameLegendQ:=SameQ[Cases[#1, LineLegend[_, x_, ___] :> x, \[Infinity] ], Cases[#2, LineLegend[_, y_, ___] :> y, \[Infinity] ] ] &;
+SameLegendQ:=SameQ[Last@#1,Last@#2]&;
+(* SameQ[Cases[#1, LineLegend[_, x_, ___] :> x, \[Infinity] ], Cases[#2, LineLegend[_, y_, ___] :> y, \[Infinity] ] ] &; *)
 (* WFGrid[x_List]:=Legended[Grid[(x//.fixNestedLegends)/.{Legended[a_, b___] :> a},BaseStyle->ImageSizeMultipliers->1], Flatten@Union[Flatten[(x//.fixNestedLegends) /.{Legended[a_, b___] :> b}] ] ]; *)
 
 DeepKeys[ass_Association]:=KeyValueMap[If[AssociationQ[#2], Join[{#1}, DeepKeys[#2]], {#1}] &, ass];
@@ -501,23 +506,29 @@ GridKeys[ass_Association]:=KeyValueMap[If[AssociationQ[#2],Join[{#1},GridKeys[#2
 GridKeys[any_]:=Nothing;
 SubKeys[ass_Association]:=Map[Flatten@*Rest,DeepKeys[ass]];
 
-UnifyLegends[x_List]:=
-SortBy[
+UnifyLegends[x_List]:=Apply[Placed[LineLegend[##
+,LegendLabel->Placed["number of cycles",Before]
+,LegendLayout->"Row"],Below]&][
+  Transpose[
+    SortBy[
+      Union[
+        Cases[x,LineLegend[a_,b_,___]:>{First@a,First@b},\[Infinity]]
+        ,SameTest->SameLegendQ 
+      ]
+    ,Last]
+  ]
+];
+(* SortBy[
   Flatten@Union[
     Flatten[Flatten[x] /.{Legended[a_, b___] :> b}],
     SameTest -> SameLegendQ], 
   Cases[#, Style[c_, ___] -> c, \[Infinity]] &
-];
+]; *)
 RemoveLegends[x_]:=x/.{Legended[a_, b___] :> a};
 
 
 Options[WFGrid]={"GridLabels"->{},"GridTranspose"->False};
-WFGrid[ass_Association,opt:OptionsPattern[]]:=
-WFGrid[
-  Print["Keys: ", GridKeys[ass]];  
-  GriddedLeaves[ass],
-  "GridLabels"->GridKeys[ass]
-];
+WFGrid[ass_Association,opt:OptionsPattern[]]:=WFGrid[GriddedLeaves[ass],"GridLabels"->GridKeys[ass]];
 WFGrid[x_List,opt:OptionsPattern[]]:=Legended[PlotGrid1[RemoveLegends[x],opt],UnifyLegends[x]];
 	
 

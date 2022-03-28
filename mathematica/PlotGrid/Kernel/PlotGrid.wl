@@ -48,8 +48,8 @@ GridEdge[loc,dims]->40}];
 
 KeepVisible[l_,edges_]:=MapIndexed[If[MemberQ[edges,{First@#2,1}|{First@#2,2}],#1,Nothing]&, l];
 
-PPair[x_]:=If[Print[x];(x===System`Top)||(x===System`Bottom),{System`Center,x},{x,System`Center}];
-PPairRel[x_]:=If[Print[x];(x===System`Top)||(x===System`Bottom),{System`Center,0},{0,System`Center}];
+PPair[x_]:=If[(x===System`Top)||(x===System`Bottom),{System`Center,x},{x,System`Center}];
+PPairRel[x_]:=If[(x===System`Top)||(x===System`Bottom),{System`Center,0},{0,System`Center}];
 PRot[x_]:=If[x===System`Left || x===System`Right,Rotate[#,90 Degree]&,Identity];
 Options[PlotGrid1]={"GridLabels"->{},"GridTranspose"->False,"LabelPlacement"->{System`Right,System`Top},"PlotGridPadding"->30};
 PlotGrid1[pl_?MatrixQ,opt:OptionsPattern[]]:=
