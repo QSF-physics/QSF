@@ -21,8 +21,8 @@ Bool:=#!=0&;
 ProbabilityQ[hd_Association] := Not[hd["isComplex"]];
 OpenBin:=Check[OpenRead[#,BinaryFormat->True],Abort[]] &;
 WFFileNameQ:=StringEndsQ[#, ".psi" ~~ DigitCharacter..] &;
-RemoveGarbage:=FixedPoint[If[ListQ[#],If[Length[#]>1,Flatten[DeleteCases[#,{},-1]],First[#]],#]&,#]&;
-ExtractNumbers[l_String|l_List]:=RemoveGarbage[StringCases[l,x:NumberString:>ToExpression[x]]];
+RemoveJunk:=FixedPoint[If[ListQ[#],If[Length[#]==1,First[#],Flatten[DeleteCases[#,{},-1]]],#]&,#]&;
+ExtractNumbers[l_String|l_List]:=RemoveJunk[StringCases[l,x:NumberString:>ToExpression[x]]];
 
 
 FromEdge[ind_, ns_] := MapThread[If[#1 < #2/2, -#1, #1 - #2 + 1] &, {ind, ns}];
@@ -242,7 +242,7 @@ Options[MergeOrthants]={"Orthants"->All};
 SetAttributes[MergeOrthants,{Listable}];
 decorator[LOGF]@
 MergeOrthants[WF[hd_Association, data_List],opt:OptionsPattern[]]:=
-Module[{mo,res=data},mo=COptionValue[MergeOrthants,"Orthants"];
+Module[{mo,res=data},mo=COptionValue[{opt,MergeOrthants},"Orthants"];
 	res=If[mo===None,LOG["Not merging orthants"]; res,
 		subsets=Subsets[Range[hd["dim"] ] ];
 		subsets=If[mo==="Correlated", 
@@ -339,12 +339,11 @@ AutoBarLegend[gr_Graphics, colorFn_, {min_, max_,n_:9}] :=
 
 SetAttributes[GaussianBlur,{Listable}];
 Options[GaussianBlur] = {"GaussianBlurRadius" -> None};
-
 GaussianBlur[WF[hd_Association, data_List],opt:OptionsPattern[]]:=
-If[
-	OptionValue["GaussianBlurRadius"]===None, WF[hd,data],
-	LOG["Applying GaussianBlur with radius ",OptionValue["GaussianBlurRadius"]];
-	WF[hd,GaussianFilter[data,{OptionValue["GaussianBlurRadius"]/WFDataStep[hd]} ] ]
+With[{rad=COptionValue[{opt,GaussianBlur},"GaussianBlurRadius"]},
+  If[rad===None, WF[hd,data],
+  LOG["Applying GaussianBlur with radius ",rad];
+  WF[hd,GaussianFilter[data,{rad/WFDataStep[hd]}]]]
 ]; 
 
 
@@ -411,9 +410,8 @@ WFPlot[WF[hd_Association, data_List|data_Legended],opt:OptionsPattern[]]:=Module
 fixNestedLegends = {Legended[Legended[k_, c___], dd___] :> Legended[k, Flatten[{c, dd}, 1] ]};
 (* Substitution for Show *)
 Options[WFCombine]={
-  "PlotRange"->Full
-  ,"LegendLabels"->Identity
-,"LegendPlacement"->Bottom,"LeafPath"->{}};
+  "PlotRange"->Full,"LegendLabels"->Identity
+  ,"LegendPlacement"->Bottom,"LeafPath"->{}};
 (* WFCombine[ass_Association,opt:OptionsPattern[]] :=
 Show[KeyValueMap[WFCombine[#2, Flatten[Append[COptionValue[{opt,WFCombine},"LeafPath"], #1]],opt]&,ass],PlotRange->OptionValue["PlotRange"] ] //. fixNestedLegends; *)
 
@@ -434,7 +432,7 @@ WFPlot[
           COptionValue[{opt,WFCombine},"LegendLabels"]@
           Flatten[COptionValue[{opt,WFCombine},"LeafPath"]//.{Key[a__]:>a}]
         , defaultStyle]
-				,COptionValue[WFCombine,"LegendPlacement"]
+				,COptionValue[{opt,WFCombine},"LegendPlacement"]
 			]
 		]
 	]
@@ -448,8 +446,8 @@ Show[
 		MapIndexed[
 			If[MatchQ[#1,_WF],WFCombine[#1,"LeafPath" -> #2],#1]&
 			,ass
-			,5
-		], _Legended, 5
+			,ArrayDepth[ass, AllowedHeads -> Association]
+		], _Legended, ArrayDepth[ass, AllowedHeads -> Association]
 	]
 	,PlotRange->COptionValue[{opt,WFCombine},"PlotRange"]
 ]//.fixNestedLegends;

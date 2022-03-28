@@ -64,34 +64,45 @@ StructMap[ass_, rule_Rule] := Module[
         )&, ass, {lvl}];
     res
 ];
+currentOperations={};
 
-Options[StructProcess] = {"Operations" -> {}};
+LookForCache[ops_,chi_]:=Module[{rops},
+(* Ignore functions, suboperations and output paths *)
+rops=DeleteCases[ops,_List|_String|_Symbol];
+AssociationThread[Flatten[Position[ops,Rule[_Integer, _],1]]->Map[chi+Hash[Part[rops,;;#]]&,Flatten[Position[rops,Rule[_Integer, _],1]]]]
+];
+OpName[x_]:=If[Head@x===Composition, StringRiffle[Map[ToString[#]&,Level[x,1]],"_"], ToString[x]];
+Options[StructProcess] = {"Operations" -> {}, "CacheHashIndex"->0};
 StructProcess[ass_Association, op: OptionsPattern[{StructProcess}]] := 
-Module[{res = ass, cn=1, tmpl=StringTemplate["[``/``] "]}, 
-    Block[{cmdline`opt`options=cmdline`opt`options},
-    LL[]++; 
-    Do[
-        step=tmpl[cn++,Length[OptionValue["Operations"] ] ];
-        Switch[o,
-            Null, "";,
-            _Rule, 
-                Switch[First[o],
-                    _Integer, 
-                        LOG[step,"Operation: ", ToString[Last@o,InputForm], " at level ", First@o]; 
-                        res=StructMap[res,o];,
-                    _, 
-                        LOG[step,"Option: ", ToString[o,InputForm]]; 
-                        UpdateOpts[o];
-                ]; 
-            ,_String, AppendToKey["ExportPath"->o]; LOG["Current ExportPath set to: ","ExportPath"/.Options[QSFcmdline]];
-            ,_Symbol, LOG[step, "Function ", o]; Catch[o[res],o[]]; 
-            ,_List, LOG[step, "Inner process (to avoid saving results)"]; StructProcess[res, "Operations"->o];
-            ,_ , LOGE[step, "Unrecognized command: ", o];
-        ];
-    ,
-    {o, OptionValue["Operations"]}];
-    LL[]--; 
+Module[{ops,opN,chi,ch,H=0,res=ass,cn=1,tmpl=StringTemplate["[``/``] "]},
+  Block[{cmdline`opt`options=cmdline`opt`options},
+  ops=DeleteCases[OptionValue["Operations"],Null];
+  ch=LookForCache[ops,If[OptionValue["CacheHashIndex"]==0,Hash[ass],OptionValue["CacheHashIndex"]]];
+  LL[]++; 
+  Do[
+    step=tmpl[cn++,Length[ops] ];
+    Switch[o,
+      _Rule,Switch[First[o]
+        ,_Integer,H=ch[cn-1];
+          opN=StringTemplate["/tmp/mmac/``_``.mx"][OpName[Last[o]],H];
+          If[FileExistsQ[opN],
+            LOG[step,"Operation: ", ToString[Last@o,InputForm], " cached from ", opN]; 
+            res=Import[opN];,
+            LOG[step,"Operation: ", ToString[Last@o,InputForm]]; 
+            res=StructMap[res,o]; LOG["Caching results to: ",opN];
+            Export[opN,res];];
+        ,_,LOG[step,"Option: ", ToString[o,InputForm]]; 
+          UpdateOpts[o];
+        ]; 
+      ,_String, AppendToKey["ExportPath"->o]; LOG[step,"Current ExportPath set to: ","ExportPath"/.Options[QSFcmdline]];
+      ,_Symbol, LOG[step, "Function ", o]; Catch[o[res],o[]]; 
+      ,_List, LOG[step, "Inner List"]; StructProcess[res, "Operations"->o, "CacheHashIndex"->H];
+      ,_ , LOGE[step, "Unrecognized command: ", o];
     ];
+  ,
+  {o, ops}];
+  LL[]--; 
+  ];
 ];
 LookIn[inp_]:=If[$Notebooks, Quiet@FileNameJoin[{Check[NotebookDirectory[],Directory[]],inp}], inp];
 

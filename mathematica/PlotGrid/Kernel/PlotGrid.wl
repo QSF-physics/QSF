@@ -51,7 +51,7 @@ KeepVisible[l_,edges_]:=MapIndexed[If[MemberQ[edges,{First@#2,1}|{First@#2,2}],#
 PPair[x_]:=If[(x===System`Top)||(x===System`Bottom),{System`Center,x},{x,System`Center}];
 PPairRel[x_]:=If[(x===System`Top)||(x===System`Bottom),{System`Center,0},{0,System`Center}];
 PRot[x_]:=If[x===System`Left || x===System`Right,Rotate[#,90 Degree]&,Identity];
-Options[PlotGrid1]={"GridLabels"->{},"GridTranspose"->False,"LabelPlacement"->{System`Right,System`Top},"PlotGridPadding"->30};
+Options[PlotGrid1]={"GridLabels"->{},"GridTranspose"->False,"LabelPlacement"->{System`Right,System`Top},"PlotGridPadding"->50};
 PlotGrid1[pl_?MatrixQ,opt:OptionsPattern[]]:=
 Module[{vis, ims, pref,gLab, dims,g},
 pref=OptionValue[{opt,PlotGrid1},"LabelPlacement"];
