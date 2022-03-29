@@ -15,6 +15,8 @@ WFExport;
 WFPlot;
 WFGrid;
 ExtractNumbers;
+GridKeys;
+GriddedLeaves;
 Begin["`Private`"];
 
 Bool:=#!=0&;
@@ -197,7 +199,7 @@ WFDataRange[hd_Association]:=Module[{Xs,Ps,dps},
 	Xs=0.5 hd["dxs"] (hd["ns"]-1);
 	Ps=\[Pi]/hd["dxs"];
 	
-	If[hd["dim"]==1,First[#],Identity[#] ]&@
+	(* If[hd["dim"]==1,First[#],Identity[#] ]&@ *)
 	If[hd["positiveAxisOnly"],
 		MapThread[{#1,#2}&, If[hd["rep"]==2,{Ps*0, Ps-dps}, {hd["dxs"]*0.5, Xs}] ],
 		MapThread[{-#1,#2}&, If[hd["rep"]==2,{Ps, Ps-dps}, {Xs, Xs}] ]
@@ -347,27 +349,28 @@ With[{rad=COptionValue[{opt,GaussianBlur},"GaussianBlurRadius"]},
 ]; 
 
 
-Options[WFPlot] = {"ColorIndex"->1};
 SetAttributes[WFPlot,{Listable}];
-
-
-
-(* WFPlot2D[WF[hd_Association, leg_Legended]]:=Legended[WFPlot[hd,RemoveLegend[data]], leg /.{Legended[a_, b___] :> b}]; *)
+Options[WFPlot] = {"ColorIndex"->1, "ColorFunction"->"Jet"};
 
 decorator[LOGF]@
 WFPlot[WF[hd_Association, data_List|data_Legended],opt:OptionsPattern[]]:=Module[
-	{drng,step, min, max, HD=hd, res=data, pr},
+	{drng,step, min, max, HD=hd, res=data, prng},
+  
 	drng=WFDataRange[hd];
 	step=WFDataStep[hd];
-	
-	res= If[HD["isComplex"], HD["isComplex"]=False; Abs[RemoveLegend[res]]^2, res];    
-	(* Print["OOO-----\n ",res, "\n-----OOO"]; *)
+  (* Default PlotRange will show the whole DataRange *)
+	prng=COptionValue[{opt, PlotRange->Append[Full][drng]}, PlotRange];
+	(* Attempt to keep PlotRange symbol free *)
+  prng=MapThread[If[ListQ[#1],#1,#2]&,{prng,Append[Full][drng]}];
+
+	res=If[HD["isComplex"], HD["isComplex"]=False; Abs[RemoveLegend[res]]^2, res];    
 	{min, max} = MinMax[res];
-	exp = Round[Log[10, max],1]-2;
 	MC=Apply[RGBColor, ConstantArray[Round[ColorNegate@ ColorData["Jet"][0] /. RGBColor[x__] -> Total[{x}]/3], 3]];
 	mC=Blend[{MC,Gray}];
-	pr=OptionValue[{Options[QSFcmdline], opt, {PlotRange->Full}}, PlotRange];
-	pr=MapIndexed[If[First[#2]<HD["dim"] && #1===Full, drng[[First[#2]]], #1]&,pr];
+  
+	
+  (* prng=MapIndexed[If[First[#2]<=HD["dim"] && #1===Full, drng[[First[#2]]], #1]&,prng]; *)
+  Print["prng:", prng];
 	Switch[HD["dim"],
 		1,  
 		ListLinePlot[
@@ -377,14 +380,14 @@ WFPlot[WF[hd_Association, data_List|data_Legended],opt:OptionsPattern[]]:=Module
 		Frame->True,
 		FrameTicks->True,
     PlotTheme -> "Detailed",
-		DataRange->drng],
+		DataRange->First@drng],
 		2, 
 		AutoBarLegend[#,"Jet",{min,max}]&@ 
 		ArrayPlot[Reverse@res,
 		FilterRules[{Options[QSFcmdline], opt}, Options[ArrayPlot] ],
 		DataReversed->False,
-		FrameTicks->{{First@Rest@BetterTicks[pr[[1]],1, ColorData["Jet"][0]], None},
-					 {First@Rest@BetterTicks[pr[[2]],1, ColorData["Jet"][0]], None}},
+		FrameTicks->{{First@Rest@BetterTicks[prng[[1]],1, ColorData["Jet"][0]], None},
+					 {First@Rest@BetterTicks[prng[[2]],1, ColorData["Jet"][0]], None}},
 		ColorFunction->"Jet",
 		ImageSize -> 300,
 		DataRange->drng,
