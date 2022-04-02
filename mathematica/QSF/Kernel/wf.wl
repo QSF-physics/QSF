@@ -1,14 +1,15 @@
-BeginPackage["QSF`wf`", {"cmdline`log`","cmdline`opt`", "QSF`styling`", "PlotGrid`","QSF`ColorFunctions`","QSF`DataAnalysis`"}];
+BeginPackage["QSF`wf`", {"cmdline`log`","cmdline`opt`", "QSF`StyleUtils`", "PlotGrid`","QSF`ColorFunctions`","QSF`DataAnalysis`"}];
 
 (* Whether given filename has a signature consistent with QSF package *)
 WF;
 WFFileNameQ;
+WFDataStep;
 WFLoad;
 TrimMargins;
 Average;
 RemoveBoundedPart;
 MergeOrthants;
-GaussianBlur;
+
 TransverseDiagSum;
 WFCombine;
 WFExport;
@@ -16,12 +17,11 @@ WFPlot;
 WFGrid;
 ExtractNumbers;
 GridKeys;
-GriddedLeaves;
+
 Begin["`Private`"];
 
 Bool:=#!=0&;
 ProbabilityQ[hd_Association] := Not[hd["isComplex"]];
-OpenBin:=Check[OpenRead[#,BinaryFormat->True],Abort[]] &;
 WFFileNameQ:=StringEndsQ[#, ".psi" ~~ DigitCharacter..] &;
 RemoveJunk:=FixedPoint[If[ListQ[#],If[Length[#]==1,First[#],Flatten[DeleteCases[#,{},-1]]],#]&,#]&;
 ExtractNumbers[l_String|l_List]:=RemoveJunk[StringCases[l,x:NumberString:>ToExpression[x]]];
@@ -77,7 +77,7 @@ RemoveBoundedPart[WF[hd_Association, data_List] ] :=If[
 	BoundedQ[hd], LOG["Pass"]; WF[hd,data], 
 	LOG["Removing Bounded Part"]; 
 	WF[
-		MapAt[#*0 &,hd,Key["bounded"] ], 
+		ReplacePart[hd,"bounded"->0], 
 		FourierAt[WFMaskEdgeAt[FourierAt[data, Bounded[hd] ], Bounded[hd] ], Bounded[hd], True]
 	]
 ];
@@ -89,15 +89,15 @@ Evenify[n_Integer]:=If[OddQ[n],n+1,n];
 Options[TrimMargins]={"TrimMarginsPercent"->0.1};
 SetAttributes[TrimMargins,{Listable}];
 decorator[LOGF]@
-TrimMargins[WF[hd_Association, data_List] ] := Module[{p, po},
+TrimMargins[WF[hd_Association,data_List]]:=Module[{p,po,HD},
 	p=COptionValue[TrimMargins,"TrimMarginsPercent"]; 
 	po=Evenify@Round[hd["ns"] p];
-	If[Not[BoundedQ[hd] ], WF[hd,data],
-		LOG["Removing margins: ",p, "%, points: ", po]; 
+	If[Not[BoundedQ[hd]],WF[hd,data],
+    HD=ReplacePart[hd,{"ns"->hd["ns"] - 2 po}];
+		LOG["Removing margins: ",p, "%, points: ", po, " (extracting ranges [", Map[(1+Evenify@Round[# p];;#-Evenify@Round[# p])&,hd["ns"]], "])"]; 
 		WF[
-			ReplacePart[hd,{"ns"->hd["ns"] - 2 po}],
-			(* MapAt[# - 2 Evenify@Round[# p] &, hd, Key["ns"] ], *)
-			Apply[data[[##]] &, Map[(1 + Evenify@Round[# p] ;; # - Evenify@Round[# p]) &, hd["ns"] ] ]
+			HD,
+			Apply[data[[##]]&,Map[(1+Evenify@Round[# p];;#-Evenify@Round[# p])&,hd["ns"]]]
 		]
 	]
 ];
@@ -221,19 +221,14 @@ AbsSquare[WF[hd_Association, data_List]] :=
 	WF[HD, Abs[data]^2], WF[hd, data]]];
 AbsSquare[ass_Association]:=Map[AbsSquare,ass];
 
-(* Actions on Associations *)
-(* FirstHeader[ass_] := Merge[Level[Header[ass], {-2}], First]; *)
-
-
 
 
 decorator[LOGF]@
 Average[inp_] := 
-  Module[{r = AbsSquare[inp], fh, dp = ArrayDepth[inp, AllowedHeads -> Association]},
+  Module[{r=AbsSquare[inp],dp=ArrayDepth[inp,AllowedHeads->Association]},
 	WF[
-		Merge[Cases[r, WF[hd_, data_] :> hd, \[Infinity] ], First], 
-		(* Merge[Cases[r, WF[hd_, data_] :> hd, \[Infinity] ], First],  *)
-		Mean@Cases[r, WF[_, data_] :> data, \[Infinity] ] 
+		Merge[Cases[r,WF[hd_,data_]:>hd,\[Infinity]],First],
+		Mean@Cases[r,WF[_,data_]:>data,\[Infinity]] 
 	]
 ];
 
@@ -277,7 +272,7 @@ $PlacePositions = <|{1, 1} -> {{None, Null}}, {1,
 	 2} -> {{Null, None}}, {2, 1} -> {{Null}, {None}}, {2, 
 	 2} -> {{None}, {Null}}|>;
 
-IntegerChop = With[{r = Round[#]}, r + Chop[# - r]] &;
+
 BetterTicks[minmax_, aspectRatio_:1, backgroundColor_:White, expRescale_:False, minor_:{0.01,0.000,10},major_:{0.025,0.00,5}]:=
 Module[{ticks, mD, exp=0, expN=1,min=First@minmax, max=Last@minmax, MC, mC},
 	MC=ColorNegate@ Apply[RGBColor,ConstantArray[backgroundColor /.{GrayLevel[x_]->x, RGBColor[x___] -> Round[Total[{x}]/3]}, 3]];
@@ -298,6 +293,8 @@ Module[{ticks, mD, exp=0, expN=1,min=First@minmax, max=Last@minmax, MC, mC},
 	],1];
 	{exp,ticks}
 ];
+
+
 
 AutoBarLegend[gr_Graphics, colorFn_, {min_, max_,n_:9}] := 
   Module[{bp=BestLegendPlacement[gr], fbpi, ip, is, isL, isG, ipG, ipL, ft, arL, ticks, exp, m, M, expText,
@@ -339,25 +336,16 @@ AutoBarLegend[gr_Graphics, colorFn_, {min_, max_,n_:9}] :=
 		}]
    ];
 
-SetAttributes[GaussianBlur,{Listable}];
-Options[GaussianBlur] = {"GaussianBlurRadius" -> None};
-GaussianBlur[WF[hd_Association, data_List],opt:OptionsPattern[]]:=
-With[{rad=COptionValue[{opt,GaussianBlur},"GaussianBlurRadius"]},
-  If[rad===None, WF[hd,data],
-  LOG["Applying GaussianBlur with radius ",rad];
-  WF[hd,GaussianFilter[data,{rad/WFDataStep[hd]}]]]
-]; 
+
 
 
 SetAttributes[WFPlot,{Listable}];
-Options[WFPlot] = {"ColorIndex"->1, "ColorFunction"->"Jet"};
+Options[WFPlot] = {"ColorIndex"->1};
 
 decorator[LOGF]@
 WFPlot[WF[hd_Association, data_List|data_Legended],opt:OptionsPattern[]]:=Module[
-	{drng,step, min, max, HD=hd, res=data, prng},
-  
-	drng=WFDataRange[hd];
-	step=WFDataStep[hd];
+	{min, max, HD=hd, res=data, prng},
+  With[{drng=WFDataRange[hd], step=WFDataStep[hd]},
   (* Default PlotRange will show the whole DataRange *)
 	prng=COptionValue[{opt, PlotRange->Append[Full][drng]}, PlotRange];
 	(* Attempt to keep PlotRange symbol free *)
@@ -367,10 +355,7 @@ WFPlot[WF[hd_Association, data_List|data_Legended],opt:OptionsPattern[]]:=Module
 	{min, max} = MinMax[res];
 	MC=Apply[RGBColor, ConstantArray[Round[ColorNegate@ ColorData["Jet"][0] /. RGBColor[x__] -> Total[{x}]/3], 3]];
 	mC=Blend[{MC,Gray}];
-  
-	
-  (* prng=MapIndexed[If[First[#2]<=HD["dim"] && #1===Full, drng[[First[#2]]], #1]&,prng]; *)
-  Print["prng:", prng];
+  (* colorf=COptionValue[{opt,WFPlot},"ColorFunction"] *)
 	Switch[HD["dim"],
 		1,  
 		ListLinePlot[
@@ -407,22 +392,20 @@ WFPlot[WF[hd_Association, data_List|data_Legended],opt:OptionsPattern[]]:=Module
    (* Epilog ->Inset[If[norm == 0.0, "-\[Infinity]", Round[Log10@norm, 0.01]], Scaled[{0.95, 0.95}], Scaled[{1, 1}]],
    ColorFunction -> (Color[norm] &), ColorFunctionScaling -> False,
    OpacityFunction -> Transparency, OpacityFunctionScaling -> True,  *)
-];
+]];
 
 
-fixNestedLegends = {Legended[Legended[k_, c___], dd___] :> Legended[k, Flatten[{c, dd}, 1] ]};
+
 (* Substitution for Show *)
 Options[WFCombine]={
   "PlotRange"->Full,"LegendLabels"->Identity
   ,"LegendPlacement"->Bottom,"LeafPath"->{}};
 (* WFCombine[ass_Association,opt:OptionsPattern[]] :=
-Show[KeyValueMap[WFCombine[#2, Flatten[Append[COptionValue[{opt,WFCombine},"LeafPath"], #1]],opt]&,ass],PlotRange->OptionValue["PlotRange"] ] //. fixNestedLegends; *)
+Show[KeyValueMap[WFCombine[#2, Flatten[Append[COptionValue[{opt,WFCombine},"LeafPath"], #1]],opt]&,ass],PlotRange->OptionValue["PlotRange"] ] //. FixNestedLegends; *)
 
 
 (* [WFExport[#1,"LeafPath"->Flatten@Join[COptionValue[{opt,WFExport},"LeafPath"],#2/.{Key[x_]->x}]]&, ass]; *)
 
-
-(* ALMOST *)
 
 WFCombine[WF[hd_Association,data_List],opt:OptionsPattern[]]:=
 WFPlot[
@@ -453,7 +436,7 @@ Show[
 		], _Legended, ArrayDepth[ass, AllowedHeads -> Association]
 	]
 	,PlotRange->COptionValue[{opt,WFCombine},"PlotRange"]
-]//.fixNestedLegends;
+]//.FixNestedLegends;
 
 (* 
 decorator[LOGF]@
@@ -464,19 +447,15 @@ WFCombine[ass_Association,opt:OptionsPattern[]]:=Show[Cases[
 MapIndexed[If[MatchQ[#1,_Graphics],WFCombine[#1,"LeafPath" -> #2],#1]&,ass, 3], x_Legended, 3
 ],PlotRange->COptionValue[{opt,WFCombine},"PlotRange"]]; *)
 
-GraphicsQ[x_Legended|x_Graphics|x_Grid]:=True;
-GraphicsQ[x_]:=False;
 
-GriddedLeaves[ass_Association] :=KeyValueMap[If[AssociationQ[#2], Flatten[GriddedLeaves[#2],1], GriddedLeaves[#2] ] &, ass];
-GriddedLeaves[any_] := {any};
 (* Needs["ForScience`PlotUtils`"]; *)
 (* PlotGrid[ass_Association,o:OptionsPattern[Join[Options[PlotGrid],Options[Graphics] ] ] ]:=ForScience`PlotUtils`PlotGrid[GriddedLeaves[ass],o]; *)
 
 (* SetAttributes[WFExport,{Listable}]; *)
 Options[WFExport]={"ExportPath"->"wf_plots/", "TreePath"->{}, "LeafPath"->{},"FileFormat"->".png"};
 decorator[LOGF]@
-WFExport[gr_?GraphicsQ,opt:OptionsPattern[]]:=
-LOG@Export[
+WFExport[gr_?ExportableQ,opt:OptionsPattern[]]:=
+(LOG@Export[
 	StringJoin[{
 		FileNameJoin[Flatten[{
 			StringJoin[Flatten[
@@ -490,47 +469,27 @@ LOG@Export[
 		}]],
 		StringPadLeft[COptionValue[WFExport,"FileFormat"],4, "."]
 	}]
-,gr];
+,gr];gr)
 
 WFExport[ass_Association,opt:OptionsPattern[]]:=MapIndexed[WFExport[#1,"LeafPath"->Flatten@Join[COptionValue[{opt,WFExport},"LeafPath"],#2/.{Key[x_]->x}]]&, ass];
 
 Multicolumn[ass_Association,opt:OptionsPattern[]]:=
 Multicolumn[KeyValueMap[Labeled[#2, #1] &, ass] ];
 
-SameLegendQ:=SameQ[Last@#1,Last@#2]&;
+
 (* SameQ[Cases[#1, LineLegend[_, x_, ___] :> x, \[Infinity] ], Cases[#2, LineLegend[_, y_, ___] :> y, \[Infinity] ] ] &; *)
-(* WFGrid[x_List]:=Legended[Grid[(x//.fixNestedLegends)/.{Legended[a_, b___] :> a},BaseStyle->ImageSizeMultipliers->1], Flatten@Union[Flatten[(x//.fixNestedLegends) /.{Legended[a_, b___] :> b}] ] ]; *)
+(* WFGrid[x_List]:=Legended[Grid[(x//.FixNestedLegends)/.{Legended[a_, b___] :> a},BaseStyle->ImageSizeMultipliers->1], Flatten@Union[Flatten[(x//.FixNestedLegends) /.{Legended[a_, b___] :> b}] ] ]; *)
 
-DeepKeys[ass_Association]:=KeyValueMap[If[AssociationQ[#2], Join[{#1}, DeepKeys[#2]], {#1}] &, ass];
-DeepKeys[any_]:=Nothing;
-GridKeys[ass_Association]:=KeyValueMap[If[AssociationQ[#2],Join[{#1},GridKeys[#2]],#1]&,ass];
-GridKeys[any_]:=Nothing;
-SubKeys[ass_Association]:=Map[Flatten@*Rest,DeepKeys[ass]];
 
-UnifyLegends[x_List]:=Apply[Placed[LineLegend[##
-,LegendLabel->Placed["number of cycles",Before]
-,LegendLayout->"Row"],Below]&][
-  Transpose[
-    SortBy[
-      Union[
-        Cases[x,LineLegend[a_,b_,___]:>{First@a,First@b},\[Infinity]]
-        ,SameTest->SameLegendQ 
-      ]
-    ,Last]
-  ]
-];
-(* SortBy[
-  Flatten@Union[
-    Flatten[Flatten[x] /.{Legended[a_, b___] :> b}],
-    SameTest -> SameLegendQ], 
-  Cases[#, Style[c_, ___] -> c, \[Infinity]] &
-]; *)
-RemoveLegends[x_]:=x/.{Legended[a_, b___] :> a};
+
 
 
 Options[WFGrid]={"GridLabels"->{},"GridTranspose"->False};
 WFGrid[ass_Association,opt:OptionsPattern[]]:=WFGrid[GriddedLeaves[ass],"GridLabels"->GridKeys[ass]];
-WFGrid[x_List,opt:OptionsPattern[]]:=Legended[PlotGrid1[RemoveLegends[x],opt],UnifyLegends[x]];
+WFGrid[x_List,opt:OptionsPattern[]]:=If[GraphicsMatrixQ[x]
+  ,Legended[PlotGrid1[RemoveLegends[x],opt],UnifyLegends[x]]
+  ,Grid[Transpose[x],Spacings -> Scaled[-0.04]]
+];
 	
 
 

@@ -1,13 +1,26 @@
 #!/usr/bin/env wolframscript
-BeginPackage["QSF`styling`"];
+BeginPackage["QSF`StyleUtils`"];
 
 CurrentColorList;
 GetColor;
 PrettyPlots;
 FontFix;
 defaultStyle;
+RemoveLegends;
+UnifyLegends;
+GriddedLeaves;
+GraphicsQ;
+GraphicsMatrixQ;
+ExportableQ;
+SameLegendQ;
+DeepKeys;
+DeepKeys;
+GridKeys;
+GridKeys;
+SubKeys;
+FixNestedLegends;
 Begin["`Private`"];
-
+FixNestedLegends = {Legended[Legended[k_, c___], dd___] :> Legended[k, Flatten[{c, dd}, 1] ]};
 defaultStyle={FontFamily -> "Latin Modern Math", FontSize -> 12,FontColor->Black};
 
 SetAttributes[FontFix, Listable];
@@ -25,13 +38,46 @@ Map[SetOptions[#,
 colorIndex=<||>;
 (* $PlotTheme: for real default *)
 (* "ThemeName" string for others *)
-GetPlotStyle[name_]:="DefaultPlotStyle"/.(Method/.Charting`ResolvePlotTheme[name,ListLinePlot]);
+DefaultPlotStyle[name_]:="DefaultPlotStyle"/.(Method/.Charting`ResolvePlotTheme[name,ListLinePlot]);
 
 (* pmrkrs=PlotMarkers/.Charting`ResolvePlotTheme["OpenMarkersThick",ListLinePlot] *)
 DashedVibrantTheme[]:=
-  ReplacePart[Join[GetPlotStyle["Monochrome"],Rest@GetPlotStyle["Monochrome"]],{x_,1}:>GetPlotStyle[$PlotTheme][[x,1]]];
+  ReplacePart[Join[DefaultPlotStyle["Monochrome"],Rest@DefaultPlotStyle["Monochrome"]],{x_,1}:>DefaultPlotStyle[$PlotTheme][[x,1]]];
 
 GetColor[key_]:=(If[MissingQ[colorIndex[key]],AssociateTo[colorIndex,key->(Length[colorIndex]+1)]];Part[DashedVibrantTheme[],colorIndex[key]]);
+
+RemoveLegends[x_]:=x/.{Legended[a_, b___] :> a};
+UnifyLegends[x_List]:=Apply[Placed[LineLegend[##
+,LegendLabel->Placed["number of cycles",Before]
+,LegendLayout->"Row"],Below]&][
+  Transpose[
+    SortBy[
+      Union[
+        Cases[x,LineLegend[a_,b_,___]:>{First@a,First@b},\[Infinity]]
+        ,SameTest->SameLegendQ 
+      ]
+    ,Last]
+  ]
+];
+
+ExportableQ[_Legended|_Graphics|_Grid]:=True;
+ExportableQ[_]:=False;
+GraphicsQ[Legended[x_, __]]:=GraphicsQ[x];
+GraphicsQ[_Graphics]:=True;
+GraphicsQ[_]:=False;
+GraphicsMatrixQ[x_]:=MatrixQ[x]&&Apply[And,Flatten@Map[GraphicsQ,x,{2}]];
+
+SameLegendQ:=SameQ[Last@#1,Last@#2]&;
+DeepKeys[ass_Association]:=KeyValueMap[If[AssociationQ[#2], Join[{#1}, DeepKeys[#2]], {#1}] &, ass];
+DeepKeys[any_]:=Nothing;
+GridKeys[ass_Association]:=KeyValueMap[If[AssociationQ[#2],Join[{#1},GridKeys[#2]],#1]&,ass];
+GridKeys[any_]:=Nothing;
+SubKeys[ass_Association]:=Map[Flatten@*Rest,DeepKeys[ass]];
+
+
+GriddedLeaves[ass_Association] :=KeyValueMap[If[AssociationQ[#2], Flatten[GriddedLeaves[#2],1], GriddedLeaves[#2] ] &, ass];
+GriddedLeaves[any_] := If[ListQ[any],any,{any}];
+
 
 End[];
 EndPackage[];

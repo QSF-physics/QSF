@@ -71,8 +71,14 @@ LookForCache[ops_,chi_]:=Module[{rops},
 rops=DeleteCases[ops,_List|_String|_Symbol];
 AssociationThread[Flatten[Position[ops,Rule[_Integer, _],1]]->Map[chi+Hash[Part[rops,;;#]]&,Flatten[Position[rops,Rule[_Integer, _],1]]]]
 ];
-OpName[x_]:=If[Head@x===Composition, StringRiffle[Map[ToString[#]&,Level[x,1]],"_"], ToString[x]];
-Options[StructProcess] = {"Operations" -> {}, "CacheHashIndex"->0};
+RemoveStringedArgs:=StringReplace[#,RegularExpression["\[.*\]"] -> ""]&;
+Sh:=StringReplace[RemoveStringedArgs[#],Except[CharacterRange["A", "Z"]]->""]&;
+SetAttributes[OpName,HoldAll];
+OpName[x_]:=If[Head@x===Composition, StringRiffle[Map[Sh@ToString[#,InputForm]&,Level[x,1]],"_"], Sh@ToString[x,InputForm]];
+
+Shorten:=If[StringLength[#]>50,StringTake[#,50]<>"...",#]&;
+
+Options[StructProcess]={"Operations"->{},"CacheHashIndex"->0,"CacheDir"->"/tmp/mmac/"};
 StructProcess[ass_Association, op: OptionsPattern[{StructProcess}]] := 
 Module[{ops,opN,chi,ch,H=0,res=ass,cn=1,tmpl=StringTemplate["[``/``] "]},
   Block[{cmdline`opt`options=cmdline`opt`options},
@@ -84,17 +90,17 @@ Module[{ops,opN,chi,ch,H=0,res=ass,cn=1,tmpl=StringTemplate["[``/``] "]},
     Switch[o,
       _Rule,Switch[First[o]
         ,_Integer,H=ch[cn-1];
-          opN=StringTemplate["/tmp/mmac/``_``.mx"][OpName[Last[o]],H];
-          If[FileExistsQ[opN],
+          opN=StringTemplate["````_``.mx"][OptionValue["CacheDir"],OpName[Last[o]],H];
+          If[FileExistsQ[opN] && Not[StringContainsQ[OpName[Last[o]],"WFExport"~~__]],
             LOG[step,"Operation: ", ToString[Last@o,InputForm], " cached from ", opN]; 
             res=Import[opN];,
             LOG[step,"Operation: ", ToString[Last@o,InputForm]]; 
             res=StructMap[res,o]; LOG["Caching results to: ",opN];
             Export[opN,res];];
-        ,_,LOG[step,"Option: ", ToString[o,InputForm]]; 
+        ,_,LOG[step,"Option: ", Shorten@ToString[o,InputForm] ]; 
           UpdateOpts[o];
         ]; 
-      ,_String, AppendToKey["ExportPath"->o]; LOG[step,"Current ExportPath set to: ","ExportPath"/.Options[QSFcmdline]];
+      ,_String, AppendToKey["ExportPath"->o]; LOG[step,"Current ExportPath set to: ",StringJoin["ExportPath"/.Options[QSFcmdline]]];
       ,_Symbol, LOG[step, "Function ", o]; Catch[o[res],o[]]; 
       ,_List, LOG[step, "Inner List"]; StructProcess[res, "Operations"->o, "CacheHashIndex"->H];
       ,_ , LOGE[step, "Unrecognized command: ", o];
@@ -104,19 +110,21 @@ Module[{ops,opN,chi,ch,H=0,res=ass,cn=1,tmpl=StringTemplate["[``/``] "]},
   LL[]--; 
   ];
 ];
-LookIn[inp_]:=If[$Notebooks, Quiet@FileNameJoin[{Check[NotebookDirectory[],Directory[]],inp}], inp];
 
+AbsolutePathQ[path_] := ExpandFileName[path] === FileNameJoin@FileNameSplit[path]
+LookIn[inp_]:=If[$Notebooks, Quiet@FileNameJoin[{Check[Directory[],NotebookDirectory[]],inp}], inp];
 
-ParsePattern[inp_, op: OptionsPattern[{QSFcmdline,ParsePattern}]]:=Block[
-    {inps, ptrn, poses, grFn},
+ImagePathQ:=(StringEndsQ[#,".png"] || StringEndsQ[#,".pdf"]) &;
+ParsePattern[inp_, op: OptionsPattern[{QSFcmdline,ParsePattern}]]:=
+Module[{inps, ptrn, poses, grFn, inputFiles},
+    Assert[Not[AbsolutePathQ[inp]]];
     LOGJ["Parsing Input Patern: ", inp];
         
     inps = FileNameSplit[inp];
-    (* Generate a list of files to process, excluding images *)
+    (* If in interactive MMA notebook, attempt making it searchable *)
+    AppendTo[$Path,Quiet@Check[NotebookDirectory[],Nothing]];
     
-    
-    inputFiles=Select[FileNames[LookIn[inp]], 
-        ! (StringEndsQ[#,".png"] || StringEndsQ[#,".pdf"]) & ];
+    inputFiles=Select[FileNames[inp],Not@*ImagePathQ];
     inputFiles=OptionValue[{QSFcmdline, ParsePattern}, "ParseFilter"][inputFiles];
     (* Abort if no files found *)
     CHA[First[inputFiles],"No valid files found in " <> Directory[]];

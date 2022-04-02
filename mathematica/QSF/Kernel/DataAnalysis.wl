@@ -1,9 +1,21 @@
-BeginPackage["QSF`DataAnalysis`", {"cmdline`log`"}];
-
+BeginPackage["QSF`DataAnalysis`", {"cmdline`log`","cmdline`opt`"}];
+OpenBin;
+IntegerChop;
 FourierAt;
-
+GaussianFilterOpt;
 Begin["`Private`"];
+OpenBin:=CHA[OpenRead[#,BinaryFormat->True], "File "<>#<>" cannot be found or cannot be read as binary."] &;
+IntegerChop = With[{r = Round[#]}, r + Chop[# - r]] &;
 
+Options[GaussianFilterOpt] = {"GaussianBlurMult"->1,"GaussianBlurRadius" -> None};
+GaussianFilterOpt[data_List,opt:OptionsPattern[]]:=
+With[{rad=COptionValue[{opt,GaussianFilterOpt},"GaussianBlurRadius"]},
+  If[rad===None, data, LOG["Applying GaussianBlur with radius ",rad, " mult: ",COptionValue[{opt,GaussianFilterOpt},"GaussianBlurMult"]];
+  GaussianFilter[data,{rad COptionValue[{opt,GaussianFilterOpt},"GaussianBlurMult"]}]]
+]; 
+
+(* GaussianFilterOpt[ass_Association,mult_,opt:OptionsPattern[]]:=
+Map[GaussianFilterOpt[#,mult,opt]&,ass]; *)
 (* Makes a fourier transform at dimension d *)
 FourierAt[tens_List, d_Integer, inv_ : False] := Module[
     {dim = Length[Dimensions[tens]]},

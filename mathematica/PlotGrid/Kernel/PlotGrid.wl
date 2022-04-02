@@ -17,6 +17,8 @@ ClearTickLabel := ReplacePart[#, 2 -> ""] &;
 AbsoluteOptionsV := #2 /. AbsoluteOptions[#1, #2] &;
 
 ClearLastTickLabels[ticks_List, n_ : 2] :=  Map[MapAt[ClearTickLabel, #, -n ;;] &, ticks, {2}];
+
+TrimTicksAndLabels[g_Grid, sides_List,opt:OptionsPattern[]]:=g;
 (* Options[TrimTicksAndLabels]={"PlotGridPadding"->{{30,20},{10,20}}}; *)
 TrimTicksAndLabels[gr_Graphics, sides_List,opt:OptionsPattern[]] := 
   Show[gr, 
@@ -54,24 +56,27 @@ PRot[x_]:=If[x===System`Left || x===System`Right,Rotate[#,90 Degree]&,Identity];
 
 
 Options[PlotGrid1]={"GridLabels"->{},"GridTranspose"->False,"LabelPlacement"->{System`Right,System`Top},"PlotGridPadding"->50};
+
 PlotGrid1[pl_?MatrixQ,opt:OptionsPattern[]]:=
 Module[{vis, ims, pref,gLab, dims,g},
 pref=OptionValue[{opt,PlotGrid1},"LabelPlacement"];
 gLab=OptionValue[{opt,PlotGrid1},"GridLabels"];
+Print[gLab];
 pgp=OptionValue[{opt,PlotGrid1},"PlotGridPadding"];
 dims=Dimensions@pl;
 Grid[
   MapIndexed[
     (
     vis=Intersection[pref/.$SidePositions,GridEdge[#2,dims]];
+    Print[vis];
     ims=If[Last@#2==1||Last@#2==Last@dims,{300+pgp,Automatic},{300,Automatic}];
-    Overlay[{
+    (* Overlay[{ *)
       g=Show[
         TrimTicksAndLabels[#1,GridEdgeComplement[#2,dims],opt]
         (* ,ImagePadding->RemovedImagePadding[#1,#2,dims] *)
         ,ImageSize->ims
         ]
-      ,Graphics[{MapThread[
+      (* ,Graphics[{MapThread[
         Inset[
           Framed[
             PRot[#2]@Style[First@#1,FontSize->12]
@@ -83,11 +88,7 @@ Grid[
         ,AbsoluteOptions[g,{ImageSize}]
         ,AspectRatio->Apply[Divide, Reverse@AbsoluteOptionsV[g, ImageSize]]
         ,PlotRangeClipping->False] 
-    }]
-    (* xx="/tmp/"<>RandomWord[];
-    Export[xx<>"_g.txt",FullForm@g];
-    Export[xx<>"_g.png",g]; *)
-    (* g     *)
+    }] *)
     )& 
     ,pl
     ,{2}]

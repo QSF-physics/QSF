@@ -82,7 +82,7 @@ LOGF[f_, args_, rhs_] := Module[{res},
    res
 ];
 
-ClearAll[decorator];
+(* ClearAll[decorator]; *)
 decorator /: SetDelayed[decorator[dec_][f_[args___]], rhs_]:=
   f[a:PatternSequence[args]]:=
      dec[Unevaluated @ f, Unevaluated @ {a}, Unevaluated @ rhs];

@@ -2,6 +2,10 @@ BeginPackage["PlotGrid`External`"];
 
 PlotGrid;
 GraphicsInformation;
+(* replace Scaled with "Scaled" to prevent issues with Graphics \
+typesetting *)
+"Scaled";
+
 
 Begin["`Private`"];
 
@@ -442,9 +446,7 @@ properly handle zeros Since simplePadding[
 CustomTicksNoLabels[limits__] := {#, Spacer@0, ##3} & @@@ 
   CustomTicks[limits]
 
-(* replace Scaled with "Scaled" to prevent issues with Graphics \
-typesetting *)
-"Scaled";
+
 
 HideOuterLabels[_, _, _, None | False] := None
 HideOuterLabels[_, _, {-\[Infinity], -\[Infinity]}, t_] := t
@@ -514,7 +516,8 @@ different versions of PlotGrid *)
     {f = 
       TransformCustomTicksHeads[SymbolName, 
        HeadPattern[$CustomTicks, 1], t]},
-    ResourceFunction["PlotGrid"][f][##] &
+           PlotGrid[f][##] &
+    (* ResourceFunction["PlotGrid"][f][##] & *)
     ]
 
 PlotGrid[t : HeadPattern[$CustomTicksNames, 1]][args___] :=
@@ -1738,8 +1741,7 @@ PlotGrid[
         Cases[#2, 
          Frame[_, opts__] :> 
           Replace["ShowFrameLabels" /. {opts}, 
-           "ShowFrameLabels" -> Nothing]]
-     &,
+           "ShowFrameLabels" -> Nothing]]&,
     {
      ExpandGridSpec[
        OptionValue["ShowFrameLabels"],
@@ -2247,7 +2249,7 @@ is no longer on top of the plot *)
         }
       ]
     ];
-  (RightComposition @@ Flatten@legends)@InjectCustomTicksLoading@grid
+  (RightComposition @@ Flatten@legends)@grid
   ];
 End[];
 EndPackage[];

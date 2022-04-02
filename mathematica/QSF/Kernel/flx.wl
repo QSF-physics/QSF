@@ -1,96 +1,127 @@
 
-BeginPackage["QSF`flx`", {"cmdline`log`","cmdline`opt`"}];
+BeginPackage["QSF`flx`", {"cmdline`log`","cmdline`opt`", "QSF`StyleUtils`","QSF`DataAnalysis`","PlotGrid`"}];
 
-OpenBin:=CHA[OpenRead[#,BinaryFormat->True], "File "<>#<>" cannot be opened."] &;
-(* For extracting wavelength data *)
-LambdaFromPath:=ToExpression[StringExtract[#,"nm_"->2,"/"->1] ]&;
-FWHMFromPath:=ToExpression[StringExtract[#,"fwhm_cycles_"->2, "/"->1] ]&;
-DataFileNameQ:=StringEndsQ[#, ".dat"] &;
+FLX;
+FLXLoad;
+FluxDataQ;
+Average;
+DataPlots;
+DataPlotGrid;
+DataFileNameQ;
+DataMap;
+Begin["`Private`"];
 
-FLXDefMetadata[path_, labeled_]:=<|
-    "tmax"->Last[labeled["time"] ],
-    "dt"->First[Rest[labeled["time"] ] ], 
-    "T"->2*\[Pi]/(45.563352529/LambdaFromPath[path]),
-    "fwhm"->FWHMFromPath[path]
-|>;
 
-FLXFilter:=StringContainsQ[#,(StartOfString~~ (LetterCharacter|PunctuationCharacter)~~"2"~~ (LetterCharacter|"_")..~~EndOfString)]&;
-
-FLXRegions[l_]:= (l=AssociateTo[l,"AA"->"LK"]; Print[Keys[l]]);
-
-(* AssociateTo[l, { "*2S"-> (l["N2S"] - l["S2CAP"] - l["S2D_SYM"]- l["S2D_ASYM"]),  *)
-    (* "*2D"-> (l["N2D_SYM"] + l["N2D_ASYM"]+ l["S2D_SYM"]+ l["S2D_ASYM"] - l["D2CAP"]) }]; *)
-
-FAFLXFilter:=StringContainsQ[#,(StartOfString~~"A"~~EndOfString)|(StartOfString~~"F"~~EndOfString)|(StartOfString~~ (LetterCharacter|PunctuationCharacter)~~"2"~~ (LetterCharacter|"_")..~~EndOfString)]&;
-Options[FLXLoad] = {"PreprocessTable"->Identity, 
-                    "MetadataExtract"->FLXDefMetadata, 
-                    "FilterLabeled"->FAFLXFilter,
-                    "PostprocessLabeled"->FLXRegions};
-
-FLXLoad[path_, OptionsPattern[{QSFcmdline,FLXLoad}]]:=Block[{st,meta, labels, data, labeled},
-    st=OpenBin[path];
-    (* TODO: placeholder - should be loaded from binary header *)
-    labels = <|"step"->1,"time"->2,"A"->3,"norm"->4,"eta"->5,"N2S"->6,"N2D_SYM"->7,"N2D_ASYM"->8,"S2D_SYM"->9,"S2D_ASYM"->10,"S2CAP" -> 11, "D2CAP" -> 12|>;
-    data = BinaryReadList[st, "Real64"];
-    Close[st];
-    data=Partition[data, 12];
-    (* optional sparsification *)
-    data=OptionValue[{QSFcmdline,FLXLoad},"PreprocessTable"][data];
-    (* data time series is accessible by label index *)
-    (* labels=KeySelect[labels, If[labelFilter===Identity, True &,labelFilter] ]; *)
-    data=Transpose[data];
-    labeled = Map[data[[#]]&, labels];
-    meta=OptionValue[{QSFcmdline,FLXLoad},"MetadataExtract"][path, labeled];
-    labeled = KeySelect[OptionValue[{QSFcmdline,FLXLoad},"FilterLabeled"] ][labeled];
-
-    AssociateTo[labeled, { "*2S"-> (labeled["N2S"] - labeled["S2D_SYM"]- labeled["S2D_ASYM"] (* - labeled["S2CAP"]  *)),
-    
-    "*2D"-> (labeled["N2D_SYM"] + labeled["N2D_ASYM"]+ labeled["S2D_SYM"]+ labeled["S2D_ASYM"] (* - labeled["D2CAP"] *)) }];
-
-    labeled=KeySelect[labeled,!StringContainsQ[#,"CAP"]&];
-    (* OptionValue["PostprocessLabeled"][labeled]; *)
-    {labeled, meta}
+(* Too general :-() *)
+(* FLX /:x_[FLX[hd_Association,data_Association],c___,opt:OptionsPattern[]]:=
+FLX[hd,
+  If[COptionValue[{opt,x},"ActOn"]===All,
+    Map[x[#,c]&,data], 
+    MapAt[x[#,c]&,data,
+      If[ListQ[COptionValue[{opt,x},"ActOn"]],
+        Intersection[COptionValue[{opt, x}, "ActOn"], Keys@data], 
+        KeySelect[data, COptionValue[{opt, x}, "ActOn"]]
+      ]
+    ]
+  ]
+]; *)
+SetAttributes[LookInto,Listable];
+LookInto[FLX[hd_Association, data_Association],x_Symbol,opt:OptionsPattern[]]:=Module[
+  {f=x[#,Sequence@@FilterRules[{opt,"Metadata"->hd["T"]/hd["dt"]}, 
+  Options@x]]&},
+FLX[hd,
+  If[COptionValue[{opt},"ActOn"]===All,
+    Map[f,data], 
+    MapAt[f,data,
+      If[ListQ[COptionValue[{opt},"ActOn"]],
+        Intersection[COptionValue[{opt}, "ActOn"], Keys@data], 
+        KeySelect[data, COptionValue[{opt}, "ActOn"]]
+      ]
+    ]
+  ]
+]
 ];
 
-Options[FLXSmooth] = {"BlurRadius"->0.1};
-FLXSmooth[data_, meta_, OptionsPattern[{QSFcmdline,FLXSmooth}]]:=GaussianFilter[data, OptionValue[{QSFcmdline,FLXSmooth},"BlurRadius"] meta["T"]/meta["dt"] ];
+Options[DataMap]={"ActOn"->All};
+DataMap[x_Symbol,l_List|l_Symbol:COptionValue[{DataMap},"ActOn"]][ass_Association]:=LookInto[ass,x,"ActOn"->l];
 
-Options[ProcessAvgs] = {ShowPopulations->False, SmoothFunction->FLXSmooth};
-ProcessAvgs[toAvg_, OptionsPattern[{QSFcmdline,ProcessAvgs}]]:=Block[{lambda,all,data,meta},
-    (* Loading *)
-    all=Map[FLXLoad, toAvg];
-    (* TODO: check that the labels are identical *)
-    (* TODO: check that the metadata are identical or at least similar*)
-    data=Merge[all[[All,1]], Mean];
-    meta=Last[Last[all]];
-    (* Smooth the data before std dev gets calculated *)
-    data=MapAt[If[OptionValue[{QSFcmdline,ProcessAvgs},ShowPopulations], meta["dt"] Accumulate[#], Identity[#] ] &, data, {#}&/@Select[Keys[data],FLXFilter] ];
-    (* F= OptionValue[SmoothFunction]; *)
-    (* Print[F]; *)
-    data=MapAt[OptionValue[{QSFcmdline,ProcessAvgs},SmoothFunction][#, meta] &, data, {#}&/@Select[Keys[data],FLXFilter] ];
-    
-    (* Map[
-        (data[#]=
-        (If[integrateFlux, meta["dt"] Accumulate[#], Identity[#] ] &)@
-        GaussianFilter[data[#],blur meta["T"]/meta["dt"] ];) &, 
-        Select[Keys[data],FLXFilter]
-    ]; *)
-    {data, meta}
-]
 
-(* DefRangeFun[tmax_,T_]:={Round[0.4*tmax/T,2],Round[tmax/T]-Round[0.2*tmax/T,2]}; *)
-(* FLXDefRangeFun[tmax_,T_]:={Round[0.2*tmax/T,2],Round[tmax/T]-4-Round[0.2*tmax/T,2]}; *)
-FLXDefRangeFun[meta_]:=Block[{cycles=meta["tmax"]/meta["T"], fwhm=meta["fwhm"]},
-    (* Print[cycles, " §FFFF ",fwhm];
-    (* Print@{(cycles-4)/2-fwhm, (cycles-4)/2+fwhm}; *) *)
-    (* Print@{(cycles-4)/2-fwhm, (cycles-4)/2+fwhm};  *)
-    (* {(cycles-4)/2-fwhm, (cycles-4)/2+fwhm} *)
-    {(cycles-4)/2-(fwhm/2), (cycles-4)/2+fwhm}
-    ];
-(* FLXDefRangeFun[meta_]:={0,10}; *)
+(* DataMap[x_Symbol,l_List][FLX[hd_Association, data_Association]]:= *)
+
+
+
+(* Average /: SetDelayed[Average[FLX][ass_Association], rhs_]:=
+  f[a:PatternSequence[args]]:=
+     dec[Unevaluated @ f, Unevaluated @ {a}, Unevaluated @ rhs]; *)
+(* For extracting wavelength data from path *)
+LambdaFromPath:=ToExpression[StringExtract[#,"nm_"->2,"/"->1]]&;
+FWHMFromPath:=ToExpression[StringExtract[#,"fwhm_cycles_"->2,"/"->1]]&;
+DataFileNameQ:=StringEndsQ[#,".dat"]&;
+
+FLXEnrichMetadata[hd_Association,data_Association]:={
+  "tmax"->data["time"][[-1]],
+  "dt"->data["time"][[2]],
+  "T"->2*\[Pi]/(45.563352529/LambdaFromPath[hd["path"]]),
+  "fwhm"->FWHMFromPath[hd["path"]]
+};
+
+FLXTimeStep[hd_]:=hd["dt"];
+
+FluxDataQ:=StringContainsQ[#,(StartOfString~~ (LetterCharacter|PunctuationCharacter)~~"2"~~ (LetterCharacter|"_")..~~EndOfString)]&;
+
+FLXFilterData:=StringContainsQ[#,(StartOfString~~"A"~~EndOfString)|(StartOfString~~"F"~~EndOfString)|(StartOfString~~ (LetterCharacter|PunctuationCharacter)~~"2"~~ (LetterCharacter|"_")..~~EndOfString)]&;
+
+(* TODO: placeholder - should be loaded from binary header *)
+FLXHeader[st_]:=
+<|"labels"-><|"step"->1,"time"->2,"A"->3,"norm"->4,"eta"->5,"N2S"->6,"N2D_SYM"->7,
+"N2D_ASYM"->8,"S2D_SYM"->9,"S2D_ASYM"->10,"S2CAP"->11,"D2CAP"->12|>|>;
+(* proper for flux_quiver_ratio_1.0000 *)
+
+(* ArtificialLabelQ:=StringContainsQ[#,"*"]&;
+NonArtificialLabels[hd_]:=KeySelect[hd["labels"],Not@*ArtificialLabelQ]; *)
+FLXDerivedData[data_]:={"*2S"->(data["N2S"]-data["S2D_SYM"]-data["S2D_ASYM"]),
+"*2D"->(data["N2D_SYM"]+data["N2D_ASYM"]+data["S2D_SYM"]+data["S2D_ASYM"])};
+
+FLXData[st_,hd_,opt:OptionsPattern[]]:=Module[{data},
+  data=Partition[BinaryReadList[st,"Real64"],Length[hd["labels"]]];
+  data=Transpose[data];
+  data=Map[Part[data,#]&,hd["labels"]];
+  CHA[AssociateTo[data,COptionValue[{opt,FLXLoad},"DerivedData"][data]],"Cannot derived data"];
+  (* labeled=KeySelect[labeled,!StringContainsQ[#,"CAP"]&]; *)
+  LOG["Imported ",Length@Keys@data ," keys: ", Keys[data]];
+  data
+];
+
+Options[FLXLoad]={"EnrichMetadata"->FLXEnrichMetadata, 
+                  "DerivedData"->FLXDerivedData};
+
+SetAttributes[FLXLoad, Listable];
+decorator[LOGF]@
+FLXLoad[path_,opt:OptionsPattern[]]:=Block[{st,hd, data},
+  st=OpenBin[path];
+  hd=FLXHeader[st];
+  hd["path"]=path;  
+  data=FLXData[st,hd,opt];
+  Close[st];
+  AssociateTo[hd,COptionValue[{opt,FLXLoad},"EnrichMetadata"][hd, data]];
+  FLX[hd, data]
+];
+
+
+(* FLX /: a_FLX[x__] + b_FLX[x__] := FLX[Extract[a, {x}] + Extract[b, {x}]]; *)
+Options[Average] = {ShowPopulations->False};
+(* decorator[LOGF]@ *)
+Average[matchF_][inp_, OptionsPattern[]]:=FLX[
+    Merge[Cases[inp,FLX[hd_,data_]:>hd,\[Infinity]],First],
+		Join[
+      Merge[Cases[inp,FLX[_,data_]:>KeySelect[data,Not@*matchF],\[Infinity]],First],
+      Merge[Cases[inp,FLX[_,data_]:>KeySelect[data,matchF],\[Infinity]],Mean]
+    ]
+];
+
 
 Options[FLXColumnPlot] = Join[{ColorAssoc->None, PlotRangeFunction->FLXDefRangeFun, Scale->1, LabelTransform->Identity}, Options[ListLinePlot]];
-FLXColumnPlot[all_, opt :OptionsPattern[{QSFcmdline,FLXColumnPlot}]]:=Block[{dat,tmax,T, labels},
+FLXColumnPlot[all_, opt :OptionsPattern[]]:=Block[{dat,tmax,T, labels},
     (* find all keys *)
     
     labels = DeleteDuplicates[Flatten[Keys /@ Values[all[[All, 1]] ] ]];
@@ -105,7 +136,7 @@ FLXColumnPlot[all_, opt :OptionsPattern[{QSFcmdline,FLXColumnPlot}]]:=Block[{dat
                 (* Debug to check that field values are right *)
                 (* If[label==="A",Print[2 \[Pi] Max[dat]/T] ]; *)
                 ListLinePlot[
-                    If[FLXFilter@label,OptionValue[{QSFcmdline, FLXColumnPlot},Scale],1] dat,
+                    If[FluxDataQ@label,OptionValue[{QSFcmdline, FLXColumnPlot},Scale],1] dat,
                     FilterRules[{Options[QSFcmdline], opt}, Options[ListLinePlot] ],
                     PlotStyle -> OptionValue[{QSFcmdline, FLXColumnPlot},ColorAssoc][#1],
                     AspectRatio -> 1/2.5, 
@@ -139,9 +170,57 @@ FLXColumnPlot[all_, opt :OptionsPattern[{QSFcmdline,FLXColumnPlot}]]:=Block[{dat
     ]
     
 ];
+FixNestedLegends = {Legended[Legended[k_, c___], dd___] :> Legended[k, Flatten[{c, dd}, 1] ]};
+(* Substitution for Show *)
+Options[DataPlots]={
+  "PlotRange"->Full,"LegendLabels"->Identity
+  ,"LegendPlacement"->Bottom,"LeafPath"->{}};
 
 
-FLXJoin[all_, opt :OptionsPattern[{QSFcmdline,FLXColumnPlot}] ]:=Block[{legend,size,colors},
+FLXPlot[FLX[hd,data], opt:OptionsPattern[]]:=ListLinePlot[data];
+
+DataPlots[props_List][FLX[hd_Association,data_Association],opt:OptionsPattern[]]:=
+With[{cycles=hd["tmax"]/hd["T"],fwhm=hd["fwhm"]},
+  KeyValueMap[
+    ListLinePlot[
+      Print[{(cycles-4)/2-(fwhm/2), (cycles-4)/2+fwhm}];
+      Legended[#2,COptionValue[{opt,DataPlots},"LeafPath"]]
+      (* #2 *)
+      ,DataRange -> {0, cycles}
+      ,PlotRange->{{(cycles-4)/2-(fwhm/2), (cycles-4)/2+fwhm},Full}
+      ,PlotStyle->GetColor[COptionValue[{opt,DataPlots},"LeafPath"]]
+      (* ,PlotRange->COptionValue[{opt,DataPlots},"PlotRange"] *)
+      ,Frame->True
+      ,FrameLabel->{"time",#1}
+    ]&
+    ,KeySelect[data,MemberQ[props,#]&]
+  ]
+];
+
+(* decorator[LOGF]@ *)
+DataPlots[props_List][ass_Association,opt:OptionsPattern[]]:=
+MapThread[
+  Show[##,AbsoluteOptions[#1,PlotRange]]/.FixNestedLegends &,
+  Cases[
+		MapIndexed[
+			If[MatchQ[#1,_FLX],DataPlots[props][#1,"LeafPath" -> #2],#1]&
+			,ass
+			,ArrayDepth[ass, AllowedHeads -> Association]
+		]
+    , _List, ArrayDepth[ass, AllowedHeads -> Association]
+	]
+];
+
+Options[DataPlotGrid]={"GridLabels"->{},"GridTranspose"->False};
+DataPlotGrid[ass_Association,opt:OptionsPattern[]]:=DataPlotGrid[Transpose@GriddedLeaves[ass],"GridLabels"->GridKeys[ass]];
+DataPlotGrid[x_List,opt:OptionsPattern[]]:=If[MatrixQ[x]
+  ,Legended[PlotGrid1[RemoveLegends[x],opt],UnifyLegends[x]]
+  ,Grid[{x},Spacings -> Scaled[-0.04]]
+];
+
+(* //.FixNestedLegends; *)
+
+FLXJoin[all_, opt :OptionsPattern[] ]:=Block[{legend,size,colors},
     
     (* legend for data on the same plot and colors*)
     legend=Keys[all];
@@ -149,7 +228,7 @@ FLXJoin[all_, opt :OptionsPattern[{QSFcmdline,FLXColumnPlot}] ]:=Block[{legend,s
     colors=AssociationThread[legend -> ColorData[97, "ColorList"][[;;size]] ];
     
     (* Normalize the FLX data *)
-    AddOpts["Scale"-> 10/StandardDeviation[Flatten[Values[KeySelect[#,FLXFilter] ]& /@ Values[all[[All, 1]] ] ] ] ];
+    AddOpts["Scale"-> 10/StandardDeviation[Flatten[Values[KeySelect[#,FluxDataQ] ]& /@ Values[all[[All, 1]] ] ] ] ];
     (* val = If[val===None,, val]; *)
     Labeled[
         FLXColumnPlot[all,
@@ -163,24 +242,5 @@ FLXJoin[all_, opt :OptionsPattern[{QSFcmdline,FLXColumnPlot}] ]:=Block[{legend,s
             LegendLayout -> "Row"],""], 
         Top]
 ];
-
+End[];
 EndPackage[];
-(* ListLinePlot[
-flx,
-(* Prepend[flx,data[[All,3]] ], *)
-PlotRange -> {Full, Full},
-DataRange -> {0, tmax/T},
-ImagePadding -> {{0, 10}, {0, 0}},
-PlotRangePadding -> {None, None},
-PlotLayout->{"Column", UpTo[1]},
-AspectRatio -> 1/3, 
-GridLines -> Automatic,
-ImageSize -> Large
-,Method -> {"Spacings" -> {0, 0}, 
-PlotRange -> {Full, Automatic},
-"ColumnLabels" -> "time [cycles]" 
-(* ,"RowLabels" -> names *)
-,"RowLabels" -> Rest[names]
-}
-
-] *)
