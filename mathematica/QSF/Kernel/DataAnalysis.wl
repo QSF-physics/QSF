@@ -3,15 +3,16 @@ OpenBin;
 IntegerChop;
 FourierAt;
 GaussianFilterOpt;
+
 Begin["`Private`"];
 OpenBin:=CHA[OpenRead[#,BinaryFormat->True], "File "<>#<>" cannot be found or cannot be read as binary."] &;
 IntegerChop = With[{r = Round[#]}, r + Chop[# - r]] &;
 
-Options[GaussianFilterOpt] = {"GaussianBlurMult"->1,"GaussianBlurRadius" -> None};
+Options[GaussianFilterOpt] = {"DataStep"->{1},"GaussianBlurRadius" -> 1};
 GaussianFilterOpt[data_List,opt:OptionsPattern[]]:=
 With[{rad=COptionValue[{opt,GaussianFilterOpt},"GaussianBlurRadius"]},
-  If[rad===None, data, LOG["Applying GaussianBlur with radius ",rad, " mult: ",COptionValue[{opt,GaussianFilterOpt},"GaussianBlurMult"]];
-  GaussianFilter[data,{rad COptionValue[{opt,GaussianFilterOpt},"GaussianBlurMult"]}]]
+  If[rad===None, data, LOG["Applying GaussianBlur with radius ",rad, " DataStep: ",COptionValue[{opt,GaussianFilterOpt},"DataStep"]];
+  GaussianFilter[data,{rad /COptionValue[{opt,GaussianFilterOpt},"DataStep"]}]]
 ]; 
 
 (* GaussianFilterOpt[ass_Association,mult_,opt:OptionsPattern[]]:=

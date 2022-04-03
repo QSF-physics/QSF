@@ -11,39 +11,24 @@ DataFileNameQ;
 DataMap;
 Begin["`Private`"];
 
-
-(* Too general :-() *)
-(* FLX /:x_[FLX[hd_Association,data_Association],c___,opt:OptionsPattern[]]:=
-FLX[hd,
-  If[COptionValue[{opt,x},"ActOn"]===All,
-    Map[x[#,c]&,data], 
-    MapAt[x[#,c]&,data,
-      If[ListQ[COptionValue[{opt,x},"ActOn"]],
-        Intersection[COptionValue[{opt, x}, "ActOn"], Keys@data], 
-        KeySelect[data, COptionValue[{opt, x}, "ActOn"]]
-      ]
-    ]
-  ]
-]; *)
 SetAttributes[LookInto,Listable];
-LookInto[FLX[hd_Association, data_Association],x_Symbol,opt:OptionsPattern[]]:=Module[
-  {f=x[#,Sequence@@FilterRules[{opt,"Metadata"->hd["T"]/hd["dt"]}, 
-  Options@x]]&},
+LookInto[FLX[hd_Association, data_Association],x_Symbol|x_Function ,opt:OptionsPattern[]]:=With[{act=COptionValue[{opt},"ActOn"], rl=Sequence@@FilterRules[{opt,"DataStep"->hd["dt"]}, Options@x]},
 FLX[hd,
-  If[COptionValue[{opt},"ActOn"]===All,
-    Map[f,data], 
-    MapAt[f,data,
-      If[ListQ[COptionValue[{opt},"ActOn"]],
-        Intersection[COptionValue[{opt}, "ActOn"], Keys@data], 
-        KeySelect[data, COptionValue[{opt}, "ActOn"]]
+  If[act===System`All,Print["map"];
+    Map[x[#,rl]&,data],
+    MapAt[x[#,rl]&,data,
+      Switch[act,
+        _List,Print["L"];Intersection[act, Keys@data], 
+        _String,Print["S"]; Intersection[{act}, Keys@data],
+        _, Print["Any"]; Map[List,Select[Keys@data,act]] (* function *)
+        (* Select[Keys@data,COptionValue[{opt,DataMap},"ActOn"] ]) *)
       ]
     ]
-  ]
-]
+  ]]
 ];
 
-Options[DataMap]={"ActOn"->All};
-DataMap[x_Symbol,l_List|l_Symbol:COptionValue[{DataMap},"ActOn"]][ass_Association]:=LookInto[ass,x,"ActOn"->l];
+Options[DataMap]={"ActOn"->System`All};
+DataMap[x_Symbol|x_Function,Optional[l_String|l_List|l_Symbol|l_Function,COptionValue[{DataMap},"ActOn"]]][ass_Association]:=LookInto[ass,x,"ActOn"->l];
 
 
 (* DataMap[x_Symbol,l_List][FLX[hd_Association, data_Association]]:= *)
@@ -170,10 +155,9 @@ FLXColumnPlot[all_, opt :OptionsPattern[]]:=Block[{dat,tmax,T, labels},
     ]
     
 ];
-FixNestedLegends = {Legended[Legended[k_, c___], dd___] :> Legended[k, Flatten[{c, dd}, 1] ]};
-(* Substitution for Show *)
-Options[DataPlots]={
-  "PlotRange"->Full,"LegendLabels"->Identity
+
+
+Options[DataPlots]={"PlotRange"->Full,"LegendLabels"->Identity
   ,"LegendPlacement"->Bottom,"LeafPath"->{}};
 
 
@@ -200,7 +184,8 @@ With[{cycles=hd["tmax"]/hd["T"],fwhm=hd["fwhm"]},
 (* decorator[LOGF]@ *)
 DataPlots[props_List][ass_Association,opt:OptionsPattern[]]:=
 MapThread[
-  Show[##,AbsoluteOptions[#1,PlotRange]]/.FixNestedLegends &,
+  (* Show[##,AbsoluteOptions[#1,PlotRange]]/.FixNestedLegends &, *)
+  Show[##,ReplacePart[First@AbsoluteOptions[#1,PlotRange],{-1,-1}->Full]]/.FixNestedLegends &,
   Cases[
 		MapIndexed[
 			If[MatchQ[#1,_FLX],DataPlots[props][#1,"LeafPath" -> #2],#1]&
@@ -242,5 +227,19 @@ FLXJoin[all_, opt :OptionsPattern[] ]:=Block[{legend,size,colors},
             LegendLayout -> "Row"],""], 
         Top]
 ];
+
+(* Too general :-() *)
+(* FLX /:x_[FLX[hd_Association,data_Association],c___,opt:OptionsPattern[]]:=
+FLX[hd,
+  If[COptionValue[{opt,x},"ActOn"]===All,
+    Map[x[#,c]&,data], 
+    MapAt[x[#,c]&,data,
+      If[ListQ[COptionValue[{opt,x},"ActOn"]],
+        Intersection[COptionValue[{opt, x}, "ActOn"], Keys@data], 
+        KeySelect[data, COptionValue[{opt, x}, "ActOn"]]
+      ]
+    ]
+  ]
+]; *)
 End[];
 EndPackage[];

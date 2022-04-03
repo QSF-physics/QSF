@@ -73,28 +73,30 @@ AssociationThread[Flatten[Position[ops,Rule[_Integer, _],1]]->Map[chi+Hash[Part[
 ];
 RemoveStringedArgs:=StringReplace[#,RegularExpression["\[.*\]"] -> ""]&;
 Sh:=StringReplace[RemoveStringedArgs[#],Except[CharacterRange["A", "Z"]]->""]&;
-SetAttributes[OpName,HoldAll];
+(* SetAttributes[OpName,HoldAll]; *)
 OpName[x_]:=If[Head@x===Composition, StringRiffle[Map[Sh@ToString[#,InputForm]&,Level[x,1]],"_"], Sh@ToString[x,InputForm]];
 
 Shorten:=If[StringLength[#]>50,StringTake[#,50]<>"...",#]&;
 
 Options[StructProcess]={"Operations"->{},"CacheHashIndex"->0,"CacheDir"->"/tmp/mmac/"};
 StructProcess[ass_Association, op: OptionsPattern[{StructProcess}]] := 
-Module[{ops,opN,chi,ch,H=0,res=ass,cn=1,tmpl=StringTemplate["[``/``] "]},
+Module[{ops,opN,can,ch,H=0,res=ass,cn=1,tmpl=StringTemplate["[``/``] "]},
   Block[{cmdline`opt`options=cmdline`opt`options},
   ops=DeleteCases[OptionValue["Operations"],Null];
   ch=LookForCache[ops,If[OptionValue["CacheHashIndex"]==0,Hash[ass],OptionValue["CacheHashIndex"]]];
   LL[]++; 
+  can=True;
   Do[
     step=tmpl[cn++,Length[ops] ];
     Switch[o,
       _Rule,Switch[First[o]
         ,_Integer,H=ch[cn-1];
           opN=StringTemplate["````_``.mx"][OptionValue["CacheDir"],OpName[Last[o]],H];
-          If[FileExistsQ[opN] && Not[StringContainsQ[OpName[Last[o]],"WFExport"~~__]],
+          If[FileExistsQ[opN] && can && Not[StringContainsQ[OpName[Last[o]],"WFExport"~~__]],
             LOG[step,"Operation: ", ToString[Last@o,InputForm], " cached from ", opN]; 
             res=Import[opN];,
             LOG[step,"Operation: ", ToString[Last@o,InputForm]]; 
+            can=False;
             res=StructMap[res,o]; LOG["Caching results to: ",opN];
             Export[opN,res];];
         ,_,LOG[step,"Option: ", Shorten@ToString[o,InputForm] ]; 
