@@ -15,7 +15,7 @@ WFCombine;
 WFExport;
 WFPlot;
 WFGrid;
-ExtractNumbers;
+
 GridKeys;
 
 Begin["`Private`"];
@@ -23,9 +23,6 @@ Begin["`Private`"];
 Bool:=#!=0&;
 ProbabilityQ[hd_Association] := Not[hd["isComplex"]];
 WFFileNameQ:=StringEndsQ[#, ".psi" ~~ DigitCharacter..] &;
-RemoveJunk:=FixedPoint[If[ListQ[#],If[Length[#]==1,First[#],Flatten[DeleteCases[#,{},-1]]],#]&,#]&;
-ExtractNumbers[l_String|l_List]:=RemoveJunk[StringCases[l,x:NumberString:>ToExpression[x]]];
-
 
 FromEdge[ind_, ns_] := MapThread[If[#1 < #2/2, -#1, #1 - #2 + 1] &, {ind, ns}];
 WFCAPMask[hd_,ratio_:0.5] := Module[{ns, nCAP, eta, CAP, bd},

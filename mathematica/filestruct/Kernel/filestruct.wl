@@ -99,17 +99,17 @@ Module[{ops,opN,can,ch,H=0,res=ass,cn=1,tmpl=StringTemplate["[``/``] "]},
             can=False;
             res=StructMap[res,o]; LOG["Caching results to: ",opN];
             Export[opN,res];];
-        ,_,LOG[step,"Option: ", Shorten@ToString[o,InputForm] ]; 
+        ,_,LOG[step,"Option: ",Shorten@ToString[o,InputForm]]; 
           UpdateOpts[o];
         ]; 
-      ,_String, AppendToKey["ExportPath"->o]; LOG[step,"Current ExportPath set to: ",StringJoin["ExportPath"/.Options[QSFcmdline]]];
+      ,_String, AppendToKey["ExportPath"][o]; LOG[step,"Current ExportPath set to: ",StringJoin["ExportPath"/.Options[QSFcmdline]]];
       ,_Symbol, LOG[step, "Function ", o]; Catch[o[res],o[]]; 
-      ,_List, LOG[step, "Inner List"]; StructProcess[res, "Operations"->o, "CacheHashIndex"->H];
+      ,_List, LOG[step, "Inner List"]; StructProcess[res, "Operations"->o,"CacheDir"->OptionValue["CacheDir"], "CacheHashIndex"->H];
       ,_ , LOGE[step, "Unrecognized command: ", o];
     ];
   ,
   {o, ops}];
-  LL[]--; 
+  LL[]--;
   ];
 ];
 
@@ -149,7 +149,6 @@ Module[{inps, ptrn, poses, grFn, inputFiles},
     (* groupInput=Map[groupInput,0->If[ListQ[#] && (Length[#]==1),First@#,#] ]; *)
     
     UpdateOpts["groupInput"->groupInput];
-    UpdateOpts["groupInput_"->groupInput];
     UpdateOpts["groupCount"->Length[Flatten[Keys[groupInput] ] ] ];
     UpdateOpts["maxJoinCount"->Max[Length/@Keys[Values[groupInput] ] ] ];
     (* LOGW["Identified structure sizes:", Dimensions[groupInput, AllowedHeads -> All]]; *)

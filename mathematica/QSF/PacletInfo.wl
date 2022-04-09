@@ -13,7 +13,7 @@ PacletObject[
 "Root" -> ".",
 "Extensions" ->
   {
-      {"Kernel", "Root" -> "Kernel", "Context" -> {"QSF`", "QSF`wf`","QSF`flx`", "QSF`StyleUtils`"}},
+      {"Kernel", "Root" -> "Kernel", "Context" -> {"QSF`", "QSF`wf`","QSF`flx`", "QSF`StyleUtils`", "QSF`Physics`"}},
       {"Documentation", "Language" -> "English"}
       (* {"Documentation", Language -> "English", MainPage -> "Guide", Resources -> {"ReferencePages/Symbols/EfromI"} *)
   }

@@ -1,5 +1,9 @@
 #!/usr/bin/env wolframscript
-BeginPackage["QSF`StyleUtils`"];
+BeginPackage["QSF`StyleUtils`",{"cmdline`opt`"}];
+LegendTranslate;
+LegendPlacement;
+RemoveJunk;
+ExtractNumbers;
 
 CurrentColorList;
 GetColor;
@@ -11,7 +15,7 @@ UnifyLegends;
 GriddedLeaves;
 GraphicsQ;
 GraphicsMatrixQ;
-ExportableQ;
+
 SameLegendQ;
 DeepKeys;
 DeepKeys;
@@ -20,6 +24,12 @@ GridKeys;
 SubKeys;
 FixNestedLegends;
 Begin["`Private`"];
+
+
+RemoveJunk:=FixedPoint[If[ListQ[#],If[Length[#]==1,First[#],Flatten[DeleteCases[#,{},-1]]],#]&,#]&;
+ExtractNumbers[l_String|l_List]:=RemoveJunk[StringCases[l,x:NumberString:>ToExpression[x]]];
+
+
 FixNestedLegends = {Legended[Legended[k_, c___], dd___] :> Legended[k, Flatten[{c, dd}, 1] ]};
 defaultStyle={FontFamily -> "Latin Modern Math", FontSize -> 12,FontColor->Black};
 
@@ -46,22 +56,35 @@ DashedVibrantTheme[]:=
 
 GetColor[key_]:=(If[MissingQ[colorIndex[key]],AssociateTo[colorIndex,key->(Length[colorIndex]+1)]];Part[DashedVibrantTheme[],colorIndex[key]]);
 
-RemoveLegends[x_]:=x/.{Legended[a_, b___] :> a};
-UnifyLegends[x_List]:=Apply[Placed[LineLegend[##
-,LegendLabel->Placed["number of cycles",Before]
-,LegendLayout->"Row"],Below]&][
-  Transpose[
-    SortBy[
-      Union[
-        Cases[x,LineLegend[a_,b_,___]:>{First@a,First@b},\[Infinity]]
-        ,SameTest->SameLegendQ 
+RemoveLegends[x_]:=x/.{Legended[a_,b___]:>a};
+Options[UnifyLegends]={
+  LegendPlacement->System`Below, LegendLabel->"",
+  LegendTranslate->Identity,
+  LegendSort->Identity
+  };
+UnifyLegends[x_List, opt:OptionsPattern[]]:=
+With[{pl=COptionValue[{opt,UnifyLegends},LegendPlacement]},
+  Apply[
+    Placed[
+      LineLegend[
+        ##
+        ,LegendLayout->If[pl===System`Below,"Row","Column"]
+        ,FilterRules[{Options[QSFcmdline],opt,Options[LineLegend]},Options[LineLegend]]
+      ],
+      COptionValue[{opt,UnifyLegends},LegendPlacement]
+    ]&][
+        Transpose[
+          SortBy[
+            Union[
+              Cases[x,LineLegend[a_,b_,___]:>
+              {First@a,COptionValue[{opt,UnifyLegends},LegendTranslate]@First@b},\[Infinity]]
+              ,SameTest->SameLegendQ 
+            ]
+          ,COptionValue[{opt,UnifyLegends},LegendSort]@*Last]
+        ]
       ]
-    ,Last]
-  ]
 ];
 
-ExportableQ[_Legended|_Graphics|_Grid]:=True;
-ExportableQ[_]:=False;
 GraphicsQ[Legended[x_, __]]:=GraphicsQ[x];
 GraphicsQ[_Graphics]:=True;
 GraphicsQ[_]:=False;

@@ -75,6 +75,9 @@ Grid[
         TrimTicksAndLabels[#1,GridEdgeComplement[#2,dims],opt]
         (* ,ImagePadding->RemovedImagePadding[#1,#2,dims] *)
         ,ImageSize->ims
+        ,Epilog->Inset[Text[Style[
+            "("<>ToString[Part[Alphabet[],(dims[[2]] (#2[[1]] - 1)) + #2[[2]]]]<>")",  FontFamily->"LatinModernMath",FontSize->12,FontColor->Black]
+          ], {Center, Top}, {Center, Top}]
         ]
       (* ,Graphics[{MapThread[
         Inset[
