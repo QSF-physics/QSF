@@ -49,7 +49,7 @@ StructMap[ass_, rule_Rule] := Module[
     {dpth = ArrayDepth[ass, AllowedHeads -> Association],lvl,fn,res,tmp, TreePath},
     (* lvl=If[(First[rule]===All||First[rule]===0), {0}, {dpth-First[rule]+1}]; *)
     (* lvl=DeleteDuplicates[lvl]; *)
-    lvl=First[rule];
+    lvl=First[rule]-1;
     fn=Last[rule];
     
     res=MapIndexed[

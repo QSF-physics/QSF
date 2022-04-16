@@ -23,7 +23,7 @@ COptionValue[b_]:=OptionValue[QSFcmdline,b];
 (* Options[TK7] = {"sad" -> 3};
 TK7[k : OptionsPattern[]] := {COptionValue[{k, TK7, ListPlot}, "sad"],
 COptionValue[{k, ListPlot}, PlotRange]}; *)
-
+ClearOpts[]:=(options=<||>);
 UpdateOpts[rule_]:=AssociateTo[options,rule];
 AddOpts[rule_]:=AssociateTo[options,rule];
 AppendToKey[key_String][val_]:=If[KeyExistsQ[options,key],

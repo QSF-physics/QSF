@@ -64,7 +64,7 @@ FLX[
 
 DataFileNameQ:=StringEndsQ[#,".dat"]&;
 
-fluxPattern=(StartOfString~~ (LetterCharacter|PunctuationCharacter)~~"2"~~ (LetterCharacter|"_")..~~EndOfString);
+fluxPattern=(StartOfString~~ (LetterCharacter|PunctuationCharacter)~~"2"~~ (LetterCharacter|PunctuationCharacter|"_")..~~EndOfString);
 laserPattern=((StartOfString~~"A")|(StartOfString~~"F"))~~(("_"|DigitCharacter)...)~~EndOfString;
 
 FluxDataQ:=StringContainsQ[#,fluxPattern]&;
@@ -84,12 +84,24 @@ FLXHeader[st_,opt:OptionsPattern[]]:=<|"labels"-><|
   "S2D_ASYM"->10,"S2CAP"->11,"D2CAP"->12|>,
   "TimeUnit"->"[au]","DataUnit"->""
 |>;
+FLXHeader2[st_,opt:OptionsPattern[]]:=<|"labels"-><|
+  "step"->1,"time"->2,"A"->3,"eta"->4,"E_kin"->5,"E_pot"->6,
+  "N2S"->7,"N2D_SYM"->8,"N2D_ASYM"->9,"S2D_SYM"->10,
+  "S2D_ASYM"->11,"S2CAP"->12,"D2CAP"->13|>,
+  "TimeUnit"->"[au]","DataUnit"->""
+|>;
 (* proper for flux_quiver_ratio_1.0000 *)
 
 (* ArtificialLabelQ:=StringContainsQ[#,"*"]&;
 NonArtificialLabels[hd_]:=KeySelect[hd["labels"],Not@*ArtificialLabelQ]; *)
-FLXDerivedData[data_]:={"*2S"->(data["N2S"]-data["S2D_SYM"]-data["S2D_ASYM"]),
-"*2D"->(data["N2D_SYM"]+data["N2D_ASYM"]+data["S2D_SYM"]+data["S2D_ASYM"])};
+FLXDerivedData[data_]:={
+  "N2*"->(data["N2S"]+data["N2D_SYM"]+data["N2D_ASYM"]),
+  "*2S"->(data["N2S"]-data["S2D_SYM"]-data["S2D_ASYM"]),
+  "*2D"->(data["N2D_SYM"]+data["N2D_ASYM"]+data["S2D_SYM"]+data["S2D_ASYM"]),
+  "*2D_SYM"->(data["N2D_SYM"]+data["S2D_SYM"]),
+  "*2D_ASYM"->(data["N2D_ASYM"]+data["S2D_ASYM"]),
+  "*2CAP"->(data["S2CAP"]+data["D2CAP"])
+  };
 
 FLXData[st_,hd_,opt:OptionsPattern[]]:=Module[{data},
   data=Partition[BinaryReadList[st,"Real64"],Length[hd["labels"]]];
@@ -101,19 +113,20 @@ FLXData[st_,hd_,opt:OptionsPattern[]]:=Module[{data},
   data
 ];
 
-Options[FLXLoad]={EnrichMetadata->{}, "DerivedData"->FLXDerivedData};
+Options[FLXLoad]={EnrichMetadata->{},"DerivedData"->FLXDerivedData};
 
 SetAttributes[FLXLoad, Listable];
 decorator[LOGF]@
-FLXLoad[path_,opt:OptionsPattern[]]:=Block[{st,hd, data},
+FLXLoad[path_,opt:OptionsPattern[]]:=Block[{st,hd,data},
   st=OpenBin[path];
-  hd=FLXHeader[st];
+  hd=If[StringContainsQ[path,"flux_quiver_ratio_2.000000"],FLXHeader2[st],FLXHeader[st]];
   hd["path"]=path;  
   data=FLXData[st,hd,opt];
   Close[st];
   AssociateTo[hd,
   {"tmax"->Quantity[data["time"][[-1]],"AtomicUnitOfTime"],
   "dt"->Quantity[data["time"][[2]],"AtomicUnitOfTime"]}];
+  LOG["dt:", hd["dt"], " tmax:", hd["tmax"]];
   AssociateTo[hd,COptionValue[{opt,FLXLoad},EnrichMetadata][hd, data]];
   FLX[hd, data]
 ];
@@ -128,6 +141,11 @@ Average[matchF_][inp_, OptionsPattern[]]:=FLX[
     ]
 ];
 
+fg[min_,max_]:=DeleteDuplicates[Flatten[Table[
+  Table[{i,Directive[Thickness[0.00025 lz],Dashed,GrayLevel[(5.0-lz)/5.0]]},
+  {i,Ceiling[min,10^lz],Floor[max,10^lz],10^lz}],{lz,5,1,-1}],1]
+  ,First[#1]==First[#2]&];
+
 Options[DataPlots]={
   System`DataRange->{0,"tmax"}, 
   System`PlotRange->{System`Automatic,System`Full}, 
@@ -139,9 +157,12 @@ Options[DataPlots]={
 DataPlots[props_List][FLX[hd_Association,data_Association],opt:OptionsPattern[]]:=
   KeyValueMap[
     ListLinePlot[
+        (* Print[COptionValue[{Options[QSFcmdline],opt,DataPlots},GridLines]]; *)
       Legended[Placed[#2,COptionValue[{opt,DataPlots},"LegendPlacement"]],COptionValue[{opt,DataPlots},"LeafPath"]]
+      ,GridLines->{Automatic, fg[-10000,10000]}
       ,Frame->True
       ,PlotStyle->GetColor[COptionValue[{opt,DataPlots},"LeafPath"]]
+      (* ,GridLines->{Automatic,fg} *)
       ,ReleaseHold@FilterRules[
         {Options[QSFcmdline],opt,Options[DataPlot]}/.Rule["DataLabel",#1]/.hd, 
         Options[ListLinePlot]]
@@ -156,7 +177,9 @@ DataPlots[{props}][ass,opt];
 DataPlots[props_List][ass_Association,opt:OptionsPattern[]]:=
 MapThread[
   (* Show[##,AbsoluteOptions[#1,PlotRange]]/.FixNestedLegends &, *)
-  Show[##,ReplacePart[First@AbsoluteOptions[#1,PlotRange],{-1,-1}->Full]]/.FixNestedLegends &,
+  Show[##
+    ,ReplacePart[First@AbsoluteOptions[#1,PlotRange],{-1,-1}->Full]
+  ]/.FixNestedLegends &,
   Cases[
 		MapIndexed[
 			If[MatchQ[#1,_FLX],DataPlots[props][#1,"LeafPath" -> #2],#1]&

@@ -54,7 +54,6 @@ PPair[x_]:=If[(x===System`Top)||(x===System`Bottom),{System`Center,x},{x,System`
 PPairRel[x_]:=If[(x===System`Top)||(x===System`Bottom),{System`Center,0},{0,System`Center}];
 PRot[x_]:=If[x===System`Left || x===System`Right,Rotate[#,90 Degree]&,Identity];
 
-
 Options[PlotGrid1]={"GridLabels"->{},"GridTranspose"->False,"LabelPlacement"->{System`Right,System`Top},"PlotGridPadding"->50};
 
 PlotGrid1[pl_?MatrixQ,opt:OptionsPattern[]]:=
@@ -71,14 +70,14 @@ Grid[
     Print[vis];
     ims=If[Last@#2==1||Last@#2==Last@dims,{300+pgp,Automatic},{300,Automatic}];
     (* Overlay[{ *)
-      g=Show[
+      Show[Show[
         TrimTicksAndLabels[#1,GridEdgeComplement[#2,dims],opt]
         (* ,ImagePadding->RemovedImagePadding[#1,#2,dims] *)
         ,ImageSize->ims
-        ,Epilog->Inset[Text[Style[
-            "("<>ToString[Part[Alphabet[],(dims[[2]] (#2[[1]] - 1)) + #2[[2]]]]<>")",  FontFamily->"LatinModernMath",FontSize->12,FontColor->Black]
-          ], {Center, Top}, {Center, Top}]
-        ]
+        ],Epilog->Inset[Framed[Style[
+            "("<>ToString[Part[Alphabet[],(dims[[2]] (#2[[1]] - 1)) + #2[[2]]]]<>")",  FontFamily->"LatinModernMath",FontSize->14,FontColor->Black]
+            ,Background -> LightGray,FrameStyle->Directive[Thin, LightGray]
+          ], Scaled[{1.01, 1.03}], {Right, Top}]]
       (* ,Graphics[{MapThread[
         Inset[
           Framed[
