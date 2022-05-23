@@ -56,7 +56,7 @@ DashedVibrantTheme[]:=
 
 GetColor[key_]:=(If[MissingQ[colorIndex[key]],AssociateTo[colorIndex,key->(Length[colorIndex]+1)]];Part[DashedVibrantTheme[],colorIndex[key]]);
 
-RemoveLegends[x_]:=x/.{Legended[a_,b___]:>a};
+RemoveLegends[x_]:=With[{},Print[Head@x]; x//.{Legended[a_,b___]:>a}];
 Options[UnifyLegends]={
   LegendPlacement->System`Below, LegendLabel->"",
   LegendTranslate->Identity,
@@ -68,7 +68,7 @@ With[{pl=COptionValue[{opt,UnifyLegends},LegendPlacement]},
     Placed[
       LineLegend[
         ##
-        ,LegendLayout->If[pl===System`Below,"Row","Column"]
+        ,LegendLayout->If[(pl===System`Below || pl===System`Above || pl===System`Top || pl===System`Bottom),"Row","Column"]
         ,FilterRules[{Options[QSFcmdline],opt,Options[LineLegend]},Options[LineLegend]]
       ],
       COptionValue[{opt,UnifyLegends},LegendPlacement]

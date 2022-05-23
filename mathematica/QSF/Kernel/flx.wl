@@ -7,7 +7,7 @@ EnrichMetadata;
 
 FLX;
 FLXLoad;
-Average;
+(* Average; *)
 DataPlots;
 DataMerge;
 DataPlotGrid;
@@ -124,8 +124,9 @@ FLXLoad[path_,opt:OptionsPattern[]]:=Block[{st,hd,data},
   data=FLXData[st,hd,opt];
   Close[st];
   AssociateTo[hd,
-  {"tmax"->Quantity[data["time"][[-1]],"AtomicUnitOfTime"],
-  "dt"->Quantity[data["time"][[2]],"AtomicUnitOfTime"]}];
+  {
+    "tmax"->Quantity[data["time"][[-1]],"AtomicUnitOfTime"],
+    "dt"->Quantity[data["time"][[2]],"AtomicUnitOfTime"]}];
   LOG["dt:", hd["dt"], " tmax:", hd["tmax"]];
   AssociateTo[hd,COptionValue[{opt,FLXLoad},EnrichMetadata][hd, data]];
   FLX[hd, data]
@@ -133,13 +134,13 @@ FLXLoad[path_,opt:OptionsPattern[]]:=Block[{st,hd,data},
 
 
 (* decorator[LOGF]@ *)
-Average[matchF_][inp_, OptionsPattern[]]:=FLX[
+(* Average[matchF_][inp_, OptionsPattern[]]:=FLX[
     Merge[Cases[inp,FLX[hd_,data_]:>hd,\[Infinity]],First],
 		Join[
       Merge[Cases[inp,FLX[_,data_]:>KeySelect[data,Not@*matchF],\[Infinity]],First],
       Merge[Cases[inp,FLX[_,data_]:>KeySelect[data,matchF],\[Infinity]],Mean]
     ]
-];
+]; *)
 
 fg[min_,max_]:=DeleteDuplicates[Flatten[Table[
   Table[{i,Directive[Thickness[0.00025 lz],Dashed,GrayLevel[(5.0-lz)/5.0]]},
@@ -194,7 +195,8 @@ Options[DataPlotGrid]={"GridLabels"->{},"GridTranspose"->False};
 DataPlotGrid[ass_Association,opt:OptionsPattern[]]:=DataPlotGrid[Transpose@GriddedLeaves[ass],"GridLabels"->GridKeys[ass]];
 DataPlotGrid[x_List,opt:OptionsPattern[]]:=If[MatrixQ[x]
   ,Legended[PlotGrid1[RemoveLegends[x],opt],UnifyLegends[x]]
-  ,Grid[{x},Spacings -> Scaled[-0.04]]
+  (* ,Grid[{x},Spacings -> Scaled[-0.04] *)
+  ,Legended[PlotGrid1[RemoveLegends[Transpose[{x}]],opt],UnifyLegends[Transpose[{x}]]]
 ];
 
 (* Too general :-() *)
@@ -212,76 +214,3 @@ FLX[hd,
 ]; *)
 End[];
 EndPackage[];
-
-(* FLXJoin[all_, opt :OptionsPattern[] ]:=Block[{legend,size,colors},
-    
-    (* legend for data on the same plot and colors*)
-    legend=Keys[all];
-    size=Length[legend];
-    colors=AssociationThread[legend -> ColorData[97, "ColorList"][[;;size]] ];
-    
-    (* Normalize the FLX data *)
-    AddOpts["Scale"-> 10/StandardDeviation[Flatten[Values[KeySelect[#,FluxDataQ] ]& /@ Values[all[[All, 1]] ] ] ] ];
-    (* val = If[val===None,, val]; *)
-    Labeled[
-        FLXColumnPlot[all,
-            FilterRules[{Options[QSFcmdline],opt}, Options[FLXColumnPlot] ],
-            ColorAssoc->colors, Scale->OptionValue[{QSFcmdline, FLXJoin}, "Scale"]
-        ],
-        If[size>1,LineLegend[
-            Values[colors], 
-            FontFix@Keys[colors], 
-            LegendLabel -> "",
-            LegendLayout -> "Row"],""], 
-        Top]
-]; *)
-(* Options[FLXColumnPlot] = Join[{ColorAssoc->None, PlotRangeFunction->FLXDefRangeFun, Scale->1, LabelTransform->Identity}, Options[ListLinePlot]];
-FLXColumnPlot[all_, opt :OptionsPattern[]]:=Block[{dat,tmax,T, labels},
-    (* find all keys *)
-    
-    labels = DeleteDuplicates[Flatten[Keys /@ Values[all[[All, 1]] ] ]];
-    GraphicsColumn[
-    Table[
-        LOG[magenta,  "Making joined plot for...", label];
-        Show[KeyValueMap[(
-            Check[dat = First[#2][label];
-                meta=Last[#2];
-                tmax=meta["tmax"];
-                T=meta["T"];
-                (* Debug to check that field values are right *)
-                (* If[label==="A",Print[2 \[Pi] Max[dat]/T] ]; *)
-                ListLinePlot[
-                    If[FluxDataQ@label,OptionValue[{QSFcmdline, FLXColumnPlot},Scale],1] dat,
-                    FilterRules[{Options[QSFcmdline], opt}, Options[ListLinePlot] ],
-                    PlotStyle -> OptionValue[{QSFcmdline, FLXColumnPlot},ColorAssoc][#1],
-                    AspectRatio -> 1/2.5, 
-                    GridLines -> {
-                                    (* Join[ *)
-                                        (* {#, Gray}&/@Range[IntegerPart[tmax/T] ], *)
-                                        tmp=OptionValue[{QSFcmdline, FLXColumnPlot},PlotRangeFunction][meta];
-                                        Table[{First[tmp]+i*(Last[tmp]-First[tmp])/8.0, Red},{i,1,8}]   
-                                    (* ] *)
-                                    ,Automatic
-                                },
-                    PlotLegends->None,
-                    Frame->True,
-                    PlotRange -> {OptionValue[{QSFcmdline, FLXColumnPlot},PlotRangeFunction][meta],Full},
-                    FrameTicks->{Automatic,{If[Last@labels===label,Automatic,None],None}},
-                    DataRange -> {0, tmax/T}
-                ], 
-                Nothing]) &, all], 
-        (* PlotRange -> Full,  *)
-        PlotRange -> {OptionValue[{QSFcmdline, FLXColumnPlot},PlotRangeFunction][meta],Full},
-        FrameLabel->{{None,OptionValue[{QSFcmdline, FLXColumnPlot}, LabelTransform][label]},{None,None}},
-        (* ImagePadding -> {{30, 20}, {30, 10}}, *)
-        ImagePadding -> {{30, 20}, {30 , 10 }} OptionValue[{QSFcmdline, FLXColumnPlot},ImageSize]/400,
-        (* ImageSize -> 400, *)
-        Frame -> True], 
-    {label, labels}],
-    (* Alignment -> Right, *)
-    Spacings->{-50.0,-45.5 }OptionValue[{QSFcmdline, FLXColumnPlot},ImageSize]/400,
-    ImagePadding->{{0,0},{0,15}}
-    (* ImagePadding->20 OptionValue[ImageSize]/400 *)
-    ]
-    
-]; *)

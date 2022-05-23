@@ -1,4 +1,4 @@
-BeginPackage["QSF`wf`", {"cmdline`log`","cmdline`opt`", "QSF`StyleUtils`", "PlotGrid`","QSF`ColorFunctions`","QSF`DataAnalysis`"}];
+BeginPackage["QSF`wf`", {"cmdline`log`","cmdline`opt`", "QSF`StyleUtils`", "PlotGrid`","QSF`ColorFunctions`","QSF`DataAnalysis`", "QSF`Physics`"}];
 
 (* Whether given filename has a signature consistent with QSF package *)
 WF;
@@ -9,13 +9,13 @@ TrimMargins;
 Average;
 RemoveBoundedPart;
 MergeOrthants;
-
+PixelCircle;
+PolarIntegral;
 TransverseDiagSum;
 WFCombine;
 WFExport;
 WFPlot;
-WFGrid;
-
+WFPlotGrid;
 GridKeys;
 
 Begin["`Private`"];
@@ -74,7 +74,7 @@ RemoveBoundedPart[WF[hd_Association, data_List] ] :=If[
 	BoundedQ[hd], LOG["Pass"]; WF[hd,data], 
 	LOG["Removing Bounded Part"]; 
 	WF[
-		ReplacePart[hd,"bounded"->0], 
+		ReplacePart[hd,"bounded"->ConstantArray[0,hd["dim"]]], 
 		FourierAt[WFMaskEdgeAt[FourierAt[data, Bounded[hd] ], Bounded[hd] ], Bounded[hd], True]
 	]
 ];
@@ -84,14 +84,14 @@ SetAttributes[Evenify,{Listable}];
 Evenify[n_Integer]:=If[OddQ[n],n+1,n];
 
 Options[TrimMargins]={"TrimMarginsPercent"->0.1};
-SetAttributes[TrimMargins,{Listable}];
+(* SetAttributes[TrimMargins,{Listable}]; *)
 decorator[LOGF]@
 TrimMargins[WF[hd_Association,data_List]]:=Module[{p,po,HD},
 	p=COptionValue[TrimMargins,"TrimMarginsPercent"]; 
 	po=Evenify@Round[hd["ns"] p];
 	If[Not[BoundedQ[hd]],WF[hd,data],
     HD=ReplacePart[hd,{"ns"->hd["ns"] - 2 po}];
-		LOG["Removing margins: ",p, "%, points: ", po, " (extracting ranges [", Map[(1+Evenify@Round[# p];;#-Evenify@Round[# p])&,hd["ns"]], "])"]; 
+		LOG["Removing margins: ",p*100, "%, points: ", po, " (extracting ranges [", Map[(1+Evenify@Round[# p];;#-Evenify@Round[# p])&,hd["ns"]], "])"]; 
 		WF[
 			HD,
 			Apply[data[[##]]&,Map[(1+Evenify@Round[# p];;#-Evenify@Round[# p])&,hd["ns"]]]
@@ -113,17 +113,68 @@ SetAttributes[TransverseDiagSum,{Listable}];
 decorator[LOGF]@
 TransverseDiagSum[WF[hd_Association, data_List] ]:=Module[
 	{n=First@hd["ns"],h},
+  Print[Most[hd["ns"]]/2];
+  Print[Most[Bounded[hd]]];
+  Print[Most[hd["dxs"]]];
 	h=1+n/2;
 	If[Dim[hd]!=2, LOGE["TransverseDiagSum currently supports only 2D wf's"] ];
 	If[Apply[UnsameQ,hd["ns"] ], LOGE["TransverseDiagSum requires square wf's"] ];
 	If[Apply[UnsameQ,hd["bounded"] ], LOGE["TransverseDiagSum requires wf's of uniform boundedness"] ];
 	WF[ReplacePart[hd, 
 		{"dim" -> 1, 
-		"ns" -> Most[hd["ns"] ]/2,
-		"bounded"->Most[Bounded[hd] ],
-		"dxs"->Sqrt[2]*Most[hd["dxs"] ],
+		"ns" -> Most[hd["ns"]]/2,
+		"bounded"->Most[hd["bounded"]],
+		"dxs"->Sqrt[2]*Most[hd["dxs"]],
 		"positiveAxisOnly"->True
 	}], cf[data,n, h] ]
+];
+
+
+(* PixelCircle60deg = Compile[{{data, _Real, 2}, {rad, _Real}, {n, _Integer}}, 
+	Table[If[(i - n/2) (j - n/2) > 0 && 
+      Max@Abs[{i - n/2, j - n/2}]/Min@Abs[{i - n/2, j - n/2}] < 
+       2 + Sqrt[3], UnitStep[-Sqrt[(i - n/2)^2 + (j - n/2)^2] + rad], 
+     0], {i, 1, n}, {j, 1, n}] data, 
+	CompilationTarget -> "C", RuntimeOptions -> "Speed"
+]; *)
+
+PixelCircle60deg = Compile[{{data, _Real, 2}, {rad, _Real}, {n, _Integer}, {sign, _Integer}}, 
+	Table[If[sign i j > 0 && 
+      Max@Abs[{i, j}]/Min@Abs[{i, j}] < 2 + Sqrt[3], 
+      data[[i+n+1,j+n+1]] UnitStep[-Sqrt[i^2+j^2]+rad], 
+     0.0], {i,-n,n-1}, {j,-n,n-1}], 
+	CompilationTarget -> "C", RuntimeOptions -> "Speed"
+];
+
+Options[PixelCircle]={"Orthants"->All};
+SetAttributes[PixelCircle,{Listable}];
+PixelCircle[WF[hd_,data_],opt:OptionsPattern[]]:=WF[hd,PixelCircle60deg[data, Length[data]/2, Length[data]/2,
+  If[COptionValue[{opt,MergeOrthants},"Orthants"]==="Correlated",1,-1]] ];
+
+
+SetAttributes[PolarIntegral,{Listable}];
+Options[PolarIntegral]={"Orthants"->All};
+decorator[LOGF]@
+PolarIntegral[WF[hd_Association, data_List],opt:OptionsPattern[]]:=Module[
+	{n=First@hd["ns"],h,pts,rs,tmp},
+	h=1+n/2;
+	If[Dim[hd]!=2, LOGE["TransverseDiagSum currently supports only 2D wf's"] ];
+	If[Apply[UnsameQ,hd["ns"] ], LOGE["TransverseDiagSum requires square wf's"] ];
+	If[Apply[UnsameQ,hd["bounded"] ], LOGE["TransverseDiagSum requires wf's of uniform boundedness"] ];
+  pts=N@Table[k, {k, n/2 + 0.5, 0.5, -1}];
+  rs=Most@pts+Differences[pts]/2;
+	WF[ReplacePart[hd, 
+		{"dim"->1, 
+		"ns"->Most[hd["ns"]]/2,
+		"bounded"->Most[hd["bounded"]],
+		"dxs"->Most[hd["dxs"]],
+		"positiveAxisOnly"->True
+	}], 
+  Reverse[Rest@Last@Last@Reap@Fold[
+    (tmp=PixelCircle60deg[#1,#2,Length[#1]/2,If[COptionValue[{opt,MergeOrthants},"Orthants"]==="Correlated",1,-1]];Sow[Total[Total[#1-tmp]]];Print[#2];
+    If[Length[#1]/2-#2 >2,tmp[[2;;-2,2;;-2]],tmp])&,data,pts]
+    ]
+  ]
 ];
 
 WFSameSignMask[hd_, ratio_ : 0.2] := Module[{ns, nCAP, CAP, s},
@@ -190,8 +241,8 @@ WFLoad[path_,opt:OptionsPattern[]]:=Module[{st,hd,data},
 	WF[hd,data]
 ];
 
-
-WFDataRange[hd_Association]:=Module[{Xs,Ps,dps},
+Options[WFDataRange]={"RangeScale"->1};
+WFDataRange[hd_Association,opt:OptionsPattern[]]:=Module[{Xs,Ps,dps},
 	dps=2\[Pi]/(hd["ns"] hd["dxs"]);
 	Xs=0.5 hd["dxs"] (hd["ns"]-1);
 	Ps=\[Pi]/hd["dxs"];
@@ -200,7 +251,7 @@ WFDataRange[hd_Association]:=Module[{Xs,Ps,dps},
 	If[hd["positiveAxisOnly"],
 		MapThread[{#1,#2}&, If[hd["rep"]==2,{Ps*0, Ps-dps}, {hd["dxs"]*0.5, Xs}] ],
 		MapThread[{-#1,#2}&, If[hd["rep"]==2,{Ps, Ps-dps}, {Xs, Xs}] ]
-	]
+	]/ReleaseHold[(COptionValue[{opt,WFDataRange},"RangeScale"] /.hd)]
 ];
 
 
@@ -221,8 +272,8 @@ AbsSquare[ass_Association]:=Map[AbsSquare,ass];
 
 
 decorator[LOGF]@
-Average[inp_] := 
-  Module[{r=AbsSquare[inp],dp=ArrayDepth[inp,AllowedHeads->Association]},
+Average[inp_]:=Module[
+{r=AbsSquare[inp],dp=ArrayDepth[inp,AllowedHeads->Association]},
 	WF[
 		Merge[Cases[r,WF[hd_,data_]:>hd,\[Infinity]],First],
 		Mean@Cases[r,WF[_,data_]:>data,\[Infinity]] 
@@ -479,15 +530,21 @@ Multicolumn[KeyValueMap[Labeled[#2, #1] &, ass] ];
 
 
 
-
-
-Options[WFGrid]={"GridLabels"->{},"GridTranspose"->False};
-WFGrid[ass_Association,opt:OptionsPattern[]]:=WFGrid[GriddedLeaves[ass],"GridLabels"->GridKeys[ass]];
-WFGrid[x_List,opt:OptionsPattern[]]:=If[GraphicsMatrixQ[x]
-  ,Legended[PlotGrid1[RemoveLegends[x],opt],UnifyLegends[x]]
-  ,Grid[Transpose[x],Spacings -> Scaled[-0.04]]
+Options[WFPlotGrid]={"GridLabels"->{},"GridTranspose"->False};
+WFPlotGrid[ass_Association,opt:OptionsPattern[]]:=
+Module[{g=Transpose@GriddedLeaves[ass]},
+  If[Head[g[[1,1]]]===Grid,
+    Grid[g,Spacings -> Scaled[-0.04]],
+    WFPlotGrid[g,"GridLabels"->GridKeys[ass]]
+  ]
 ];
-	
+
+WFPlotGrid[x_List,opt:OptionsPattern[]]:=If[MatrixQ[x]
+  ,Legended[PlotGrid1[RemoveLegends[x],opt],UnifyLegends[x]]
+  ,Grid[{x},Spacings -> Scaled[-0.04]]
+];
+
+
 
 
 (* WFGrid[x_List,opt :OptionsPattern[]]:=Legended[

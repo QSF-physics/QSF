@@ -1,7 +1,7 @@
 
 BeginPackage["QSF`",{"cmdline`log`","cmdline`opt`", "QSF`DataAnalysis`", "QSF`wf`", "QSF`flx`"}];
 GaussianBlur;
-Average;
+(* Average; *)
 Expo;
 ExportableQ;
 (* GaussianBlur2; *)
