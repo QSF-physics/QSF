@@ -17,7 +17,7 @@ WFExport;
 WFPlot;
 WFPlotGrid;
 GridKeys;
-
+BetterTicks;
 Begin["`Private`"];
 
 Bool:=#!=0&;
@@ -460,7 +460,9 @@ WFPlot[
 	WF[
 		hd,
 		Legended[
-			data, 
+      Export[COptionValue[{opt,WFCombine},"LegendLabels"]@
+          Flatten[COptionValue[{opt,WFCombine},"LeafPath"]//.{Key[a__]:>a}], data];
+			data,
 			Placed[
 				Style[
           COptionValue[{opt,WFCombine},"LegendLabels"]@
@@ -534,14 +536,14 @@ Options[WFPlotGrid]={"GridLabels"->{},"GridTranspose"->False};
 WFPlotGrid[ass_Association,opt:OptionsPattern[]]:=
 Module[{g=Transpose@GriddedLeaves[ass]},
   If[Head[g[[1,1]]]===Grid,
-    Grid[g,Spacings -> Scaled[-0.04]],
+    Grid[g,Spacings -> Scaled[-0.0]],
     WFPlotGrid[g,"GridLabels"->GridKeys[ass]]
   ]
 ];
 
 WFPlotGrid[x_List,opt:OptionsPattern[]]:=If[MatrixQ[x]
   ,Legended[PlotGrid1[RemoveLegends[x],opt],UnifyLegends[x]]
-  ,Grid[{x},Spacings -> Scaled[-0.04]]
+  ,Grid[{x},Spacings -> Scaled[-0.0]]
 ];
 
 
