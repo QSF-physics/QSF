@@ -34,7 +34,7 @@ TrimTicksAndLabels[gr_Graphics, sides_List,opt:OptionsPattern[]] :=
     ,FrameStyle->{Black}
     ,ImagePadding->ReplacePart[
       AbsoluteOptionsV[gr,ImagePadding]
-      ,{sides->0.2,Complement[Values@$SidePositions,sides]->OptionValue[{opt,PlotGrid1},"PlotGridPadding"]}]
+      ,{sides->0.3,Complement[Values@$SidePositions,sides]->OptionValue[{opt,PlotGrid1},"PlotGridPadding"]}]
 ];
 
 GridEdge[pos_List,dims_List]:=
@@ -54,20 +54,18 @@ PPair[x_]:=If[(x===System`Top)||(x===System`Bottom),{System`Center,x},{x,System`
 PPairRel[x_]:=If[(x===System`Top)||(x===System`Bottom),{System`Center,0},{0,System`Center}];
 PRot[x_]:=If[x===System`Left || x===System`Right,Rotate[#,90 Degree]&,Identity];
 
-Options[PlotGrid1]={"GridLabels"->{},"GridTranspose"->False,"LabelPlacement"->{System`Right,System`Top},"PlotGridPadding"->50};
+Options[PlotGrid1]={"GridLabels"->{},"GridTranspose"->False,"LabelPlacement"->{System`Right,System`Top},"PlotGridPadding"->55};
 
 PlotGrid1[pl_?MatrixQ,opt:OptionsPattern[]]:=
 Module[{vis, ims, pref,gLab, dims,g},
 pref=OptionValue[{opt,PlotGrid1},"LabelPlacement"];
 gLab=OptionValue[{opt,PlotGrid1},"GridLabels"];
-Print[gLab];
 pgp=OptionValue[{opt,PlotGrid1},"PlotGridPadding"];
 dims=Dimensions@pl;
 Grid[
   MapIndexed[
     (
     vis=Intersection[pref/.$SidePositions,GridEdge[#2,dims]];
-    Print[vis];
     ims=If[Last@#2==1||Last@#2==Last@dims,{300+pgp,Automatic},{300,Automatic}];
     (* Overlay[{ *)
       Show[Show[
