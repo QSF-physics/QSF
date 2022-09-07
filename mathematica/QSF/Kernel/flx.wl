@@ -72,9 +72,9 @@ LaserDataQ:=StringContainsQ[#,laserPattern]&;
 
 LatexDataLabels:=Which[
   FluxDataQ[#], 
-  StringReplace[#,{"*"->"","2"->" \\rightarrow ","ASYM"->"{-}","SYM"->"{+}"}]<>"\,[au]",
+  StringReplace[#,{"*"->"","2"->" \\rightarrow ","ASYM"->"{-}","SYM"->"{+}"}]<>"\,(arb.u.)",
   LaserDataQ[#],
-  StringJoin[#,"(t)\,[au]"]
+  StringJoin[#,"(t)\,(a.u.)"]
 ]&;
 
 (* TODO: placeholder - should be loaded from binary header *)
@@ -159,6 +159,24 @@ DataPlots[props_List][FLX[hd_Association,data_Association],opt:OptionsPattern[]]
   KeyValueMap[
     ListLinePlot[
         (* Print[COptionValue[{Options[QSFcmdline],opt,DataPlots},GridLines]]; *)
+      (* Export[
+        StringJoin[{
+          FileNameJoin[Flatten[{
+            StringJoin[Flatten[
+              {
+                LOG["TreePath: ",COptionValue[Expo,"TreePath"]];
+                LOG["LeafPath: ",COptionValue[{opt,Expo},"LeafPath"]];
+                COptionValue[{opt,Expo},"ExportPath"] 
+                ,COptionValue[{opt,Expo},"TreePath"]
+              }]]    
+          }]],
+          "/",
+          #1,
+          "/",
+          First[COptionValue[{opt,Expo},"LeafPath"]/.{Key[x_]->x}],
+          ".csv"
+        }]
+      ,#2]; *)
       Legended[Placed[#2,COptionValue[{opt,DataPlots},"LegendPlacement"]],COptionValue[{opt,DataPlots},"LeafPath"]]
       ,GridLines->{Automatic, fg[-10000,10000]}
       ,Frame->True
