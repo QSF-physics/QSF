@@ -31,17 +31,17 @@ ExtractNumbers[l_String|l_List]:=RemoveJunk[StringCases[l,x:NumberString:>ToExpr
 
 
 FixNestedLegends = {Legended[Legended[k_, c___], dd___] :> Legended[k, Flatten[{c, dd}, 1] ]};
-defaultStyle={FontFamily -> "Latin Modern Roman", FontSize -> 16,FontColor->Black};
+defaultStyle={FontFamily -> "Latin Modern Roman", FontSize -> 24,FontColor->Black};
 
 SetAttributes[FontFix, Listable];
 FontFix[labs_String] := Style[labs, FontFamily -> "Latin Modern Roman", FontColor->Black];
 
 Map[SetOptions[#, BaseStyle -> 
-    {FontFamily -> "Latin Modern Roman", FontSize -> 16,FontColor->Black}] &,
+    {FontFamily -> "Latin Modern Roman", FontSize -> 24,FontColor->Black}] &,
     {Plot,ListLinePlot, ArrayPlot, Labeled,"Graphics"}
 ];
 Map[SetOptions[#, 
-    LabelStyle->{FontFamily -> "Latin Modern Roman", FontSize -> 16,FontColor->Black}] &,
+    LabelStyle->{FontFamily -> "Latin Modern Roman", FontSize -> 24,FontColor->Black}] &,
     {LineLegend}
 ];
 

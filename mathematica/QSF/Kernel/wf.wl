@@ -309,7 +309,8 @@ BestLegendPlacement[gr_] := Module[{cm, fo, fo2},
 	  Flatten[AbsoluteOptionsV[gr, ImagePadding]] /. {1 -> {1, 1}, 
 	  2 -> {1, 2}, 3 -> {2, 1}, 4 -> {2, 2}};
    If[MemberQ[cm, First@fo] && cm[First@fo] > 1, First@fo, 
-	First@Keys[TakeLargest[cm, 1]]]
+	First@Keys[TakeLargest[cm, 1]]];
+    {2,2}
    ];
 
 AbsoluteOptionsV := #2 /. AbsoluteOptions[#1, #2] &;
@@ -321,7 +322,7 @@ $PlacePositions = <|{1, 1} -> {{None, Null}}, {1,
 	 2} -> {{None}, {Null}}|>;
 
 
-BetterTicks[minmax_, aspectRatio_:1, backgroundColor_:White, expRescale_:False, minor_:{0.01,0.000,10},major_:{0.025,0.00,5}]:=
+BetterTicks[minmax_, aspectRatio_:1, backgroundColor_:White, expRescale_:False, minor_:{0.01,0.00,10},major_:{0.02,0.005,5}]:=
 Module[{ticks, mD, exp=0, expN=1,min=First@minmax, max=Last@minmax, MC, mC},
 	MC=ColorNegate@ Apply[RGBColor,ConstantArray[backgroundColor /.{GrayLevel[x_]->x, RGBColor[x___] -> Round[Total[{x}]/3]}, 3]];
 	mC=Blend[{MC,Gray}];
@@ -421,6 +422,7 @@ WFPlot[WF[hd_Association, data_List|data_Legended],opt:OptionsPattern[]]:=Module
 		DataReversed->False,
 		FrameTicks->{{First@Rest@BetterTicks[prng[[1]],1, ColorData["Jet"][0]], None},
 					 {First@Rest@BetterTicks[prng[[2]],1, ColorData["Jet"][0]], None}},
+    FrameTicksStyle->Directive[Thickness[0.004]],
 		ColorFunction->"Jet",
 		ImageSize -> 300,
 		DataRange->drng,
