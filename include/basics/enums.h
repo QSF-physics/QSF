@@ -124,9 +124,8 @@ template<size_t IN, typename... T> struct AT_INTERVAL: _TEMPORAL
 /// @brief Compile-time optimization flags.
 enum class OPTIMS
 {
-	NONE					= 0,
-	PRECOMP_COORDS= BIT(1),
-
+	NONE								 = 0,
+	PRECOMP_COORDS			 = BIT(1),
 	PRECOMP_KIN					 = BIT(3),
 	PRECOMP_VSTAT				 = BIT(4),
 	PRECOMP_KIN_OP			 = BIT(5),
