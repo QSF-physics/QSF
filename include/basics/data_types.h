@@ -9,6 +9,6 @@ using cxd = std::complex<double>;
 /* Array indexing proper for large array and FFTW */
 using ind = ptrdiff_t;
 /* Unsigned version of the above  */
-using uind = size_t;
+using uind= size_t;
 /* "256 dimensions should be enough for everybody" - Bill Gates, 2021 */
-using DIMS = unsigned char;
+using DIMS= unsigned char;
