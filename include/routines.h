@@ -1,17 +1,27 @@
-template<class PASSES, class PROP, class Worker> struct Routine;
+template <class PASSES, class PROP, class Worker>
+struct Routine;
 
-template<uind... PASS, class PROP, class Worker> struct Routine<seq<PASS...>, PROP, Worker>
+template <uind ...PASS, class PROP, class Worker>
+struct Routine<seq<PASS...>, PROP, Worker>
 {
-	static constexpr auto mode= PROP::mode;
+	static constexpr auto mode = PROP::mode;
 
 	PROP propagator;
 
 	Worker worker;
 	std::string_view name;
 
-	explicit Routine(PROP propagator): propagator(propagator){};
 
-	Routine(Worker&& worker): worker(std::move(worker)) { name= PROP::name; }
+	explicit Routine(PROP propagator) : propagator(propagator)
+	{
+	};
+
+	Routine(Worker&& worker) :
+		worker(std::move(worker))
+	{
+		name = PROP::name;
+
+	}
 	// LambdaClass(const F &lambdaFunc_): lambdaFunc(lambdaFunc_) {}
 	// LambdaClass(F &&lambdaFunc_) : lambdaFunc(std::move(lambdaFunc_)) {}
 	// LambdaClass(F& _lambdaFunc) : lambdaFunc(_lambdaFunc) {}
@@ -19,20 +29,21 @@ template<uind... PASS, class PROP, class Worker> struct Routine<seq<PASS...>, PR
 	void greet()
 	{
 		logImportant("EXECUTING ROUTINE [%s] IN MODE [%s] REGIONS: [%d] USING OPERATOR SPLIT: [%s]",
-								 name.data(),
-								 modeName(mode),
-								 MPI::regionCount,
-								 PROP::name.data());
+					 name.data(),
+					 modeName(mode),
+					 MPI::regionCount,
+					 PROP::name.data());
 	}
+
 
 	void setupOptimizations()
 	{
-		// 	constexpr auto rout = get<RI>(ROUTINES);
-		// 	if (andQ<RI>(PRECOMP_COORDS)) precomputeCoords();
-		// 	initPulseOptimizations<RI>();
-		// 	if (andQ<RI>(C_DIPACC_X)) buildAndScatter(makeVStatDer<AXIS::X>, opt_dvstat_dx);
-		// 	if (andQ<RI>(C_DIPACC_Y) && DIM > 1) buildAndScatter(makeVStatDer<AXIS::Y>, opt_dvstat_dy);
-		// 	if (andQ<RI>(C_DIPACC_Z) && DIM > 2) buildAndScatter(makeVStatDer<AXIS::Z>, opt_dvstat_dz);
+	// 	constexpr auto rout = get<RI>(ROUTINES);
+	// 	if (andQ<RI>(PRECOMP_COORDS)) precomputeCoords();
+	// 	initPulseOptimizations<RI>();
+	// 	if (andQ<RI>(C_DIPACC_X)) buildAndScatter(makeVStatDer<AXIS::X>, opt_dvstat_dx);
+	// 	if (andQ<RI>(C_DIPACC_Y) && DIM > 1) buildAndScatter(makeVStatDer<AXIS::Y>, opt_dvstat_dy);
+	// 	if (andQ<RI>(C_DIPACC_Z) && DIM > 2) buildAndScatter(makeVStatDer<AXIS::Z>, opt_dvstat_dz);
 	}
 
 	void run()
@@ -68,7 +79,8 @@ template<uind... PASS, class PROP, class Worker> struct Routine<seq<PASS...>, PR
 		fftw_mpi_cleanup(); */
 	}
 
-	template<typename WHEN> inline void reapData()
+	template <typename WHEN>
+	inline void reapData()
 	{
 		// runDumps<RI, R, WHEN>();
 		// Dumps_t::template run<startREP, WHEN>();
@@ -80,7 +92,10 @@ template<uind... PASS, class PROP, class Worker> struct Routine<seq<PASS...>, PR
 		// 	outputs.template logOrPass<WHEN>(1);
 	}
 
-	inline void start() {}
+	inline void start()
+	{
+
+	}
 
 	void run(uind i)
 	{
@@ -111,11 +126,14 @@ template<uind... PASS, class PROP, class Worker> struct Routine<seq<PASS...>, PR
 
 		// Timings::stop();
 	}
+
 };
-template<class PASSES, class PROP, class Worker> Routine<PASSES, PROP, Worker> Repeat(Worker&& w)
+template <class PASSES, class PROP, class Worker>
+Routine<PASSES, PROP, Worker> Repeat(Worker&& w)
 {
 	return Routine<PASSES, PROP, Worker>(std::move(w));
 }
+
 
 // im load
 /*
@@ -162,7 +180,7 @@ void loadFromSection(string_view nameR)
 	get_value(section, "dt", dt);
 }
 */
-// old routins
+//old routins
 /*
 template <MODE M, class SEQ, class WF, class PROP, class TASKS, OPTIMS opt>
 struct ROUTINE
@@ -183,9 +201,9 @@ struct ROUTINE
 	DUMP_FORMAT dump_format;
 	ADV_CONFIG advanced;
 	constexpr explicit ROUTINE(string_view name,
-								 DATA_FORMAT data_format,
-								 DUMP_FORMAT dump_format,
-								 ADV_CONFIG advanced
+							   DATA_FORMAT data_format,
+							   DUMP_FORMAT dump_format,
+							   ADV_CONFIG advanced
 	) : name(name),
 		data_format(data_format),
 		dump_format(dump_format),
@@ -242,14 +260,14 @@ struct ROUTINE
 	T advanced;
 	tuple<Args...> tasks;
 	constexpr explicit ROUTINE(MODE mode,
-								 string_view name,
-								 SEQ passes,
-								 OPTIMS optims,
-								 PROP propagator,
-								 DATA_FORMAT data_format,
-								 DUMP_FORMAT dump_format,
-								 T advanced,
-								 Args... args
+							   string_view name,
+							   SEQ passes,
+							   OPTIMS optims,
+							   PROP propagator,
+							   DATA_FORMAT data_format,
+							   DUMP_FORMAT dump_format,
+							   T advanced,
+							   Args... args
 	) : mode(mode),
 		name(name),
 		passes(passes),

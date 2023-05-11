@@ -2,7 +2,7 @@
 
 namespace QSF
 {
-	using Section= inipp::Ini<char>::Section;
+	using Section = inipp::Ini<char>::Section;
 
 	struct Config
 	{
@@ -10,11 +10,11 @@ namespace QSF
 		inipp::Ini<char> ini;
 		char config[100];
 
-		Config()= default;
+		Config() = default;
 		explicit Config(std::string section, std::string_view name)
 		{
 			logInfo("Parsing %s", name.data());
-			source_section= section;
+			source_section = section;
 			// if (MPI::pID)
 			std::ifstream is(IO::project_dir / std::string(name));
 			// ini.clear();
@@ -24,11 +24,16 @@ namespace QSF
 			ini.default_section(ini.sections["DEFAULT"]);
 			ini.interpolate();
 			logINI("Parsed & interpolated project.ini file:");
-			if(!MPI::pID) ini.generate(std::cout);
+			if (!MPI::pID)
+				ini.generate(std::cout);
 			// if (DEBUG & DEBUG_INI) ini.generate(std::cout);
 			// if (DEBUG & DEBUG_INI) MPI_Barrier(MPI_COMM_WORLD);
 		}
 
-		explicit Config(std::string section) { source_section= section; }
+		explicit Config(std::string section)
+		{
+			source_section = section;
+		}
+
 	};
-};	 // namespace QSF
+};
