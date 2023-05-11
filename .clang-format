@@ -1,0 +1,86 @@
+# options: https://clang.llvm.org/docs/ClangFormatStyleOptions.html
+Language: Cpp
+Standard: c++20
+BasedOnStyle: LLVM
+UseCRLF: false
+UseTab: Always
+TabWidth: 2
+IndentWidth: 2
+ContinuationIndentWidth: 2
+ColumnLimit: 100
+NamespaceIndentation: All
+FixNamespaceComments: true
+AlignTrailingComments: true
+SortIncludes: false
+AccessModifierOffset: 0
+# AccessModifierOffset: -2
+ConstructorInitializerIndentWidth: 2
+PenaltyReturnTypeOnItsOwnLine: 200
+
+IndentCaseLabels: false
+AlignAfterOpenBracket: AlwaysBreak
+# AlignAfterOpenBracket: BlockIndent
+PointerAlignment: Left
+SpaceAroundPointerQualifiers: Before
+SpaceBeforeAssignmentOperators: false
+SpaceBeforeCaseColon: false
+SpaceBeforeCpp11BracedList: false
+SpaceBeforeCtorInitializerColon: false
+SpaceAfterCStyleCast: false
+SpaceBeforeSquareBrackets: false
+SpaceInEmptyBlock: false
+SpaceInEmptyParentheses: false
+SpaceBeforeParens: Never
+SpaceBeforeRangeBasedForLoopColon: false
+SpaceBeforeInheritanceColon: false
+SpacesBeforeTrailingComments: 3
+SpacesInCStyleCastParentheses: false
+SpacesInConditionalStatement: false
+SpacesInContainerLiterals: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpaceAfterLogicalNot: false
+SpaceAfterTemplateKeyword: false
+
+
+AllowShortIfStatementsOnASingleLine: Always
+AllowShortBlocksOnASingleLine: Always
+AllowShortLambdasOnASingleLine: All
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortLoopsOnASingleLine : true
+AllowShortFunctionsOnASingleLine: true
+AllowShortEnumsOnASingleLine: false
+AlwaysBreakAfterReturnType: TopLevel
+# AlwaysBreakAfterReturnType: None
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterControlStatement: Always
+  BeforeElse: true
+  AfterEnum: true
+  BeforeWhile: true
+  AfterUnion: true
+  AfterExternBlock: true
+  BeforeCatch: true
+  AfterStruct: true
+  AfterFunction: true
+  AfterNamespace: true
+  BeforeLambdaBody: true
+  AfterCaseLabel: true
+  AfterClass: true
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+  SplitEmptyNamespace: false
+  BreakBeforeBinaryOperators: All
+
+AlignOperands: AlignAfterOperator
+AlignConsecutiveAssignments: AcrossComments
+# AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: None
+AlignConsecutiveMacros: Consecutive
+BinPackArguments: false
+BinPackParameters: false
+
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+AllowAllConstructorInitializersOnNextLine: true
+EmptyLineBeforeAccessModifier: Always
+AllowAllParametersOfDeclarationOnNextLine: true
