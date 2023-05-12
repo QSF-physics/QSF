@@ -50,8 +50,8 @@ AllowShortCaseLabelsOnASingleLine: true
 AllowShortLoopsOnASingleLine : true
 AllowShortFunctionsOnASingleLine: true
 AllowShortEnumsOnASingleLine: false
-AlwaysBreakAfterReturnType: TopLevel
-# AlwaysBreakAfterReturnType: None
+AlwaysBreakAfterReturnType: None
+# AlwaysBreakAfterReturnType: All
 BreakBeforeBraces: Custom
 BraceWrapping:
   AfterControlStatement: Always
@@ -73,14 +73,15 @@ BraceWrapping:
   BreakBeforeBinaryOperators: All
 
 AlignOperands: AlignAfterOperator
+# AllowAllArgumentsOnNextLine: true
 AlignConsecutiveAssignments: AcrossComments
 # AlignConsecutiveAssignments: true
 AlignConsecutiveDeclarations: None
 AlignConsecutiveMacros: Consecutive
 BinPackArguments: false
 BinPackParameters: false
-
+PackConstructorInitializers: Never
+# AllowAllConstructorInitializersOnNextLine: true #deprecated
 ConstructorInitializerAllOnOneLineOrOnePerLine: true
-AllowAllConstructorInitializersOnNextLine: true
 EmptyLineBeforeAccessModifier: Always
 AllowAllParametersOfDeclarationOnNextLine: true

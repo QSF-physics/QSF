@@ -32,7 +32,6 @@
 #include "hamiltonian.h"
 #include "potential.h"
 #include "propagator.h"
-#include "routines.h"
 namespace QSF
 {
 
@@ -58,9 +57,8 @@ namespace QSF
 		logImportant("PROJECT: [%s] MPI PROCESSES: [%d]", IO::project_name.c_str(), MPI::pSize);
 		logImportant("MAIN OUTPUT PATH: [%s]", location.c_str());
 	}
-	/// @brief Calling this will redirect futher program output to a subdirectory under the root
-	/// directory from above init(...) function
-	/// @param sub
+	/// @brief Calling this will redirect any futher program output to a subdirectory
+	/// @param sub_path subdirectory tree
 	void subdirectory(std::filesystem::path sub_path)
 	{
 		if(!MPI::pID) bool success= std::filesystem::create_directories(IO::root_dir / sub_path);
