@@ -148,6 +148,12 @@ enum class OPTIMS
 	UNTRANSPOSED_P_DIM= BIT(12),
 };
 
+/// @brief Holds the configuration on how to save the wavefunction
+/// @param dim dimensionality
+/// @param rep representation
+/// @param complex whether to output complex amplitudes
+/// @param donwscale how many times to downscale
+/// @param evo_backup whether it's a backup
 struct DUMP_FORMAT
 {
 	DIMS dim;

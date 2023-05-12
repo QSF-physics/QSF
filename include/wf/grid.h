@@ -1104,10 +1104,13 @@ namespace QSF
 			}
 			return ret;
 		}
-
-		IO::path save(IO::path path= "", DUMP_FORMAT df= {.dim= DIM})
+		/// @brief Saves a centered wavefunction in the representation defined by df
+		/// @param file_sub_path place to store the file under the current path
+		/// @param df DUMP_FORMAT config used to save the wf (defaults to DUMP_FORMAT with dim set)
+		/// @return the path at which the file was saved
+		IO::path save(IO::path file_sub_path= "", DUMP_FORMAT df= {.dim= DIM})
 		{
-			return _save_centered(path, df);
+			return _save_centered(file_sub_path, df);
 		}
 
 		void _backup(const ind step, std::string ext= IO::psi_ext)
